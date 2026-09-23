@@ -208,3 +208,17 @@ jobs:
           for tag in $TAGS; do
             cosign sign --yes "${tag%%:*}@${DIGEST}"
           done
+
+      # Описание репозитория в Docker Hub — из .github/dockerhub/README.md (без Mermaid и относительных ссылок,
+      # которые Docker Hub не отображает). Только для ветки main и при успешном входе в Docker Hub.
+      # Токену нужны права Read, Write, Delete; с меньшими правами шаг выдаёт предупреждение, публикацию не ломает.
+      - name: Описание в Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          short-description: "Аналог Keycloak на .NET 10: OAuth2/OIDC, JWT, RBAC, кластер, офлайн"
+          readme-filepath: ./.github/dockerhub/README.md

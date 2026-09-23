@@ -17,6 +17,13 @@ New-Item -ItemType Directory -Force $artifacts | Out-Null
 
 # Public-клиент с password/refresh для теста (создаётся один раз через Admin API).
 $api = $BaseUrl -replace "host.docker.internal", "localhost"
+
+# Сервис мог только что (пере)создаться — ждём готовности, иначе первые запросы оборвутся.
+$ready = $false
+for ($i = 0; $i -lt 90 -and -not $ready; $i++) {
+    try { $ready = (Invoke-WebRequest "$api/health/ready" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep 2 }
+}
+if (-not $ready) { throw "Сервис $api не готов за 3 минуты" }
 $t = Invoke-RestMethod "$api/connect/token" -Method Post -Body @{ grant_type = "client_credentials"; client_id = $ClientId; client_secret = $ClientSecret; scope = "tsl-auth-admin" }
 $H = @{ Authorization = "Bearer $($t.access_token)" }
 try { Invoke-RestMethod "$api/api/admin/applications/$PublicClient" -Headers $H | Out-Null }

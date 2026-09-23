@@ -1,0 +1,36 @@
+@page
+@model TslAuth.Pages.Account.LoginModel
+@* Форма входа. ReturnUrl передаётся в макет (брендинг приложения) и дальше — в ссылки «Забыли пароль» и «Регистрация». *@
+@{
+    ViewData["Title"] = L["login.title"];
+    ViewData["ReturnUrl"] = Model.ReturnUrl;
+}
+
+<div class="card">
+    <h2 style="margin-top:0">@L["login.title"]</h2>
+    @if (Model.Error is not null)
+    {
+        <div class="alert error">@L[Model.Error]</div>
+    }
+    <partial name="_Errors" />
+    <form method="post">
+        <input type="hidden" asp-for="ReturnUrl" />
+        <label for="Login">@L["login.login"]</label>
+        <input asp-for="Login" autocomplete="username" autofocus required />
+
+        <label for="Password">@L["login.password"]</label>
+        <input asp-for="Password" autocomplete="current-password" required />
+
+        <label class="inline"><input asp-for="RememberMe" /> @L["login.remember"]</label>
+
+        <div class="actions row between">
+            <button class="primary" type="submit">@L["login.submit"]</button>
+            <a asp-page="/Account/ForgotPassword" asp-route-returnUrl="@Model.ReturnUrl">@L["login.forgot"]</a>
+        </div>
+        @if (Model.RegistrationEnabled)
+        {
+            <p class="small" style="text-align:center">@L["login.noAccount"]
+                <a asp-page="/Account/Register" asp-route-returnUrl="@Model.ReturnUrl">@L["login.register"]</a></p>
+        }
+    </form>
+</div>

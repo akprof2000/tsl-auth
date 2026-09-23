@@ -1,0 +1,111 @@
+@page
+@model TslAuth.Pages.Admin.Webhooks.IndexModel
+@* События и вебхуки: инструкция по подключению бота, подписки и форма их редактирования, журнал доставок, лента последних событий. *@
+@{ ViewData["Title"] = "События и вебхуки"; }
+
+<div class="row between">
+    <h1>События и уведомления</h1>
+    @if (Model.CanManage)
+    {
+        <form method="post" asp-page-handler="Test" asp-route-id="@Model.Id" class="inline"><button type="submit">Отправить тестовое событие</button></form>
+    }
+</div>
+
+<div class="card">
+    <b>Как подключить бота мессенджера</b> — сам бот внешний, сервис только отдаёт события. Способы (любой, можно вместе):
+    <ol class="small" style="margin-bottom:0">
+        <li><b>Long-polling</b>: <code>GET /api/admin/events?after=&lt;id&gt;&amp;wait=30</code> → <code>{ events, next }</code>.</li>
+        <li><b>SSE</b>: <code>GET /api/admin/events/stream</code> (заголовок <code>Last-Event-ID</code> продолжит с места обрыва).</li>
+        <li><b>Вебхук</b>: сервис сам POST-ит JSON на URL бота; подпись <code>X-TSL-Signature: sha256=HMAC(секрет, тело)</code>.
+            Поле <code>text</code> совместимо с incoming-webhook Mattermost / Rocket.Chat.</li>
+    </ol>
+    <p class="small muted" style="margin-bottom:0">Боту выдайте confidential-клиента с client_credentials, scope <code>@SystemApp.ClientId</code>
+        и ролью <code>@SystemApp.NotifierRole</code> (только события, без прав администратора).</p>
+</div>
+
+<div class="grid2">
+    <div>
+        <h2>Подписки (вебхуки)</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Название</th><th>События</th><th>Кто создал</th><th></th></tr></thead>
+                @foreach (var s in Model.Items)
+                {
+                    <tr>
+                        <td><a asp-page="Index" asp-route-id="@s.Id">@s.Name</a><div class="small muted">@s.Url</div></td>
+                        <td>@foreach (var e in s.Events) { <span class="badge">@e</span> }</td>
+                        <td class="small">@s.CreatedBy</td>
+                        <td>@if (!s.IsEnabled) { <span class="badge danger">выкл</span> }</td>
+                    </tr>
+                }
+            </table>
+        </div>
+
+        @if (Model.CanManage)
+        {
+            <form method="post" asp-page-handler="Save" asp-route-id="@Model.Id" class="card" style="margin-top:16px">
+                <h2 style="margin-top:0">@(Model.Id is null ? "Новая подписка" : "Изменить подписку")</h2>
+                <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+                <label asp-for="Name">Название</label>
+                <input asp-for="Name" placeholder="Бот Mattermost — дежурные админы" required />
+                <label asp-for="HookUrl">URL</label>
+                <input asp-for="HookUrl" placeholder="https://chat.tsl.local/hooks/xxxx" required />
+                <label asp-for="Secret">Секрет подписи @(Model.Id is null ? "" : "(пусто — не менять)")</label>
+                <input asp-for="Secret" type="password" autocomplete="off" />
+                <label>События</label>
+                <label class="inline"><input type="checkbox" name="Events" value="*" checked="@Model.Events.Contains("*")" /> все</label>
+                @foreach (var e in WebhookEvents.All)
+                {
+                    <label class="inline"><input type="checkbox" name="Events" value="@e" checked="@Model.Events.Contains(e)" /> @e</label>
+                }
+                <label class="inline"><input asp-for="IsEnabled" /> Включена</label>
+                <div class="actions">
+                    <button class="primary" type="submit">Сохранить</button>
+                    @if (Model.Id is not null) { <a class="btn" asp-page="Index" asp-route-id="">Новая</a> }
+                </div>
+            </form>
+            @if (Model.Id is not null)
+            {
+                <form method="post" asp-page-handler="Delete" asp-route-id="@Model.Id" data-confirm="Удалить подписку?">
+                    <button class="danger" type="submit">Удалить подписку</button>
+                </form>
+            }
+        }
+
+        @if (Model.Deliveries.Count > 0)
+        {
+            <h2>Доставки</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Событие</th><th>Статус</th><th>Попыток</th><th>Ответ / ошибка</th></tr></thead>
+                    @foreach (var d in Model.Deliveries)
+                    {
+                        <tr>
+                            <td>#@d.EventId <code>@d.Event</code></td>
+                            <td><span class="badge @(d.Status == "succeeded" ? "ok" : d.Status == "failed" ? "danger" : "warn")">@d.Status</span></td>
+                            <td>@d.Attempts</td>
+                            <td class="small">@d.LastStatusCode @d.LastError</td>
+                        </tr>
+                    }
+                </table>
+            </div>
+        }
+    </div>
+
+    <div>
+        <h2>Последние события</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>#</th><th>Событие</th><th>Текст</th></tr></thead>
+                @foreach (var e in Model.RecentEvents)
+                {
+                    <tr>
+                        <td class="small">@e.Id</td>
+                        <td><code>@e.Event</code><div class="small muted">@e.OccurredAt.ToLocalTime().ToString("dd.MM HH:mm:ss")</div></td>
+                        <td class="small">@e.Text</td>
+                    </tr>
+                }
+            </table>
+        </div>
+    </div>
+</div>

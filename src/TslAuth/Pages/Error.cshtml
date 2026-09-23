@@ -1,0 +1,9 @@
+@page
+@* Страница необработанной ошибки: без подробностей исключения, только идентификатор для поиска в журнале. *@
+@{ ViewData["Title"] = "Ошибка"; }
+
+<div class="card">
+    <h2 style="margin-top:0">Произошла ошибка</h2>
+    <p>Запрос не удалось обработать. Подробности — в журнале сервиса (идентификатор: <code>@(System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier)</code>).</p>
+    <a href="/Admin">На главную</a>
+</div>

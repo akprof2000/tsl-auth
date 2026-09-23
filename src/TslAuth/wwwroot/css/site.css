@@ -1,0 +1,85 @@
+/* Самодостаточные стили без CDN (сервис работает в закрытом контуре). */
+:root {
+  --bg: #f5f6f8; --surface: #fff; --text: #1d2330; --muted: #677083; --border: #dde1e8;
+  --accent: #2458d6; --accent-text: #fff; --danger: #c62f3b; --ok: #1f8a4c; --warn: #b7791f;
+  --code-bg: #eef1f6; --radius: 8px;
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d; --surface: #1c2029; --text: #e4e7ee; --muted: #9aa3b5; --border: #2e3442;
+    --accent: #5b8cff; --accent-text: #0d1220; --danger: #ff6b76; --ok: #4cc488; --warn: #e3b25a;
+    --code-bg: #262b37; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header.top { background: var(--surface); border-bottom: 1px solid var(--border); }
+header.top .inner { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; align-items: center; gap: 24px; min-height: 56px; flex-wrap: wrap; }
+header.top .brand { font-weight: 700; color: var(--text); }
+header.top nav { display: flex; gap: 16px; flex: 1; flex-wrap: wrap; }
+header.top nav a { color: var(--muted); padding: 4px 0; }
+header.top nav a.active { color: var(--text); border-bottom: 2px solid var(--accent); }
+header.top .user { color: var(--muted); display: flex; gap: 12px; align-items: center; }
+main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+main.narrow { max-width: 440px; padding-top: 64px; }
+h1 { font-size: 24px; margin: 0 0 16px; }
+h2 { font-size: 18px; margin: 24px 0 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.row.between { justify-content: space-between; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.stat .value { font-size: 28px; font-weight: 700; }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+label.inline { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 4px 0; }
+input[type=text], input[type=password], input[type=email], input:not([type]), select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+textarea { min-height: 80px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.btn, button { display: inline-block; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.btn:hover, button:hover { text-decoration: none; filter: brightness(0.97); }
+.btn.primary, button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn.danger, button.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+form.inline { display: inline; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 13px; color: var(--muted); font-weight: 600; }
+table.matrix th.perm { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; vertical-align: bottom; }
+table.matrix td.cell { text-align: center; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--code-bg); color: var(--muted); margin: 1px 2px 1px 0; }
+.badge.ok { color: var(--ok); } .badge.danger { color: var(--danger); } .badge.warn { color: var(--warn); }
+code, .code { font-family: ui-monospace, Consolas, monospace; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-size: 13px; word-break: break-all; }
+.alert { padding: 12px 16px; border-radius: var(--radius); margin-bottom: 16px; border: 1px solid var(--border); background: var(--surface); }
+.alert.ok { border-color: var(--ok); } .alert.error { border-color: var(--danger); color: var(--danger); }
+.alert.secret { border-color: var(--warn); }
+.validation-summary-errors ul { margin: 0; padding-left: 18px; color: var(--danger); }
+.field-validation-error { color: var(--danger); font-size: 13px; }
+.actions { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+.password-wrap { position: relative; display: block; }
+.password-wrap input { padding-right: 44px; }
+.password-toggle { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); border: 0; background: transparent;
+  padding: 4px 8px; font-size: 16px; line-height: 1; cursor: pointer; }
+main.docs { max-width: 960px; }
+main.docs h2 { margin-top: 36px; padding-top: 8px; border-top: 1px solid var(--border); }
+pre.code { background: var(--code-bg); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; font-size: 13px;
+  font-family: ui-monospace, Consolas, monospace; line-height: 1.45; }
+.account-nav, .lang-switch { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin: 12px 0; }
+.lang-switch a { color: var(--muted); }
+.lang-switch a.active { color: var(--text); font-weight: 600; }
+.login-brand { text-align: center; margin-bottom: 20px; }
+.login-brand h1 { margin: 8px 0 4px; }
+.login-logo { max-width: 180px; max-height: 72px; object-fit: contain; }
+.brand-preview { border: 1px dashed var(--border); border-radius: var(--radius); padding: 24px; }
+fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px 12px; margin: 12px 0; }
+legend { font-weight: 600; padding: 0 4px; }

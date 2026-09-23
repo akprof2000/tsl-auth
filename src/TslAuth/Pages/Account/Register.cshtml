@@ -1,0 +1,56 @@
+@page
+@model TslAuth.Pages.Account.RegisterModel
+@* Самостоятельная регистрация в приложении с выбором запрашиваемых ролей; «Продолжить» ведёт только на локальный returnUrl. *@
+@{ ViewData["Title"] = L["register.title"]; }
+
+<div class="card">
+    <h2 style="margin-top:0">@L["register.title"]</h2>
+    @if (!Model.Enabled)
+    {
+        <p>@L["register.disabled"]</p>
+    }
+    else if (Model.Done)
+    {
+        <div class="alert ok">@(Model.Roles.Count > 0 ? L["register.doneWithRequest"] : L["register.done"])</div>
+        @if (Url.IsLocalUrl(Model.ReturnUrl))
+        {
+            <a class="btn primary" href="@Model.ReturnUrl">@L["register.continue"]</a>
+        }
+    }
+    else
+    {
+        <form method="post">
+            <partial name="_Errors" />
+            <input type="hidden" asp-for="ReturnUrl" />
+            <label for="UserName">@L["register.userName"]</label>
+            <input asp-for="UserName" autocomplete="username" autofocus required />
+            <label for="Email">@L["register.email"]</label>
+            <input asp-for="Email" type="email" autocomplete="email" />
+            <label for="DisplayName">@L["register.displayName"]</label>
+            <input asp-for="DisplayName" autocomplete="name" />
+            <partial name="_NewPasswordFields" />
+
+            @if (Model.Requestable.Count > 0)
+            {
+                <fieldset>
+                    <legend>@L["register.requested"]</legend>
+                    @foreach (var role in Model.Requestable)
+                    {
+                        <label class="inline" style="display:flex">
+                            <input type="checkbox" name="Roles" value="@role.Key" checked="@Model.Roles.Contains(role.Key)" />
+                            <span><b>@role.Name</b> <span class="badge">@role.ClientId</span>
+                                @if (role.Description is not null) { <span class="muted small">— @role.Description</span> }</span>
+                        </label>
+                    }
+                    <label for="Comment">@L["register.comment"]</label>
+                    <textarea asp-for="Comment" placeholder="@L["register.commentPlaceholder"]"></textarea>
+                </fieldset>
+            }
+
+            <div class="actions row between">
+                <button class="primary" type="submit">@L["register.submit"]</button>
+                <a asp-page="/Account/Login" asp-route-returnUrl="@Model.ReturnUrl">@L["register.haveAccount"]</a>
+            </div>
+        </form>
+    }
+</div>

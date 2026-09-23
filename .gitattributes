@@ -1,0 +1,7 @@
+# Единые окончания строк в репозитории; shell-скрипты и конфиги контейнеров — строго LF (иначе не запустятся в Linux).
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.conf text eol=lf
+*.png binary

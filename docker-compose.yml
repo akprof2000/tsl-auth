@@ -1,0 +1,42 @@
+# Одиночный режим: встроенная БД SQLite в томе. Мастер-ключ генерируется автоматически в том же томе.
+#   docker compose up -d --build
+# Первый вход: http://localhost:8080  (пароль admin — в BOOTSTRAP_ADMIN_PASSWORD или в логе контейнера)
+# HTTPS прямо в контейнере:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+
+x-hardening: &hardening
+  read_only: true                     # корневая ФС только для чтения
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  cap_drop: [ALL]                     # никаких Linux capabilities
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  mem_limit: 512m
+
+services:
+  auth:
+    <<: *hardening
+    image: tsl-auth:latest
+    build: .
+    container_name: tsl-auth
+    restart: unless-stopped
+    ports:
+      - "${AUTH_PORT:-8080}:8080"
+    environment:
+      Database__Provider: Sqlite
+      Database__ConnectionString: "Data Source=/app/data/tsl-auth.db"
+      Auth__Issuer: "${AUTH_ISSUER:-http://localhost:8080/}"
+      Auth__RequireHttps: "${AUTH_REQUIRE_HTTPS:-false}"
+      Bootstrap__AdminUserName: "${BOOTSTRAP_ADMIN_USER:-admin}"
+      Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
+      Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-}"
+      Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-}"
+      Security__TokenRequestsPerMinute: "${SECURITY_TOKEN_RPM:-600}"
+      Security__LoginAttemptsPerMinute: "${SECURITY_LOGIN_RPM:-30}"
+      Smtp__Host: "${SMTP_HOST:-}"
+      Smtp__Port: "${SMTP_PORT:-25}"
+      Smtp__Security: "${SMTP_SECURITY:-None}"
+      Smtp__From: "${SMTP_FROM:-TSL Auth <no-reply@tsl.local>}"
+    volumes:
+      - auth-data:/app/data
+
+volumes:
+  auth-data:

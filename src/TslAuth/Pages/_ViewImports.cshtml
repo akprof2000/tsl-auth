@@ -1,0 +1,9 @@
+@* Общие using, tag helpers и сервис локализованных строк L (Texts) — доступны во всех представлениях. *@
+@using TslAuth
+@using TslAuth.Services
+@using TslAuth.Pages
+@using TslAuth.Localization
+@using TslAuth.Infrastructure
+@namespace TslAuth.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@inject Texts L

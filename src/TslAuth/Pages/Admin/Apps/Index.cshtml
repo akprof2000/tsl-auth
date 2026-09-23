@@ -1,0 +1,34 @@
+@page
+@model TslAuth.Pages.Admin.Apps.IndexModel
+@* Список приложений (OIDC-клиентов) со ссылками на настройки и матрицу доступа. *@
+@{ ViewData["Title"] = "Приложения"; }
+
+<div class="row between">
+    <h1>Приложения</h1>
+    @if (Model.CanManage)
+    {
+        <a class="btn primary" asp-page="Edit">+ Зарегистрировать приложение</a>
+    }
+</div>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+        <tr><th>client_id</th><th>Название</th><th>Тип</th><th>Потоки</th><th>Scopes</th><th></th></tr>
+        </thead>
+        <tbody>
+        @foreach (var app in Model.Items)
+        {
+            <tr>
+                <td><a asp-page="Edit" asp-route-clientId="@app.ClientId"><code>@app.ClientId</code></a>
+                    @if (app.IsSystem) { <span class="badge warn">системное</span> }</td>
+                <td>@app.DisplayName</td>
+                <td><span class="badge">@app.ClientType</span></td>
+                <td>@foreach (var g in app.GrantTypes) { <span class="badge">@g</span> }</td>
+                <td>@foreach (var s in app.Scopes) { <span class="badge">@s</span> }</td>
+                <td><a asp-page="Matrix" asp-route-clientId="@app.ClientId">Матрица доступа</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

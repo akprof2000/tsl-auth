@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Демо SPA (Node)</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #0f766e0d; color: #10231f; }
+    header { background: #0f766e; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
+    main { max-width: 960px; margin: 0 auto; padding: 20px; }
+    button { padding: 8px 14px; border-radius: 6px; border: 1px solid #0f766e; background: #fff; color: #0f766e; cursor: pointer; margin: 4px 4px 4px 0; }
+    button.primary { background: #0f766e; color: #fff; }
+    pre { background: #fff; border: 1px solid #cfe3e0; border-radius: 8px; padding: 12px; overflow: auto; font-size: 12px; max-height: 360px; }
+    .card { background: #fff; border: 1px solid #cfe3e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .muted { color: #587; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header><b>Демо SPA · Node.js</b><span id="who" class="muted" style="color:#dff"></span></header>
+  <main>
+    <div class="card">
+      <p class="muted">Public-клиент <code>demo-node-spa</code>: authorization code + PKCE прямо в браузере, refresh-токен, вызовы API на Node и Go.</p>
+      <button class="primary" id="login">Войти</button>
+      <button id="refresh">Обновить токен (refresh)</button>
+      <button id="node">Node API /api/orders</button>
+      <button id="go">Go API /api/reports</button>
+      <button id="chain">Go → Node (token exchange)</button>
+      <button id="logout">Выйти</button>
+    </div>
+    <div class="card"><b>Результат</b><pre id="out">—</pre></div>
+    <div class="card"><b>Access token (claims)</b><pre id="claims">—</pre></div>
+  </main>
+  <script src="/config.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

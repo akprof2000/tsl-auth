@@ -1,0 +1,24 @@
+# HTTPS прямо в контейнере сервиса (Kestrel). Накладывается поверх docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+#
+# Сертификат кладётся в ./certs (монтируется только для чтения). Поддерживаются:
+#   • PEM:  tls.crt (+ цепочка) и tls.key  — по умолчанию;
+#   • PFX:  задайте TLS_CERT_PATH=/certs/tls.pfx и TLS_CERT_PASSWORD, а TLS_KEY_PATH оставьте пустым.
+# Тестовый самоподписанный сертификат: scripts/gen-dev-cert.ps1 (или .sh).
+
+services:
+  auth:
+    ports:
+      - "${AUTH_HTTPS_PORT:-8443}:8443"
+    environment:
+      Auth__Issuer: "${AUTH_ISSUER:-https://localhost:8443/}"
+      Auth__RequireHttps: "true"
+      Kestrel__Endpoints__Http__Url: "http://+:8080"
+      Kestrel__Endpoints__Https__Url: "https://+:8443"
+      Kestrel__Endpoints__Https__Certificate__Path: "${TLS_CERT_PATH:-/certs/tls.crt}"
+      Kestrel__Endpoints__Https__Certificate__KeyPath: "${TLS_KEY_PATH:-/certs/tls.key}"
+      Kestrel__Endpoints__Https__Certificate__Password: "${TLS_CERT_PASSWORD:-}"
+      Kestrel__Endpoints__Https__SslProtocols__0: "Tls12"
+      Kestrel__Endpoints__Https__SslProtocols__1: "Tls13"
+    volumes:
+      - ./certs:/certs:ro

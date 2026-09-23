@@ -1,0 +1,54 @@
+@page
+@model TslAuth.Pages.Admin.Users.IndexModel
+@* Список пользователей: поиск по точному логину/email (данные зашифрованы), статус, роли, постраничная навигация. *@
+@{ ViewData["Title"] = "Пользователи"; }
+
+<div class="row between">
+    <h1>Пользователи <span class="muted small">(@Model.Result.Total)</span></h1>
+    @if (Model.CanManage)
+    {
+        <a class="btn primary" asp-page="Edit">+ Добавить пользователя</a>
+    }
+</div>
+
+<form method="get" class="row" style="margin-bottom:16px">
+    <input name="Search" value="@Model.Search" placeholder="Точный логин или email" style="max-width:360px" />
+    <button type="submit">Найти</button>
+    @if (!string.IsNullOrEmpty(Model.Search)) { <a asp-page="Index">Сбросить</a> }
+</form>
+<p class="small muted">Логины и email хранятся в зашифрованном виде, поэтому поиск работает только по точному совпадению.</p>
+
+<div class="table-wrap">
+    <table>
+        <thead><tr><th>Логин</th><th>Имя</th><th>Email</th><th>Статус</th><th>Роли</th><th>Последний вход</th></tr></thead>
+        <tbody>
+        @foreach (var u in Model.Result.Items)
+        {
+            <tr>
+                <td><a asp-page="Edit" asp-route-id="@u.Id">@u.UserName</a></td>
+                <td>@u.DisplayName</td>
+                <td>@u.Email</td>
+                <td>
+                    @if (!u.IsActive) { <span class="badge danger">отключён</span> }
+                    else if (u.IsLockedOut) { <span class="badge danger">заблокирован</span> }
+                    else if (!u.HasPassword) { <span class="badge warn">ожидает приглашения</span> }
+                    else if (u.MustChangePassword) { <span class="badge warn">временный пароль</span> }
+                    else { <span class="badge ok">активен</span> }
+                </td>
+                <td>@foreach (var r in u.Roles) { <span class="badge">@r</span> }</td>
+                <td class="small">@(u.LastLoginAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.Pages > 1)
+{
+    <div class="actions">
+        @for (var i = 0; i < Model.Pages; i++)
+        {
+            <a class="btn @(i == Model.P ? "primary" : "")" asp-page="Index" asp-route-p="@i">@(i + 1)</a>
+        }
+    </div>
+}

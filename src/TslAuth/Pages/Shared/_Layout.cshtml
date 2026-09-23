@@ -1,0 +1,127 @@
+@*
+    Общий макет. Два режима по пути запроса:
+    - /Admin/* — админка (русский интерфейс, меню разделов, счётчик ожидающих заявок, flash-сообщения);
+    - остальные (страницы /Account) — узкая карточка входа с брендингом приложения из returnUrl,
+      переключателем языка и меню личного кабинета для вошедшего пользователя.
+*@
+@inject BrandingService BrandingService
+@inject AccessRequestService AccessRequests
+@{
+    var pendingRequests = (Context.Request.Path.Value ?? "").StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
+        ? await AccessRequests.CountPendingAsync() : 0;
+    var path = Context.Request.Path.Value ?? "";
+    string Active(string prefix) => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    var isAdmin = path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase);
+
+    // Страницы входа оформляются в стиле приложения, из которого пришёл пользователь (client_id в returnUrl).
+    LoginContext? login = null;
+    if (!isAdmin)
+    {
+        var returnUrl = ViewData["ReturnUrl"] as string ?? Context.Request.Query["ReturnUrl"].ToString();
+        login = await BrandingService.ResolveFromReturnUrlAsync(returnUrl);
+    }
+    var brand = login?.Branding ?? new LoginBranding();
+}
+<!DOCTYPE html>
+<html lang="@(isAdmin ? "ru" : L.Culture)">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@(ViewData["Title"] is { } t ? $"{t} — " : "")TSL Auth</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <script src="~/js/site.js" asp-append-version="true" defer></script>
+    @if (!brand.IsEmpty)
+    {
+        @* Значения цветов провалидированы (#RRGGBB), поэтому безопасно подставлять в CSS. *@
+        <style>
+            :root {
+                @if (brand.AccentColor is not null) { <text>--accent: @brand.AccentColor; --accent-text: #fff;</text> }
+                @if (brand.BackgroundColor is not null) { <text>--bg: @brand.BackgroundColor;</text> }
+                @if (brand.CardColor is not null) { <text>--surface: @brand.CardColor;</text> }
+                @if (brand.TextColor is not null) { <text>--text: @brand.TextColor;</text> }
+            }
+        </style>
+    }
+</head>
+<body>
+@if (isAdmin)
+{
+    <header class="top">
+        <div class="inner">
+            <a class="brand" href="/Admin">TSL Auth</a>
+            <nav>
+                <a href="/Admin" class="@(path.Equals("/Admin", StringComparison.OrdinalIgnoreCase) ? "active" : "")">Обзор</a>
+                <a href="/Admin/Apps" class="@Active("/Admin/Apps")">Приложения</a>
+                <a href="/Admin/Users" class="@Active("/Admin/Users")">Пользователи</a>
+                <a href="/Admin/Requests" class="@Active("/Admin/Requests")">Заявки@(pendingRequests > 0 ? $" ({pendingRequests})" : "")</a>
+                <a href="/Admin/Sessions" class="@Active("/Admin/Sessions")">Сессии</a>
+                <a href="/Admin/Webhooks" class="@Active("/Admin/Webhooks")">События</a>
+                <a href="/Admin/Audit" class="@Active("/Admin/Audit")">Журнал</a>
+                <a href="/Admin/Languages" class="@Active("/Admin/Languages")">Языки</a>
+                <a href="/Admin/Settings" class="@Active("/Admin/Settings")">Настройки</a>
+            </nav>
+            <div class="user">
+                <a href="/Account/ChangePassword">@User.Identity?.Name</a>
+                <form method="post" action="/Account/Logout" class="inline">
+                    @Html.AntiForgeryToken()
+                    <button class="link" type="submit">Выйти</button>
+                </form>
+            </div>
+        </div>
+    </header>
+    <main>
+        @if (TempData["Flash"] is string flash)
+        {
+            <div class="alert ok">@flash</div>
+        }
+        @RenderBody()
+    </main>
+}
+else
+{
+    <main class="narrow">
+        <div class="login-brand">
+            @if (brand.LogoDataUri is not null)
+            {
+                <img src="@brand.LogoDataUri" alt="" class="login-logo" />
+            }
+            <h1>@(brand.Title ?? login?.DisplayName ?? L["app.defaultTitle"])</h1>
+            @if (brand.WelcomeText is not null)
+            {
+                <p class="muted">@brand.WelcomeText</p>
+            }
+            else if (login is not null)
+            {
+                <p class="muted small">@L.Get("login.forApp", login.DisplayName ?? login.ClientId)</p>
+            }
+        </div>
+        @if (TempData["Flash"] is string accountFlash)
+        {
+            <div class="alert ok">@L[accountFlash]</div>
+        }
+        @RenderBody()
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <nav class="account-nav small">
+                <a href="/Account/Tokens">@L["nav.tokens"]</a>
+                <a href="/Account/Messenger">@L["nav.messenger"]</a>
+                <a href="/Account/RequestAccess@(Context.Request.QueryString)">@L["nav.request"]</a>
+                <a href="/Account/ChangePassword">@L["nav.password"]</a>
+                <form method="post" action="/Account/Logout" class="inline">@Html.AntiForgeryToken()<button class="link" type="submit">@L["nav.logout"]</button></form>
+            </nav>
+        }
+        <div class="lang-switch small">
+            @foreach (var lang in await L.LanguagesAsync())
+            {
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Context.Request.QueryString.Value)
+                    .Where(q => q.Key != "lang").ToDictionary(q => q.Key, q => (string?)q.Value.ToString());
+                query["lang"] = lang.Culture;
+                <a href="@Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(Context.Request.Path, query)"
+                   class="@(lang.Culture.Equals(L.Culture, StringComparison.OrdinalIgnoreCase) ? "active" : "")" lang="@lang.Culture">@lang.Name</a>
+            }
+        </div>
+        <p class="small muted" style="text-align:center">@(brand.FooterText ?? L["footer.default"])</p>
+    </main>
+}
+</body>
+</html>

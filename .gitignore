@@ -1,0 +1,29 @@
+# --- Секреты и данные: НИКОГДА не публиковать ---
+.env
+*.env
+!.env.example
+samples/.env.demo
+*.db
+*.db-shm
+*.db-wal
+master.key
+certs/
+*.pfx
+*.key
+*.pem
+!**/testdata/*.pem
+
+# --- Сборка ---
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.vscode/
+node_modules/
+__pycache__/
+*.pyc
+
+# --- Результаты тестов (генерируются) ---
+tests/artifacts/
+TestResults/

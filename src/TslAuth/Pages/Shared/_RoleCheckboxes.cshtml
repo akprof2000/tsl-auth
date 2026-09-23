@@ -1,0 +1,23 @@
+@* Выбор ролей всех приложений, сгруппированных по приложению. Модель: (имя поля, все роли, выбранные ключи). *@
+@model (string Field, List<TslAuth.Services.RoleRef> All, List<string> Selected, bool Disabled)
+@{
+    var groups = Model.All.GroupBy(r => r.ClientId).ToList();
+}
+@if (groups.Count == 0)
+{
+    <p class="muted small">Ролей пока нет — создайте их в матрице доступа приложения.</p>
+}
+@foreach (var group in groups)
+{
+    <fieldset>
+        <legend><code>@group.Key</code></legend>
+        @foreach (var role in group)
+        {
+            var key = TslAuth.Pages.Admin.Apps.EditModel.RoleKey(role);
+            <label class="inline">
+                <input type="checkbox" name="@Model.Field" value="@key" checked="@Model.Selected.Contains(key)" disabled="@Model.Disabled" />
+                @role.Role
+            </label>
+        }
+    </fieldset>
+}

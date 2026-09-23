@@ -1,0 +1,84 @@
+# Кластерный режим: PostgreSQL + 3 экземпляра сервиса за балансировщиком nginx.
+#   cp .env.example .env   (обязательно задать ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD)
+#   docker compose -f docker-compose.ha.yml up -d --build
+# Точка входа: http://localhost:8080 ; экземпляры напрямую: 8081, 8082, 8083.
+# Вместо встроенного postgres можно указать внешний: DB_CONNECTION_STRING и убрать сервис postgres.
+
+x-auth: &auth
+  read_only: true
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  mem_limit: 512m
+  image: tsl-auth:latest
+  build: .
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment: &auth-env
+    Database__Provider: Postgres
+    Database__ConnectionString: "${DB_CONNECTION_STRING:-Host=postgres;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=${POSTGRES_PASSWORD:-tsl_auth_dev}}"
+    Encryption__MasterKey: "${ENCRYPTION_MASTER_KEY:?Задайте ENCRYPTION_MASTER_KEY (base64, 32 байта) в .env}"
+    Auth__Issuer: "${AUTH_ISSUER:-http://localhost:8080/}"
+    Auth__RequireHttps: "${AUTH_REQUIRE_HTTPS:-false}"
+    Auth__TrustForwardedHeaders: "true"
+    Bootstrap__AdminUserName: "${BOOTSTRAP_ADMIN_USER:-admin}"
+    Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
+    Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-}"
+    Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-}"
+    Security__TokenRequestsPerMinute: "${SECURITY_TOKEN_RPM:-600}"
+    Security__LoginAttemptsPerMinute: "${SECURITY_LOGIN_RPM:-30}"
+    Smtp__Host: "${SMTP_HOST:-}"
+    Smtp__Port: "${SMTP_PORT:-25}"
+    Smtp__Security: "${SMTP_SECURITY:-None}"
+    Smtp__From: "${SMTP_FROM:-TSL Auth <no-reply@tsl.local>}"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tsl-auth-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tsl_auth
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tsl_auth_dev}"
+      POSTGRES_DB: postgres
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tsl_auth -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  auth1:
+    <<: *auth
+    container_name: tsl-auth-1
+    hostname: auth1
+    ports: ["8081:8080"]
+
+  auth2:
+    <<: *auth
+    container_name: tsl-auth-2
+    hostname: auth2
+    ports: ["8082:8080"]
+
+  auth3:
+    <<: *auth
+    container_name: tsl-auth-3
+    hostname: auth3
+    ports: ["8083:8080"]
+
+  lb:
+    image: nginx:1.29-alpine
+    container_name: tsl-auth-lb
+    restart: unless-stopped
+    depends_on: [auth1, auth2, auth3]
+    ports:
+      - "${AUTH_PORT:-8080}:8080"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  pg-data:

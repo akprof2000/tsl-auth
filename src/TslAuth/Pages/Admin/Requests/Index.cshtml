@@ -1,0 +1,53 @@
+@page
+@model TslAuth.Pages.Admin.Requests.IndexModel
+@* Заявки на роли: фильтр по статусу; для ожидающих — одобрение/отклонение с комментарием (одна форма, два обработчика). *@
+@{ ViewData["Title"] = "Заявки на доступ"; }
+
+<h1>Заявки на доступ</h1>
+<div class="row" style="margin-bottom:16px">
+    @foreach (var (value, label) in new[] { ("pending", "Ожидают"), ("approved", "Одобренные"), ("rejected", "Отклонённые"), ("all", "Все") })
+    {
+        <a class="btn @(Model.Status == value ? "primary" : "")" asp-page="Index" asp-route-status="@value">@label</a>
+    }
+</div>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="card muted">Заявок нет.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Пользователь</th><th>Приложение / роль</th><th>Комментарий</th><th>Подана</th><th>Статус / решение</th></tr></thead>
+            <tbody>
+            @foreach (var r in Model.Items)
+            {
+                <tr>
+                    <td><a asp-page="/Admin/Users/Edit" asp-route-id="@r.UserId">@r.UserName</a><div class="small muted">@r.Email</div></td>
+                    <td><code>@r.ClientId</code> → <b>@r.Role</b></td>
+                    <td class="small">@r.Comment</td>
+                    <td class="small">@r.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td>
+                        @if (r.Status == "pending" && Model.CanManage)
+                        {
+                            <form method="post" class="row" asp-route-status="@Model.Status">
+                                <input type="hidden" name="requestId" value="@r.Id" />
+                                <input name="comment" placeholder="Комментарий (необязательно)" style="max-width:220px" />
+                                <button class="primary" type="submit" asp-page-handler="Approve">Одобрить</button>
+                                <button class="danger" type="submit" asp-page-handler="Reject">Отклонить</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="badge @(r.Status == "approved" ? "ok" : r.Status == "rejected" ? "danger" : "warn")">@r.Status</span>
+                            <div class="small muted">@r.DecidedBy @r.DecidedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                            <div class="small">@r.DecisionComment</div>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

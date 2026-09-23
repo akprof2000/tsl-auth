@@ -1,0 +1,62 @@
+@page
+@model TslAuth.Pages.Admin.Apps.BrandingModel
+@* Оформление страницы входа приложения (тексты, логотип, цвета, язык) и ссылка на предпросмотр; без права изменения поля только для чтения. *@
+@{
+    ViewData["Title"] = $"Оформление {Model.ClientId}";
+    var disabled = !Model.CanManage;
+}
+
+<div class="row between">
+    <h1>Оформление входа <code>@Model.ClientId</code></h1>
+    <div class="row">
+        <a class="btn" href="@Model.PreviewUrl" target="_blank" rel="noopener">Предпросмотр ↗</a>
+        <a class="btn" asp-page="Edit" asp-route-clientId="@Model.ClientId">← Настройки приложения</a>
+    </div>
+</div>
+<p class="muted">Пользователи, пришедшие на вход из этого приложения (<code>/connect/authorize?client_id=@Model.ClientId</code>),
+    увидят страницу входа в его стиле. Пустые поля — оформление по умолчанию.</p>
+
+<form method="post" enctype="multipart/form-data" asp-route-clientId="@Model.ClientId">
+    <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+    <div class="grid2">
+        <div class="card">
+            <h2 style="margin-top:0">Тексты</h2>
+            <label asp-for="Title">Заголовок</label>
+            <input asp-for="Title" placeholder="@(Model.DisplayName ?? Model.ClientId)" disabled="@disabled" />
+            <label asp-for="WelcomeText">Приветствие</label>
+            <textarea asp-for="WelcomeText" placeholder="Войдите, чтобы продолжить работу с заказами" disabled="@disabled"></textarea>
+            <label asp-for="FooterText">Подпись внизу</label>
+            <input asp-for="FooterText" placeholder="© Отдел продаж, тел. 1234" disabled="@disabled" />
+            <label asp-for="DefaultLanguage">Язык страницы входа по умолчанию</label>
+            <select asp-for="DefaultLanguage" disabled="@disabled">
+                <option value="">по браузеру пользователя</option>
+                @foreach (var lang in await L.LanguagesAsync())
+                {
+                    <option value="@lang.Culture">@lang.Name (@lang.Culture)</option>
+                }
+            </select>
+        </div>
+        <div class="card">
+            <h2 style="margin-top:0">Логотип и цвета</h2>
+            @if (Model.CurrentLogo is not null)
+            {
+                <div class="brand-preview" style="text-align:center"><img src="@Model.CurrentLogo" alt="логотип" class="login-logo" /></div>
+                <label class="inline"><input asp-for="RemoveLogo" disabled="@disabled" /> Удалить логотип</label>
+            }
+            <label asp-for="Logo">Загрузить логотип (PNG/JPEG/WEBP, до 256 КБ)</label>
+            <input asp-for="Logo" type="file" accept="image/png,image/jpeg,image/webp" disabled="@disabled" />
+
+            <div class="grid2">
+                <div><label asp-for="AccentColor">Акцент (кнопки)</label><input asp-for="AccentColor" type="color" disabled="@disabled" /></div>
+                <div><label asp-for="BackgroundColor">Фон страницы</label><input asp-for="BackgroundColor" type="color" disabled="@disabled" /></div>
+                <div><label asp-for="CardColor">Фон карточки</label><input asp-for="CardColor" type="color" disabled="@disabled" /></div>
+                <div><label asp-for="TextColor">Текст</label><input asp-for="TextColor" type="color" disabled="@disabled" /></div>
+            </div>
+            <p class="small muted">Чтобы вернуть цвет по умолчанию, очистите поле через API или удалите оформление целиком.</p>
+        </div>
+    </div>
+    @if (Model.CanManage)
+    {
+        <div class="actions"><button class="primary" type="submit">Сохранить оформление</button></div>
+    }
+</form>

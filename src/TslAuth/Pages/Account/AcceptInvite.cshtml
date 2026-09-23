@@ -1,0 +1,28 @@
+@page
+@model TslAuth.Pages.Account.AcceptInviteModel
+@* Принятие приглашения: пользователь задаёт пароль; для недействительной ссылки показывается ошибка. *@
+@{ ViewData["Title"] = L["invite.title"]; }
+
+<div class="card">
+    <h2 style="margin-top:0">@L["invite.title"]</h2>
+    @if (Model.Done)
+    {
+        <div class="alert ok">@L.Get("invite.done", Model.UserName)</div>
+        <a class="btn primary" asp-page="/Account/Login">@L["login.submit"]</a>
+    }
+    else if (!Model.Valid)
+    {
+        <div class="alert error">@L["invite.invalid"]</div>
+    }
+    else
+    {
+        <p>@L.Get("invite.account", Model.UserName)</p>
+        <form method="post">
+            <partial name="_Errors" />
+            <input type="hidden" asp-for="Uid" />
+            <input type="hidden" asp-for="Token" />
+            <partial name="_NewPasswordFields" />
+            <div class="actions"><button class="primary" type="submit">@L["invite.submit"]</button></div>
+        </form>
+    }
+</div>

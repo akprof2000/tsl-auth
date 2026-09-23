@@ -1,0 +1,48 @@
+@page
+@model TslAuth.Pages.Account.MessengerModel
+@* Привязка мессенджера: получение кода для команды боту /link и список/удаление привязок. *@
+@{ ViewData["Title"] = L["messenger.title"]; }
+
+<div class="card">
+    <h2 style="margin-top:0">@L["messenger.title"]</h2>
+    <p class="small muted">@L["messenger.intro"]</p>
+
+    @if (Model.Code is not null)
+    {
+        <div class="alert secret">
+            @L["messenger.sendToBot"]<br />
+            <code style="font-size:20px">/link @Model.Code</code><br />
+            <span class="small muted">@L.Get("messenger.validUntil", Model.CodeExpiresAt!.Value.ToLocalTime().ToString("HH:mm"))</span>
+        </div>
+    }
+    <form method="post" asp-page-handler="Code">
+        <button class="primary" type="submit">@L["messenger.getCode"]</button>
+    </form>
+</div>
+
+<div class="card table-wrap">
+    @if (Model.Items.Count == 0)
+    {
+        <p class="muted">@L["messenger.none"]</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>@L["messenger.col.provider"]</th><th>@L["messenger.col.bot"]</th><th>@L["messenger.col.linked"]</th><th></th></tr></thead>
+            @foreach (var i in Model.Items)
+            {
+                <tr>
+                    <td>@i.Provider</td>
+                    <td><code>@i.LinkedByClientId</code></td>
+                    <td class="small">@i.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td>
+                        <form method="post" asp-page-handler="Remove" data-confirm="@L["messenger.removeConfirm"]">
+                            <input type="hidden" name="identityId" value="@i.Id" />
+                            <button class="danger" type="submit">@L["messenger.remove"]</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </table>
+    }
+</div>

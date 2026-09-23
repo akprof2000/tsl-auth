@@ -1,0 +1,36 @@
+@page
+@model TslAuth.Pages.Admin.IndexModel
+@* Обзор админки: счётчики, конфигурация экземпляра и адреса OIDC-эндпоинтов для подключения приложений. *@
+@{ ViewData["Title"] = "Обзор"; }
+
+<h1>Обзор</h1>
+<div class="stats">
+    <a class="stat" href="/Admin/Apps"><div class="muted small">Приложения</div><div class="value">@Model.Applications</div></a>
+    <a class="stat" href="/Admin/Users"><div class="muted small">Пользователи (активные)</div><div class="value">@Model.Users <span class="muted small">(@Model.ActiveUsers)</span></div></a>
+    <a class="stat" href="/Admin/Sessions"><div class="muted small">Активные сессии</div><div class="value">@Model.Sessions</div></a>
+</div>
+
+<h2>Конфигурация</h2>
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <tr><th>База данных</th><td>@Model.DatabaseProvider, схема <code>@(Model.SchemaVersion ?? "—")</code></td></tr>
+            <tr><th>Экземпляр</th><td><code>@Environment.MachineName</code></td></tr>
+            <tr><th>Почта (SMTP)</th><td>@(Model.EmailConfigured ? "настроена" : "не настроена — приглашения выдаются ссылкой")</td></tr>
+            <tr><th>Права</th><td>@(Model.CanManage ? "администратор (изменение)" : "аудитор (только просмотр)")</td></tr>
+        </table>
+    </div>
+</div>
+
+<h2>Точки подключения для приложений</h2>
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <tr><th>OIDC discovery</th><td><code>@Model.Issuer/.well-known/openid-configuration</code></td></tr>
+            <tr><th>JWKS (ключи проверки JWT)</th><td><code>@Model.Issuer/.well-known/jwks</code></td></tr>
+            <tr><th>Token</th><td><code>@Model.Issuer/connect/token</code></td></tr>
+            <tr><th>Authorize</th><td><code>@Model.Issuer/connect/authorize</code></td></tr>
+            <tr><th>Документация</th><td><a href="/docs">Руководство по интеграции</a> · <a href="/docs/api">Справочник API</a></td></tr>
+        </table>
+    </div>
+</div>

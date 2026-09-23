@@ -1,0 +1,8 @@
+@* Ошибки формы на языке пользователя: сообщение — ключ пакета или готовый текст (он выводится как есть). *@
+@{
+    var errors = ViewContext.ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).Distinct().ToList();
+}
+@if (errors.Count > 0)
+{
+    <div class="alert error"><ul style="margin:0;padding-left:18px">@foreach (var e in errors) { <li>@L[e]</li> }</ul></div>
+}

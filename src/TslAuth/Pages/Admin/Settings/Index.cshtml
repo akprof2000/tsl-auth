@@ -1,0 +1,129 @@
+@page
+@model TslAuth.Pages.Admin.Settings.IndexModel
+@*
+    Настройки времени выполнения: политики паролей, токенов, PAT и сброса через бота, сроки хранения данных
+    (общие и по типам событий аудита), ручной запуск очистки. Для аудитора все поля только для чтения.
+*@
+@{
+    ViewData["Title"] = "Настройки";
+    var disabled = !Model.CanManage;
+}
+
+<h1>Настройки</h1>
+<p class="muted">Хранятся в БД и действуют на все экземпляры без перезапуска.
+    @if (Model.UpdatedAt is not null) { <span>Изменено @Model.UpdatedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm"), @Model.UpdatedBy.</span> }</p>
+
+<form method="post">
+    <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+    <div class="grid2">
+        <div class="card">
+            <h2 style="margin-top:0">Политика паролей</h2>
+            <label asp-for="Passwords.MinLength">Минимальная длина</label>
+            <input asp-for="Passwords.MinLength" type="number" min="6" max="128" disabled="@disabled" />
+            <label class="inline"><input asp-for="Passwords.RequireLowercase" disabled="@disabled" /> строчные буквы</label>
+            <label class="inline"><input asp-for="Passwords.RequireUppercase" disabled="@disabled" /> заглавные буквы</label>
+            <label class="inline"><input asp-for="Passwords.RequireDigit" disabled="@disabled" /> цифры</label>
+            <label class="inline"><input asp-for="Passwords.RequireSymbol" disabled="@disabled" /> спецсимволы</label>
+            <label asp-for="Passwords.MinUniqueChars">Минимум разных символов</label>
+            <input asp-for="Passwords.MinUniqueChars" type="number" min="1" max="128" disabled="@disabled" />
+            <label asp-for="Passwords.HistoryCount">Запрет повторять последние N паролей (0 — не проверять)</label>
+            <input asp-for="Passwords.HistoryCount" type="number" min="0" max="24" disabled="@disabled" />
+            <label asp-for="Passwords.MaxAgeDays">Срок действия пароля, дней (0 — бессрочно)</label>
+            <input asp-for="Passwords.MaxAgeDays" type="number" min="0" max="3650" disabled="@disabled" />
+            <div class="grid2">
+                <div><label asp-for="Passwords.MaxFailedAttempts">Попыток до блокировки</label>
+                    <input asp-for="Passwords.MaxFailedAttempts" type="number" min="1" max="100" disabled="@disabled" /></div>
+                <div><label asp-for="Passwords.LockoutMinutes">Блокировка, минут</label>
+                    <input asp-for="Passwords.LockoutMinutes" type="number" min="1" max="10080" disabled="@disabled" /></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0">Сроки жизни токенов</h2>
+            <p class="small muted" style="margin-top:0">Максимальные значения. Приложение может задать меньше в своей карточке,
+                клиент — запросить меньше параметрами <code>expires_in</code> / <code>refresh_expires_in</code> (сек). Больше — нельзя.</p>
+            <div class="grid2">
+                <div><label asp-for="Tokens.AccessTokenMinutes">Access-токен, мин</label>
+                    <input asp-for="Tokens.AccessTokenMinutes" type="number" min="1" max="1440" disabled="@disabled" /></div>
+                <div><label asp-for="Tokens.RefreshTokenDays">Refresh-токен, дней</label>
+                    <input asp-for="Tokens.RefreshTokenDays" type="number" min="1" max="365" disabled="@disabled" /></div>
+                <div><label asp-for="Tokens.ExchangeTokenMinutes">Token exchange, мин</label>
+                    <input asp-for="Tokens.ExchangeTokenMinutes" type="number" min="1" max="1440" disabled="@disabled" /></div>
+                <div><label asp-for="Tokens.PatAccessTokenMinutes">JWT по PAT, мин</label>
+                    <input asp-for="Tokens.PatAccessTokenMinutes" type="number" min="1" max="1440" disabled="@disabled" /></div>
+                <div><label asp-for="Tokens.IdentityTokenMinutes">id_token, мин</label>
+                    <input asp-for="Tokens.IdentityTokenMinutes" type="number" min="1" max="1440" disabled="@disabled" /></div>
+                <div><label asp-for="Tokens.AuthorizationCodeMinutes">Код авторизации, мин</label>
+                    <input asp-for="Tokens.AuthorizationCodeMinutes" type="number" min="1" max="30" disabled="@disabled" /></div>
+            </div>
+
+            <h2>Персональные токены (PAT)</h2>
+            <label class="inline"><input asp-for="Pats.Enabled" disabled="@disabled" /> Разрешить пользователям создавать PAT</label>
+            <div class="grid2">
+                <div><label asp-for="Pats.MaxLifetimeDays">Макс. срок PAT, дней</label>
+                    <input asp-for="Pats.MaxLifetimeDays" type="number" min="1" max="3650" disabled="@disabled" /></div>
+                <div><label asp-for="Pats.MaxTokensPerUser">Активных PAT на пользователя</label>
+                    <input asp-for="Pats.MaxTokensPerUser" type="number" min="1" max="1000" disabled="@disabled" /></div>
+            </div>
+
+            <h2>Сброс пароля через бота</h2>
+            <label class="inline"><input asp-for="Bot.Enabled" disabled="@disabled" /> Разрешить сброс через бота мессенджера (роль <code>reset-bot</code>)</label>
+            <div class="grid2">
+                <div><label asp-for="Bot.Mode">Режим</label>
+                    <select asp-for="Bot.Mode" disabled="@disabled">
+                        <option value="link">одноразовая ссылка (бот не видит пароль)</option>
+                        <option value="temporary">временный пароль (смена при входе)</option>
+                    </select></div>
+                <div><label asp-for="Bot.MaxPerUserPerHour">Сбросов на пользователя в час</label>
+                    <input asp-for="Bot.MaxPerUserPerHour" type="number" min="1" max="20" disabled="@disabled" /></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid2">
+        <div class="card">
+            <h2 style="margin-top:0">Хранение данных</h2>
+            <label asp-for="AuditRetentionDays">Журнал безопасности по умолчанию, дней</label>
+            <input asp-for="AuditRetentionDays" type="number" min="1" max="3650" disabled="@disabled" />
+            <label asp-for="EventsRetentionDays">Лента событий и доставки вебхуков, дней</label>
+            <input asp-for="EventsRetentionDays" type="number" min="1" max="365" disabled="@disabled" />
+            <label asp-for="TokensRetentionHours">Истёкшие/отозванные токены, часов</label>
+            <input asp-for="TokensRetentionHours" type="number" min="1" max="2160" disabled="@disabled" />
+            <label class="inline"><input asp-for="AuditLogTokenRefresh" disabled="@disabled" /> Писать в журнал каждое обновление токена (refresh)</label>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-top:0">Срок хранения по типам событий</h2>
+            <p class="small muted">Пусто — общий срок. Можно задать префикс группы (например <code>auth.</code>) — действует самое точное совпадение.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Тип / префикс</th><th>Дней</th></tr></thead>
+                    @foreach (var type in Model.Types)
+                    {
+                        <tr>
+                            <td><code>@type</code></td>
+                            <td><input type="number" min="1" max="3650" name="Retention[@type]" value="@Model.Retention[type]"
+                                       placeholder="@Model.AuditRetentionDays" style="max-width:120px" disabled="@disabled" /></td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><input asp-for="NewType" placeholder="новое правило, напр. auth." disabled="@disabled" /></td>
+                        <td><input asp-for="NewDays" type="number" min="1" max="3650" style="max-width:120px" disabled="@disabled" /></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    @if (Model.CanManage)
+    {
+        <div class="actions"><button class="primary" type="submit">Сохранить</button></div>
+    }
+</form>
+
+@if (Model.CanManage)
+{
+    <form method="post" asp-page-handler="Maintenance" data-confirm="Запустить очистку по текущим срокам хранения сейчас?">
+        <div class="actions"><button type="submit">Запустить очистку сейчас</button></div>
+    </form>
+}

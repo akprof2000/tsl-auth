@@ -1,0 +1,172 @@
+@page "/docs"
+@*
+    Публичное руководство по интеграции (/docs): эндпоинты, выбор потока, содержимое JWT, проверка токена, token exchange,
+    PAT, App API, события и бот. Собственная разметка без общего макета; адреса подставляются из текущего запроса.
+*@
+@{
+    Layout = null;
+    var b = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}{HttpContext.Request.PathBase}";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Документация — TSL Auth</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<header class="top">
+    <div class="inner">
+        <a class="brand" href="/docs">TSL Auth · Документация</a>
+        <nav>
+            <a href="#flows">Потоки</a>
+            <a href="#jwt">JWT</a>
+            <a href="#validate">Проверка токена</a>
+            <a href="#exchange">Token exchange</a>
+            <a href="#pat">PAT</a>
+            <a href="#app-api">App API</a>
+            <a href="#events">События</a>
+            <a href="#bot">Бот</a>
+            <a href="@ApiDocs.ReferencePath">Справочник API →</a>
+        </nav>
+    </div>
+</header>
+<main class="docs">
+    <h1>Интеграция с TSL Auth</h1>
+    <p>Сервис реализует OAuth 2.0 / OpenID Connect. Все эндпоинты описаны в
+        <a href="/.well-known/openid-configuration">discovery-документе</a>, ключи проверки подписи —
+        <a href="/.well-known/jwks">JWKS</a>. REST API с возможностью выполнять запросы — в
+        <a href="@ApiDocs.ReferencePath">интерактивном справочнике</a> (OpenAPI: <a href="/openapi/v1.json">/openapi/v1.json</a>).</p>
+
+    <div class="card">
+        <table>
+            <tr><th>Issuer</th><td><code>@b/</code></td></tr>
+            <tr><th>Authorize</th><td><code>@b/connect/authorize</code></td></tr>
+            <tr><th>Token</th><td><code>@b/connect/token</code></td></tr>
+            <tr><th>UserInfo</th><td><code>@b/connect/userinfo</code></td></tr>
+            <tr><th>Introspection / Revocation</th><td><code>@b/connect/introspect</code>, <code>@b/connect/revoke</code></td></tr>
+            <tr><th>Logout</th><td><code>@b/connect/logout</code></td></tr>
+        </table>
+    </div>
+
+    <h2 id="flows">1. Какой поток выбрать</h2>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Тип приложения</th><th>Тип клиента</th><th>Поток</th></tr></thead>
+        <tr><td>Серверное веб-приложение (.NET MVC, Java, Python/Django…)</td><td>confidential</td><td><code>authorization_code</code> + PKCE, <code>refresh_token</code></td></tr>
+        <tr><td>SPA в браузере (React, Vue, чистый JS)</td><td>public</td><td><code>authorization_code</code> + PKCE (обязателен), <code>refresh_token</code>; origin берётся из Redirect URI (CORS)</td></tr>
+        <tr><td>Мобильное / десктоп-приложение</td><td>public</td><td><code>authorization_code</code> + PKCE</td></tr>
+        <tr><td>Сервис-сервис, фоновые задачи</td><td>confidential</td><td><code>client_credentials</code>; права — роли сервисной учётной записи клиента</td></tr>
+        <tr><td>API, вызывающее другое API от имени пользователя</td><td>confidential</td><td><code>token_exchange</code> (RFC 8693)</td></tr>
+        <tr><td>Скрипт пользователя, автоматизация</td><td>—</td><td>персональный токен (PAT) → JWT</td></tr>
+        <tr><td>Legacy-приложение со своей формой входа</td><td>любой</td><td><code>password</code> (не рекомендуется для новых систем)</td></tr>
+    </table></div>
+
+    <h3>Authorization code + PKCE</h3>
+<pre class="code">GET @b/connect/authorize?client_id=orders-web&amp;response_type=code
+    &amp;redirect_uri=https://orders.local/callback&amp;scope=openid profile offline_access orders-api
+    &amp;code_challenge=&lt;BASE64URL(SHA256(verifier))&gt;&amp;code_challenge_method=S256&amp;state=&lt;random&gt;
+
+POST @b/connect/token
+grant_type=authorization_code&amp;client_id=orders-web&amp;code=...&amp;redirect_uri=...&amp;code_verifier=...</pre>
+    <p class="small muted">Страница входа оформляется в стиле приложения (оформление задаётся в админке) и доступна на языках из языковых пакетов.</p>
+
+    <h3>Refresh (продление без повторного входа)</h3>
+<pre class="code">POST @b/connect/token
+grant_type=refresh_token&amp;client_id=...&amp;client_secret=...&amp;refresh_token=...</pre>
+    <p>Refresh-токены одноразовые (ротация): в ответе приходит новый, старый перестаёт действовать. Они хранятся в БД —
+        переживают перезапуск сервиса и работают на любом экземпляре кластера. При каждом обновлении права пересчитываются
+        по текущей матрице доступа. Отключение пользователя, смена пароля или отзыв сессии делают refresh недействительным.</p>
+
+    <h3>Сроки жизни токенов</h3>
+    <p>Максимумы задаются в админке («Настройки» и карточка приложения). Клиент может запросить <b>меньший</b> срок
+        параметрами <code>expires_in</code> и <code>refresh_expires_in</code> (секунды) в запросе к <code>/connect/token</code>;
+        больший срок игнорируется.</p>
+
+    <h3>Client credentials</h3>
+<pre class="code">POST @b/connect/token
+grant_type=client_credentials&amp;client_id=billing-worker&amp;client_secret=...&amp;scope=orders-api</pre>
+
+    <h2 id="jwt">2. Содержимое access-токена (JWT, RS256)</h2>
+<pre class="code">{
+  "iss": "@b/",
+  "sub": "9f74af8c-…",                     // id пользователя или client_id
+  "subject_type": "user",                 // user | client
+  "aud": ["orders-web", "orders-api"],    // клиент + приложения запрошенных scope
+  "preferred_username": "ivan",
+  "role": ["orders-api:manager"],         // "приложение:роль"
+  "permissions": ["orders-api:orders.read", "orders-api:orders.write"],
+  "resource_access": { "orders-api": { "roles": ["manager"], "permissions": ["orders.read","orders.write"] } },
+  "act": { "sub": "billing-api" },        // только у токенов, полученных token exchange
+  "pat_id": "…",                           // только у токенов, полученных по PAT
+  "exp": 1790168747
+}</pre>
+    <p>Если значение одно, <code>role</code>/<code>permissions</code> может прийти строкой, а не массивом — обрабатывайте оба варианта.</p>
+
+    <h2 id="validate">3. Как приложению проверить токен</h2>
+    <ol>
+        <li>Взять ключ из <code>@b/.well-known/jwks</code> по <code>kid</code> из заголовка JWT (кэшировать; при неизвестном kid — перечитать).</li>
+        <li>Проверить подпись RS256, <code>iss</code> = <code>@b/</code>, <code>exp</code>, и что <code>aud</code> содержит client_id вашего API.</li>
+        <li>Авторизовать по <code>permissions</code>: наличие <code>"&lt;ваш client_id&gt;:&lt;разрешение&gt;"</code>.</li>
+    </ol>
+<pre class="code">// ASP.NET Core
+builder.Services.AddAuthentication().AddJwtBearer(o =>
+{
+    o.Authority = "@b/";
+    o.Audience = "orders-api";
+    o.MapInboundClaims = false;
+});
+builder.Services.AddAuthorization(o =>
+    o.AddPolicy("orders.read", p => p.RequireClaim("permissions", "orders-api:orders.read")));</pre>
+    <p>Примеры без сторонних библиотек для Go, Node.js и Python — в каталоге <code>samples/</code> репозитория.
+        Для мгновенного отзыва (без ожидания истечения JWT) используйте introspection: <code>POST /connect/introspect</code>.</p>
+
+    <h2 id="exchange">4. Token exchange (сервис → сервис от имени пользователя)</h2>
+<pre class="code">POST @b/connect/token
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+&amp;client_id=orders-api&amp;client_secret=...
+&amp;subject_token=&lt;access-токен пользователя, пришедший в orders-api&gt;
+&amp;subject_token_type=urn:ietf:params:oauth:token-type:access_token
+&amp;scope=billing-api</pre>
+    <p>Требования: у клиента включён поток <code>token_exchange</code> и разрешён scope целевого API; <code>aud</code> исходного
+        токена должен содержать client_id обменивающего сервиса. Новый токен — того же пользователя, с правами из матрицы
+        целевого приложения и цепочкой вызовов в <code>act</code>.</p>
+
+    <h2 id="pat">5. Персональные токены (PAT)</h2>
+    <p>Пользователь создаёт токен в личном кабинете (<a href="/Account/Tokens">/Account/Tokens</a>) и использует в скрипте:</p>
+<pre class="code">curl -s -X POST @b/connect/token \
+  -d grant_type=urn:tsl:grant-type:pat -d client_id=tsl-pat -d token=tslpat_…
+# → { "access_token": "&lt;JWT&gt;", "expires_in": 900 }</pre>
+
+    <h2 id="app-api">6. App API — приложение управляет своими пользователями</h2>
+    <p>Включите «Самоуправление» в карточке приложения. Токен: <code>client_credentials</code> со scope <code>tsl-auth-app</code>.
+        Приложение видит и меняет только свои роли, матрицу, заявки, журнал и пользователей своего среза.</p>
+<pre class="code">POST /api/app/roles            {"name":"support","permissions":["tickets.read"],"requestable":true}
+POST /api/app/users            {"userName":"petr","email":"petr@corp","roles":["support"],"invite":true}
+POST /api/app/users/link       {"login":"ivan","roles":["support"]}      // выдать роль существующему пользователю
+PUT  /api/app/users/{id}/roles ["support"]
+DELETE /api/app/users/{id}                                              // отвязать (или удалить, если создан этим приложением)
+GET  /api/app/audit?minSeverity=Warning</pre>
+
+    <h2 id="events">7. События для ботов и мониторинга</h2>
+    <p>Клиенту бота назначьте роль <code>notifier</code> в приложении <code>tsl-auth-admin</code>, токен — scope <code>tsl-auth-admin</code>.</p>
+<pre class="code"># long-polling: ждёт до 30 с, отдаёт события после курсора
+GET /api/admin/events?after=0&amp;wait=30          → { "events": [...], "next": 42 }
+
+# SSE-поток: переподключение с заголовком Last-Event-ID продолжит без пропусков
+GET /api/admin/events/stream
+
+# вебхук: бот подписывает свой URL; тело подписано X-TSL-Signature: sha256=HMAC(secret, body)
+POST /api/admin/webhooks  {"name":"bot","url":"https://bot.local/hook","events":["security.alert","access_request.created"],"secret":"…"}</pre>
+    <p>У каждого события есть готовый текст <code>text</code> для мессенджера и структурированные данные <code>data</code>.</p>
+
+    <h2 id="bot">8. Сброс пароля через бота мессенджера</h2>
+    <p>Клиенту бота — роль <code>reset-bot</code>. Пользователь один раз привязывает мессенджер кодом из
+        <a href="/Account/Messenger">/Account/Messenger</a>, дальше может сбросить пароль сам:</p>
+<pre class="code">POST /api/bot/link            {"provider":"mattermost","externalId":"&lt;id отправителя&gt;","code":"K7Q2M9XA"}
+POST /api/bot/password-reset  {"provider":"mattermost","externalId":"&lt;id отправителя&gt;"}
+→ {"mode":"link","userName":"ivan","resetLink":"@b/Account/ResetPassword?uid=…","expiresAt":"…"}</pre>
+    <p class="small muted">Бот должен отправлять ссылку только в личные сообщения тому, кто прислал команду.</p>
+</main>
+</body>
+</html>

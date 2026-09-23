@@ -1,0 +1,119 @@
+@page
+@model TslAuth.Pages.Admin.Apps.MatrixModel
+@*
+    Матрица доступа: таблица роль × разрешение (чекбоксы привязаны к отдельной форме id="matrix" через атрибут form),
+    добавление/удаление ролей и разрешений, флаг «запрашиваемая». Для системного приложения удаление и флаг скрыты.
+*@
+@{
+    ViewData["Title"] = $"Матрица {Model.ClientId}";
+    var system = Model.ClientId == SystemApp.ClientId;
+    var disabled = !Model.CanManage;
+}
+
+<div class="row between">
+    <h1>Матрица доступа <code>@Model.ClientId</code></h1>
+    <a class="btn" asp-page="Edit" asp-route-clientId="@Model.ClientId">← Настройки приложения</a>
+</div>
+
+<p class="muted">
+    <b>Разрешения</b> — действия внутри приложения (например <code>orders.read</code>).
+    <b>Роли</b> — наборы разрешений. Роли назначаются пользователям (карточка пользователя) и сервисным клиентам.
+    В access-токене: <code>role</code> = <code>@Model.ClientId:роль</code>, <code>permissions</code> = <code>@Model.ClientId:разрешение</code>,
+    а также <code>resource_access</code> (как в Keycloak).
+</p>
+
+<div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+
+@if (Model.CanManage)
+{
+    <div class="grid2">
+        <form method="post" asp-page-handler="AddPermission" asp-route-clientId="@Model.ClientId" class="card">
+            <h2 style="margin-top:0">Новое разрешение</h2>
+            <input name="Name" placeholder="orders.read" required />
+            <label>Описание</label>
+            <input name="Description" placeholder="Просмотр заказов" />
+            <div class="actions"><button type="submit">Добавить разрешение</button></div>
+        </form>
+        <form method="post" asp-page-handler="AddRole" asp-route-clientId="@Model.ClientId" class="card">
+            <h2 style="margin-top:0">Новая роль</h2>
+            <input name="Name" placeholder="manager" required />
+            <label>Описание</label>
+            <input name="Description" placeholder="Менеджер по заказам" />
+            <div class="actions"><button type="submit">Добавить роль</button></div>
+        </form>
+    </div>
+}
+
+@if (Model.Matrix.Roles.Count == 0 || Model.Matrix.Permissions.Count == 0)
+{
+    <div class="card muted">Добавьте хотя бы одно разрешение и одну роль, чтобы заполнить матрицу.</div>
+}
+else
+{
+    <form method="post" asp-page-handler="Save" asp-route-clientId="@Model.ClientId" id="matrix"></form>
+    <div class="card table-wrap">
+        <table class="matrix">
+            <thead>
+            <tr>
+                <th>Роль \ Разрешение</th>
+                @foreach (var p in Model.Matrix.Permissions)
+                {
+                    <th class="perm" title="@p.Description">@p.Name</th>
+                }
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var r in Model.Matrix.Roles)
+            {
+                <tr>
+                    <td>
+                        <b>@r.Name</b>
+                        @if (r.IsRequestable) { <span class="badge ok" title="Пользователь может запросить роль при регистрации">запрашиваемая</span> }
+                        @if (r.Description is not null) { <div class="small muted">@r.Description</div> }
+                        @if (Model.CanManage && !system)
+                        {
+                            <form method="post" asp-page-handler="Requestable" asp-route-clientId="@Model.ClientId" class="inline">
+                                <input type="hidden" name="Name" value="@r.Name" />
+                                <input type="hidden" name="value" value="@((!r.IsRequestable).ToString())" />
+                                <button class="link small" type="submit">@(r.IsRequestable ? "запретить запрос" : "разрешить запрос")</button>
+                            </form>
+                        }
+                    </td>
+                    @foreach (var p in Model.Matrix.Permissions)
+                    {
+                        <td class="cell">
+                            <input type="checkbox" form="matrix" name="Cells" value="@($"{r.Name}|{p.Name}")"
+                                   checked="@r.Permissions.Contains(p.Name)" disabled="@disabled" title="@r.Name → @p.Name" />
+                        </td>
+                    }
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.CanManage)
+    {
+        <div class="actions"><button class="primary" type="submit" form="matrix">Сохранить матрицу</button></div>
+    }
+}
+
+@if (Model.CanManage && !system)
+{
+    <h2>Удаление</h2>
+    <div class="card row">
+        @foreach (var r in Model.Matrix.Roles)
+        {
+            <form method="post" asp-page-handler="DeleteRole" asp-route-clientId="@Model.ClientId" class="inline" data-confirm="Удалить роль @r.Name? Она будет снята со всех пользователей.">
+                <input type="hidden" name="Name" value="@r.Name" />
+                <button class="danger" type="submit">роль: @r.Name ✕</button>
+            </form>
+        }
+        @foreach (var p in Model.Matrix.Permissions)
+        {
+            <form method="post" asp-page-handler="DeletePermission" asp-route-clientId="@Model.ClientId" class="inline" data-confirm="Удалить разрешение @p.Name?">
+                <input type="hidden" name="Name" value="@p.Name" />
+                <button class="danger" type="submit">разрешение: @p.Name ✕</button>
+            </form>
+        }
+    </div>
+}

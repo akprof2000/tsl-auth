@@ -1,0 +1,19 @@
+# TLS на балансировщике для кластерного режима:
+#   docker compose -f docker-compose.ha.yml -f docker-compose.ha-https.yml up -d
+# Экземпляры сервиса остаются на HTTP внутри docker-сети, наружу — только HTTPS через nginx.
+# Сертификат: ./certs/tls.crt (с цепочкой) и ./certs/tls.key (тестовый: scripts/gen-dev-cert.ps1).
+
+services:
+  auth1: &https-env
+    environment:
+      Auth__Issuer: "${AUTH_ISSUER:-https://localhost:8443/}"
+      Auth__RequireHttps: "true"
+  auth2: *https-env
+  auth3: *https-env
+  lb:
+    ports:
+      - "${AUTH_PORT:-8080}:8080"
+      - "8443:8443"
+    volumes:
+      - ./deploy/nginx-tls.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/certs:ro

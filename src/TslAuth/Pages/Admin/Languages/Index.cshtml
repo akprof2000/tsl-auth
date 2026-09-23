@@ -1,0 +1,60 @@
+@page
+@model TslAuth.Pages.Admin.Languages.IndexModel
+@* Языковые пакеты: список языков, добавление нового, редактор JSON-пакета или загрузка файла, удаление пакета из БД. *@
+@{ ViewData["Title"] = "Языки"; }
+
+<div class="row between">
+    <h1>Языковые пакеты</h1>
+    <a class="btn" asp-page="Index" asp-page-handler="Template" asp-route-from="ru">Скачать шаблон (все ключи)</a>
+</div>
+<p class="muted">Переводятся страницы для пользователей (вход, регистрация, пароли, приглашения, заявки, токены) и письма.
+    Пакет в БД может добавить новый язык или переопределить отдельные строки встроенного (ru, en). Недостающие ключи берутся из русского.</p>
+
+<div class="grid2">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Код</th><th>Название</th><th>Источник</th><th></th></tr></thead>
+            @foreach (var l in Model.Items)
+            {
+                <tr>
+                    <td><code>@l.Culture</code></td>
+                    <td>@l.Name @if (!l.IsEnabled) { <span class="badge danger">выключен</span> }</td>
+                    <td class="small">@(l.BuiltIn ? "встроенный" : "") @(l.HasOverrides ? "+ пакет в БД" : "")</td>
+                    <td><a asp-page="Index" asp-route-culture="@l.Culture">Изменить</a></td>
+                </tr>
+            }
+        </table>
+        @if (Model.CanManage)
+        {
+            <form method="get" class="row" style="margin-top:12px">
+                <input name="Culture" placeholder="код нового языка, напр. kk" style="max-width:220px" required />
+                <button type="submit">Добавить язык</button>
+            </form>
+        }
+    </div>
+
+    @if (Model.Culture is not null)
+    {
+        <form method="post" asp-page-handler="Save" asp-route-culture="@Model.Culture" enctype="multipart/form-data" class="card">
+            <h2 style="margin-top:0">Пакет <code>@Model.Culture</code></h2>
+            <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
+            <label asp-for="Name">Название языка</label>
+            <input asp-for="Name" placeholder="Қазақша" />
+            <label class="inline"><input asp-for="IsEnabled" /> Включён (доступен в переключателе языка)</label>
+            <label asp-for="Json">JSON «ключ → текст» (можно указать только переопределяемые ключи)</label>
+            <textarea asp-for="Json" style="min-height:420px"></textarea>
+            <label asp-for="Upload">…или загрузить файл .json</label>
+            <input asp-for="Upload" type="file" accept="application/json,.json" />
+            @if (Model.CanManage)
+            {
+                <div class="actions"><button class="primary" type="submit">Сохранить пакет</button></div>
+            }
+        </form>
+        @if (Model.CanManage)
+        {
+            <form method="post" asp-page-handler="Delete" asp-route-culture="@Model.Culture" data-confirm="Удалить пакет из БД?">
+                <button class="danger" type="submit">Удалить пакет из БД</button>
+            </form>
+        }
+    }
+</div>

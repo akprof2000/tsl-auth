@@ -1,0 +1,90 @@
+# Полный стенд: сервис в Docker + демо-приложения (.NET, Node.js, Go, Python) →
+# UI-автотесты (Playwright), нагрузка (k6), сценарии отказов с переподъёмом.
+# Запуск вручную (Actions → E2E → Run workflow) и раз в неделю.
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      load_duration:
+        description: Длительность нагрузочного теста
+        default: "30s"
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  BOOTSTRAP_API_CLIENT_ID: admin-cli
+  BOOTSTRAP_API_CLIENT_SECRET: demo-admin-cli-secret-2026
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 10.0.x }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.24" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+
+      - name: Сервис (одиночный режим) + демо-данные
+        shell: pwsh
+        run: |
+          docker compose up -d --build
+          for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://localhost:8080/health/ready -TimeoutSec 2).StatusCode -eq 200) { break } } catch { Start-Sleep 2 } }
+          ./samples/seed-demo.ps1
+
+      - name: Демо-приложения
+        shell: pwsh
+        run: |
+          $s = @{}; Get-Content samples/.env.demo | ForEach-Object { $k, $v = $_ -split '=', 2; $s[$k] = $v }
+          $env:CLIENT_SECRET = $s.GO_CLIENT_SECRET
+          Start-Process go -ArgumentList 'run', '.' -WorkingDirectory samples/go-api
+          Start-Process node -ArgumentList 'server.mjs' -WorkingDirectory samples/node-spa
+          $env:CLIENT_SECRET = $s.PYTHON_CLIENT_SECRET
+          Start-Process python -ArgumentList 'app.py' -WorkingDirectory samples/python-app
+          $env:Auth__ClientSecret = $s.DOTNET_CLIENT_SECRET; $env:ASPNETCORE_URLS = 'http://localhost:5101'
+          Start-Process dotnet -ArgumentList 'run' -WorkingDirectory samples/dotnet-mvc
+          foreach ($p in 5101, 5102, 5103, 5104) {
+            for ($i = 0; $i -lt 90; $i++) { try { Invoke-WebRequest "http://localhost:$p/health" -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep 2 } }
+          }
+
+      - name: UI-автотесты (Playwright)
+        shell: pwsh
+        run: |
+          dotnet build tests/TslAuth.UiTests
+          ./tests/TslAuth.UiTests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+          dotnet test tests/TslAuth.UiTests --no-build
+
+      - name: Нагрузочный тест (k6)
+        shell: pwsh
+        env:
+          SECURITY_TOKEN_RPM: "1000000"
+          SECURITY_LOGIN_RPM: "1000000"
+        run: |
+          docker compose up -d
+          ./tests/load/run-load.ps1 -Name ci-single -Vus 10 -Duration "${{ inputs.load_duration || '30s' }}"
+
+      - name: Сценарии отказов (одиночный режим и кластер)
+        shell: pwsh
+        run: |
+          $key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+          @(
+            "ENCRYPTION_MASTER_KEY=$key", "POSTGRES_PASSWORD=ci-pg-password", "BOOTSTRAP_ADMIN_PASSWORD=Ci-Bootstr4p-Secret!",
+            "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=demo-admin-cli-secret-2026"
+          ) | Set-Content .env
+          ./tests/resilience/run-resilience.ps1 -Mode all
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-artifacts
+          path: tests/artifacts

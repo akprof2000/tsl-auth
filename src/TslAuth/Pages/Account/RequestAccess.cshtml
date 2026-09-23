@@ -1,0 +1,61 @@
+@page
+@model TslAuth.Pages.Account.RequestAccessModel
+@* Запрос дополнительных ролей приложения (уже выданные отмечены и недоступны) и список своих заявок. *@
+@{ ViewData["Title"] = L["request.title"]; }
+
+<div class="card">
+    <h2 style="margin-top:0">@(Model.AppClientId is null ? L["request.title"] : L.Get("request.forApp", Model.AppClientId))</h2>
+    @if (Model.Message is not null) { <div class="alert ok">@L[Model.Message]</div> }
+    <partial name="_Errors" />
+
+    @if (Model.AppClientId is null)
+    {
+        <p class="muted">@L["request.noApp"]</p>
+    }
+    else if (Model.Requestable.Count == 0)
+    {
+        <p class="muted">@L["request.noRoles"]</p>
+    }
+    else
+    {
+        <form method="post">
+            <input type="hidden" asp-for="ReturnUrl" />
+            <input type="hidden" asp-for="ClientId" value="@Model.AppClientId" />
+            @foreach (var role in Model.Requestable)
+            {
+                var has = Model.Assigned.Contains(role.Key);
+                <label class="inline" style="display:flex">
+                    <input type="checkbox" name="Roles" value="@role.Key" disabled="@has" checked="@has" />
+                    <span><b>@role.Name</b> <span class="badge">@role.ClientId</span> @(has ? L["request.already"] : "")
+                        <span class="muted small">@role.Description</span></span>
+                </label>
+            }
+            <label for="Comment">@L["request.comment"]</label>
+            <textarea asp-for="Comment"></textarea>
+            <div class="actions"><button class="primary" type="submit">@L["request.submit"]</button></div>
+        </form>
+    }
+
+    @if (Model.MyRequests.Count > 0)
+    {
+        <h2>@L["request.mine"]</h2>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>@L["request.col.app"]</th><th>@L["request.col.role"]</th><th>@L["request.col.status"]</th><th>@L["request.col.comment"]</th></tr></thead>
+                @foreach (var r in Model.MyRequests)
+                {
+                    <tr>
+                        <td><code>@r.ClientId</code></td>
+                        <td>@r.Role</td>
+                        <td><span class="badge @(r.Status == "approved" ? "ok" : r.Status == "rejected" ? "danger" : "warn")">@L["status." + r.Status]</span></td>
+                        <td class="small">@r.DecisionComment</td>
+                    </tr>
+                }
+            </table>
+        </div>
+    }
+    @if (Url.IsLocalUrl(Model.ReturnUrl))
+    {
+        <p class="small"><a href="@Model.ReturnUrl">@L["request.back"]</a></p>
+    }
+</div>

@@ -32,7 +32,7 @@ catch {
         clientId = $PublicClient; clientType = "public"; grantTypes = @("password", "refresh_token") } | ConvertTo-Json) | Out-Null
 }
 
-docker run --rm --add-host=host.docker.internal:host-gateway -v "${PSScriptRoot}:/scripts" -v "${artifacts}:/out" `
+docker run --rm --user root --add-host=host.docker.internal:host-gateway -v "${PSScriptRoot}:/scripts" -v "${artifacts}:/out" `
     -e BASE_URL=$BaseUrl -e VUS=$Vus -e DURATION=$Duration -e CLIENT_ID=$ClientId -e CLIENT_SECRET=$ClientSecret `
     -e USER=$User -e PASSWORD=$Password -e PUBLIC_CLIENT=$PublicClient `
     grafana/k6:latest run --summary-export "/out/$Name.json" /scripts/auth-load.js

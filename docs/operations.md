@@ -32,6 +32,9 @@ docker exec -it tsl-auth dotnet /app/TslAuth.dll admin reset-password admin --pa
 его прежние сессии отзываются. В кластере — на любом узле (`tsl-auth-1`).
 В образе нет shell (distroless), поэтому команда вызывается через `dotnet` напрямую, без `sh -c`.
 
+Другие команды CLI: `admin migrate-to-postgres` — перенос данных одиночного режима в PostgreSQL со сверкой
+(см. [переход на кластер](deployment.md#переход-с-одиночного-режима-на-кластер)); `admin help` — список команд.
+
 ## Типовые проблемы
 
 | Симптом | Причина / решение |

@@ -23,6 +23,9 @@ public abstract class AuthFixture : IAsyncLifetime
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     private Dictionary<string, string> _database = [];
 
+    /// <summary>Строка подключения к БД этого экземпляра.</summary>
+    public string ConnectionString => _database["Database__ConnectionString"];
+
     protected abstract Task<Dictionary<string, string>> DatabaseSettingsAsync();
     public abstract string ProviderName { get; }
 

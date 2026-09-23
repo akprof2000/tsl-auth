@@ -64,6 +64,48 @@ docker logs tsl-auth-1 | grep -E "Схема|администратор"
    ```
    Таблицы и все последующие изменения схемы сервис применяет автоматически.
 
+### Переход с одиночного режима на кластер
+
+Режимы не смешиваются: экземпляр работает либо с SQLite, либо с PostgreSQL (`Database__Provider`). При переключении
+на PostgreSQL данные SQLite **сами не переносятся** — для этого есть команда `admin migrate-to-postgres`.
+
+```mermaid
+flowchart LR
+    S[(SQLite<br/>том auth-data)] -->|admin migrate-to-postgres| C{Сверка каждой таблицы:<br/>число записей + SHA-256}
+    C -->|совпало| P[(PostgreSQL)]
+    C -->|расхождение| R[откат транзакции,<br/>PostgreSQL не изменён]
+    P --> N[Узлы кластера с тем же<br/>мастер-ключом]
+```
+
+1. Остановите одиночный сервис, чтобы после снимка не появилось новых записей: `docker compose stop`.
+2. Поднимите PostgreSQL (узлы кластера пока не запускайте): `docker compose -f docker-compose.ha.yml up -d postgres`.
+3. Запустите перенос в контейнере с томом одиночного режима и доступом к PostgreSQL:
+   ```bash
+   docker run --rm -v auth_auth-data:/app/data --network auth_default \
+     -e TARGET_DB_CONNECTION_STRING="Host=postgres;Database=tsl_auth;Username=tsl_auth;Password=..." \
+     ghcr.io/akprof2000/tsl-auth:latest admin migrate-to-postgres
+   ```
+   Команда создаст базу и схему, скопирует все таблицы в одной транзакции и выведет сверку:
+   ```
+   Таблица                              SQLite PostgreSQL  Содержимое
+   AspNetUsers                               9          9  совпадает
+   OpenIddictTokens                       8532       8532  совпадает
+   ...
+   Перенос завершён: 28 таблиц, 14279 записей, все совпадают.
+   ```
+4. Задайте кластеру **тот же мастер-ключ** — содержимое `master.key` из тома одиночного режима:
+   `docker run --rm -v auth_auth-data:/d busybox cat /d/master.key` → `ENCRYPTION_MASTER_KEY` в `.env`.
+   Данные переносятся зашифрованными; с другим ключом узлы не смогут их прочитать.
+5. Запустите узлы: `docker compose -f docker-compose.ha.yml up -d`.
+
+Пользователи ничего не заметят: те же пароли, права, ключи подписи, а начатые сессии (refresh-токены) продолжаются.
+
+* Если кластер уже запускался и создал своего администратора, приёмник непустой — команда откажется работать.
+  Остановите узлы и добавьте `--overwrite`: данные PostgreSQL будут заменены данными SQLite.
+* При любом расхождении сверки транзакция откатывается — в PostgreSQL ничего не остаётся, SQLite не изменяется.
+* Строку подключения передавайте переменной `TARGET_DB_CONNECTION_STRING` (или `--target "..."`), чтобы пароль не попал в историю shell.
+* Имя сети — `<каталог проекта>_default` (здесь `auth_default`, см. `docker network ls`); внешний PostgreSQL указывается адресом сервера.
+
 ## HTTPS
 
 ### Вариант 1 — сертификат в контейнере сервиса (одиночный режим)

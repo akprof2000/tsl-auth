@@ -55,7 +55,7 @@ public static class StartupInitializer
     /// Автоматическое обновление схемы БД до версии, с которой собран сервис.
     /// Миграции применяются последовательно, каждая в своей транзакции; повторный запуск безопасен.
     /// </summary>
-    private static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct)
+    internal static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct)
     {
         var known = db.Database.GetMigrations().ToList();
         // На пустой БД таблицы истории ещё нет — не запрашиваем её (иначе EF пишет в лог ложную ошибку).
@@ -114,7 +114,7 @@ public static class StartupInitializer
     }
 
     /// <summary>Создаёт базу данных, если её ещё нет (подключение к служебной БД "postgres").</summary>
-    private static async Task EnsurePostgresDatabaseAsync(string connectionString, ILogger logger, CancellationToken ct)
+    internal static async Task EnsurePostgresDatabaseAsync(string connectionString, ILogger logger, CancellationToken ct)
     {
         var target = new NpgsqlConnectionStringBuilder(connectionString);
         var databaseName = target.Database ?? throw new InvalidOperationException("В строке подключения не указан Database.");

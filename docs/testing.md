@@ -5,7 +5,7 @@ flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
     L["Нагрузка — k6<br/>tests/load"]
     UI["UI-автотесты — Playwright, 11 сценариев<br/>tests/TslAuth.UiTests"]
-    I["Интеграционные — 42 = 21 сценарий × SQLite и PostgreSQL<br/>tests/TslAuth.IntegrationTests"]
+    I["Интеграционные — 43: 21 сценарий × SQLite и PostgreSQL + перенос SQLite → PostgreSQL<br/>tests/TslAuth.IntegrationTests"]
     U["Unit — 37<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
 ```
@@ -13,7 +13,7 @@ flowchart TB
 | Уровень | Что проверяет | Окружение | Запуск |
 |---|---|---|---|
 | Unit | шифрование и слепые индексы, валидация имён и политик, генератор паролей, сроки хранения, подпись вебхуков, CSV-экранирование, согласованность языковых пакетов | нет | `dotnet test tests/TslAuth.UnitTests` |
-| Интеграционные | сервис целиком в памяти на **SQLite и реальном PostgreSQL** (Testcontainers): OIDC, подпись JWT, RBAC-claims, ротация refresh, отзыв, блокировка, временный пароль, token exchange, сроки жизни, App API (изоляция), политика паролей, PAT, бот, события, заявки, шифрование в БД, перезапуск, **обновление схемы на живых данных** | Docker | `dotnet test tests/TslAuth.IntegrationTests` |
+| Интеграционные | сервис целиком в памяти на **SQLite и реальном PostgreSQL** (Testcontainers): OIDC, подпись JWT, RBAC-claims, ротация refresh, отзыв, блокировка, временный пароль, token exchange, сроки жизни, App API (изоляция), политика паролей, PAT, бот, события, заявки, шифрование в БД, перезапуск, **обновление схемы на живых данных**, перенос SQLite → PostgreSQL (`admin migrate-to-postgres`) | Docker | `dotnet test tests/TslAuth.IntegrationTests` |
 | UI (E2E) | реальный браузер против стенда: вход, «глазок», языки, вся админка, регистрация приложения и матрица, временный пароль, **SPA (Node) с брендингом, PKCE, token exchange Go→Node**, .NET MVC (OIDC), Python (password grant, App API), регистрация + одобрение, PAT | стенд | см. ниже |
 | Нагрузка | выдача токенов по всем потокам, JWKS, Admin API под параллельной нагрузкой | стенд | `tests/load/run-load.ps1` |
 | Отказоустойчивость | рестарты, `kill -9`, отказы узлов, БД и балансировщика под непрерывным трафиком | Docker | `tests/resilience/run-resilience.ps1` |
@@ -42,7 +42,7 @@ dotnet test tests/TslAuth.UiTests                        # скриншоты ш
 | Набор | Результат |
 |---|---|
 | Unit | 37 / 37 |
-| Интеграционные (SQLite + PostgreSQL) | 42 / 42 |
+| Интеграционные (SQLite + PostgreSQL) | 43 / 43 |
 | UI (Playwright) | 11 / 11 |
 
 ### Нагрузка

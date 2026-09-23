@@ -30,6 +30,14 @@ public static class ServiceSetup
         services.Configure<BootstrapOptions>(config.GetSection(BootstrapOptions.Section));
 
         var database = config.GetSection(DatabaseOptions.Section).Get<DatabaseOptions>() ?? new DatabaseOptions();
+        if (database.IsPostgres && !string.IsNullOrWhiteSpace(database.ConnectionString))
+            database.ConnectionString = PostgresConnectionString.Normalize(database.ConnectionString);
+        // То же для IOptions<DatabaseOptions> (блокировка и создание БД в StartupInitializer).
+        services.PostConfigure<DatabaseOptions>(o =>
+        {
+            if (o.IsPostgres && !string.IsNullOrWhiteSpace(o.ConnectionString))
+                o.ConnectionString = PostgresConnectionString.Normalize(o.ConnectionString);
+        });
         var encryption = config.GetSection(EncryptionOptions.Section).Get<EncryptionOptions>() ?? new EncryptionOptions();
         var server = config.GetSection(AuthServerOptions.Section).Get<AuthServerOptions>() ?? new AuthServerOptions();
 

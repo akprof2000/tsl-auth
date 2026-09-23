@@ -115,6 +115,9 @@ jobs:
           hint=""
           printf '%s' "$user"  | LC_ALL=C grep -q '[^ -~]' && hint="$hint DOCKERHUB_USERNAME содержит не-ASCII символы (кириллица? другая раскладка?)."
           printf '%s' "$token" | LC_ALL=C grep -q '[^ -~]' && hint="$hint DOCKERHUB_TOKEN содержит не-ASCII символы."
+          case "$user" in *@*) hint="$hint DOCKERHUB_USERNAME похож на email — нужен Docker ID (имя пользователя), а не почта.";; esac
+          case "$user" in *:*) hint="$hint DOCKERHUB_USERNAME содержит ':' — укажите только имя, без токена.";; esac
+          printf '%s' "$user" | grep -Eq '^[a-z0-9]{4,30}$' || hint="$hint DOCKERHUB_USERNAME не похож на Docker ID (4–30 строчных латинских букв и цифр, длина сейчас ${#user})."
           case "$token" in dckr_pat_*|dckr_oat_*) ;; *) hint="$hint DOCKERHUB_TOKEN не похож на токен Docker Hub (ожидается dckr_pat_...).";; esac
           [ -z "$token" ] && hint="$hint DOCKERHUB_TOKEN пуст."
           echo "::warning title=Docker Hub::Вход не удался, образ публикуется только в GHCR.${hint:- Проверьте логин и токен (Account settings → Personal access tokens, права Read & Write).}"

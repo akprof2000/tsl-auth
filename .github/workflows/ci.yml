@@ -54,6 +54,7 @@ jobs:
         with:
           name: test-results
           path: TestResults
+          retention-days: 1
 
   security-scan:
     name: Сканирование репозитория (секреты, конфигурация)

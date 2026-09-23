@@ -2,7 +2,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
+using TslAuth.Data;
 
 namespace TslAuth.IntegrationTests.Infrastructure;
 
@@ -19,13 +21,14 @@ public abstract class AuthFixture : IAsyncLifetime
     public const string AdminPassword = "Boot-Str4p-Secret!";
 
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
+    private Dictionary<string, string> _database = [];
 
     protected abstract Task<Dictionary<string, string>> DatabaseSettingsAsync();
     public abstract string ProviderName { get; }
 
     public async Task InitializeAsync()
     {
-        foreach (var (k, v) in await DatabaseSettingsAsync()) Environment.SetEnvironmentVariable(k, v);
+        _database = await DatabaseSettingsAsync();
         Factory = Start();
         await Factory.CreateClient().GetAsync("/health/ready");
     }
@@ -48,8 +51,30 @@ public abstract class AuthFixture : IAsyncLifetime
             ["Security__LoginAttemptsPerMinute"] = "100000",
             ["Logging__LogLevel__Default"] = "Warning"
         };
-        foreach (var (k, v) in settings) Environment.SetEnvironmentVariable(k, v);
+        foreach (var (k, v) in settings.Concat(_database)) Environment.SetEnvironmentVariable(k, v);
         return new WebApplicationFactory<Program>();
+    }
+
+    /// <summary>
+    /// Останавливает сервис, выполняет действие над БД без него и запускает сервис заново —
+    /// так тесты обновления эмулируют замену версии на той же базе.
+    /// </summary>
+    public async Task RestartAsync(Func<Task>? whileStopped = null)
+    {
+        await Factory.DisposeAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        if (whileStopped is not null) await whileStopped();
+        Factory = Start();
+        await Factory.CreateClient().GetAsync("/health/ready");
+    }
+
+    /// <summary>Контекст БД напрямую, в обход сервиса (откат схемы и проверки в тестах обновления).</summary>
+    public AuthDbContext CreateDbContext()
+    {
+        var cs = _database["Database__ConnectionString"];
+        return _database["Database__Provider"] == "Postgres"
+            ? new PostgresAuthDbContext(new DbContextOptionsBuilder<PostgresAuthDbContext>().UseNpgsql(cs).Options)
+            : new SqliteAuthDbContext(new DbContextOptionsBuilder<SqliteAuthDbContext>().UseSqlite(cs).Options);
     }
 
     public virtual async Task DisposeAsync() => await Factory.DisposeAsync();

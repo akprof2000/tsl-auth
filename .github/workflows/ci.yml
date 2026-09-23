@@ -25,9 +25,9 @@ jobs:
     name: Сборка и тесты (unit + интеграционные SQLite/PostgreSQL)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -49,7 +49,7 @@ jobs:
           dotnet list src/TslAuth package --vulnerable --include-transitive | tee vulnerable.txt
           if grep -q -E "(Critical|High)" vulnerable.txt; then echo "::error::Найдены уязвимые пакеты"; exit 1; fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results
@@ -59,9 +59,9 @@ jobs:
     name: Сканирование репозитория (секреты, конфигурация)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Trivy — секреты и ошибки конфигурации (Dockerfile, compose)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: secret,misconfig
@@ -80,13 +80,13 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Теги образа
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
@@ -98,7 +98,7 @@ jobs:
             type=sha,format=short
 
       - name: Сборка образа для проверки
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -108,7 +108,7 @@ jobs:
 
       # Публикация блокируется, если в образе есть уязвимости CRITICAL/HIGH с доступным исправлением.
       - name: Trivy — уязвимости образа
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
           scanners: vuln,secret
@@ -117,7 +117,7 @@ jobs:
           exit-code: "1"
 
       - name: Вход в GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -125,13 +125,13 @@ jobs:
 
       - name: Вход в Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Публикация
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true

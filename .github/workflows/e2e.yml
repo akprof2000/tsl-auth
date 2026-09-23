@@ -88,3 +88,4 @@ jobs:
         with:
           name: e2e-artifacts
           path: tests/artifacts
+          retention-days: 1

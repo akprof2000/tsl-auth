@@ -177,10 +177,10 @@ jobs:
           provenance: mode=max   # SLSA provenance: как, где и из какого коммита собран образ
           sbom: true             # перечень компонентов (SPDX) прикладывается к образу
 
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
 
       # Keyless-подпись (Sigstore): подпись привязана к этому репозиторию и workflow, ключей хранить не нужно.
-      # Проверка перед запуском — см. docs/security.md («Проверка подписи образа»).
+      # Проверка перед запуском — см. docs/security.md («Проверка подлинности образа»).
       - name: Подпись образов (cosign)
         env:
           TAGS: ${{ steps.meta.outputs.tags }}

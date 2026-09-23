@@ -73,6 +73,17 @@ flowchart LR
 | **Интеграция** | Admin API, App API, Bot API, лента событий (long-polling, SSE, вебхуки), OpenAPI + интерактивный справочник `/docs/api`, руководство `/docs` |
 | **Интерфейс** | Веб-админка; страницы входа на нескольких языках (языковые пакеты), брендирование под приложение |
 
+## Образы
+
+| Реестр | Страница | Загрузка |
+|---|---|---|
+| Docker Hub | [hub.docker.com/r/akprof2000/tsl-auth](https://hub.docker.com/r/akprof2000/tsl-auth) | `docker pull akprof2000/tsl-auth:latest` |
+| GitHub Container Registry | [ghcr.io/akprof2000/tsl-auth](https://github.com/akprof2000/tsl-auth/pkgs/container/tsl-auth) | `docker pull ghcr.io/akprof2000/tsl-auth:latest` |
+
+Теги: `latest` (ветка `main`), `X.Y.Z` и `X.Y` (релизы), `sha-<коммит>`. Образы собираются GitHub Actions после
+тестов и сканирования, подписаны cosign и содержат SBOM — [проверка подлинности](docs/security.md#проверка-подлинности-образа).
+Для закрытого контура — [перенос образов без интернета](docs/deployment.md#закрытый-контур-без-интернета).
+
 ## Быстрый старт
 
 ```bash

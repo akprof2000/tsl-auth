@@ -8,7 +8,9 @@
 | `/health/ready` | есть связь с БД | readiness-проба, балансировщик (503 — вывести из ротации) |
 | `/lb-health` (nginx) | балансировщик жив | мониторинг точки входа |
 
-Docker HEALTHCHECK встроен в образ (`/health/ready` каждые 10 с).
+Docker HEALTHCHECK встроен в образ: в distroless-образе нет shell, curl и wget, поэтому проверку выполняет сам сервис
+(`dotnet /app/TslAuth.dll healthcheck` → `GET http://127.0.0.1:8080/health/ready`, код выхода 0/1). Если сервис слушает другой
+порт, задайте `HEALTHCHECK_URL`.
 
 ## Журналы
 
@@ -22,12 +24,13 @@ Docker HEALTHCHECK встроен в образ (`/health/ready` каждые 10
 Команда работает прямо с БД, веб-вход не нужен:
 
 ```bash
-docker exec -it tsl-auth tslauth admin reset-password admin            # сгенерировать временный пароль
-docker exec -it tsl-auth tslauth admin reset-password admin --password 'Новый-Пар0ль'
+docker exec -it tsl-auth dotnet /app/TslAuth.dll admin reset-password admin            # сгенерировать временный пароль
+docker exec -it tsl-auth dotnet /app/TslAuth.dll admin reset-password admin --password 'Новый-Пар0ль'
 ```
 
 Пользователь будет создан (если его нет), активирован, разблокирован, получит роль `administrator`;
 его прежние сессии отзываются. В кластере — на любом узле (`tsl-auth-1`).
+В образе нет shell (distroless), поэтому команда вызывается через `dotnet` напрямую, без `sh -c`.
 
 ## Типовые проблемы
 

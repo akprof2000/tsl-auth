@@ -2,7 +2,8 @@ namespace TslAuth.Infrastructure;
 
 /// <summary>
 /// Консольные команды обслуживания, работают напрямую с БД (веб-вход не нужен):
-///   tslauth admin reset-password [логин] [--password P]
+///   dotnet /app/TslAuth.dll admin reset-password [логин] [--password P]
+/// (в контейнере: docker exec -it tsl-auth dotnet /app/TslAuth.dll admin reset-password admin)
 /// Восстанавливает доступ администратора: создаёт/активирует пользователя, разблокирует,
 /// задаёт пароль (или генерирует), назначает роль administrator и отзывает его сессии.
 /// Program.cs вызывает команду после StartupInitializer (схема и данные уже готовы) вместо запуска веб-сервера.

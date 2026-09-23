@@ -4,7 +4,38 @@
 OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей доступа для каждого приложения,
 кластерный режим без потери сессий, веб-админка и REST API. Работает полностью в закрытом контуре (без интернета).
 
+<!-- Сборка и качество -->
 [![CI](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml)
+[![E2E](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml)
+[![Тесты](https://img.shields.io/badge/тесты-unit%20·%20интеграционные%20·%20UI%20·%20нагрузка%20·%20отказы-2ea44f)](docs/testing.md)
+[![Документация](https://img.shields.io/badge/docs-проверены%20в%20CI-2ea44f?logo=markdown)](docs/)
+[![License: MIT](https://img.shields.io/github/license/akprof2000/tsl-auth?color=blue)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/akprof2000/tsl-auth)](https://github.com/akprof2000/tsl-auth/commits/main)
+
+<!-- Образ и безопасность -->
+[![GHCR](https://img.shields.io/badge/ghcr.io-akprof2000%2Ftsl--auth-2496ED?logo=github)](https://github.com/akprof2000/tsl-auth/pkgs/container/tsl-auth)
+[![Docker Hub](https://img.shields.io/docker/v/akprof2000/tsl-auth?sort=semver&label=docker%20hub&logo=docker&logoColor=white)](https://hub.docker.com/r/akprof2000/tsl-auth)
+[![Docker Pulls](https://img.shields.io/docker/pulls/akprof2000/tsl-auth?logo=docker&logoColor=white)](https://hub.docker.com/r/akprof2000/tsl-auth)
+[![Image size](https://img.shields.io/docker/image-size/akprof2000/tsl-auth/latest?logo=docker&logoColor=white)](https://hub.docker.com/r/akprof2000/tsl-auth/tags)
+[![Base: distroless](https://img.shields.io/badge/base-Azure%20Linux%20distroless-0078D4?logo=linux&logoColor=white)](docs/security.md#образ-контейнера)
+[![Trivy](https://img.shields.io/badge/Trivy-0%20уязвимостей-1904DA?logo=aquasecurity&logoColor=white)](docs/security.md#результаты-сканирования)
+[![Dockle](https://img.shields.io/badge/Dockle-CIS%20passed-2ea44f)](docs/security.md#результаты-сканирования)
+[![cosign](https://img.shields.io/badge/cosign-signed-7C3AED?logo=sigstore&logoColor=white)](docs/security.md#проверка-подлинности-образа)
+[![SBOM](https://img.shields.io/badge/SBOM%20%2B%20SLSA-provenance-6f42c1)](docs/security.md#проверка-подлинности-образа)
+[![Non-root](https://img.shields.io/badge/runs%20as-non--root%20·%20read--only-success)](docs/security.md#образ-контейнера)
+[![Dependabot](https://img.shields.io/badge/Dependabot-enabled-025E8C?logo=dependabot&logoColor=white)](.github/dependabot.yml)
+
+<!-- Технологии -->
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![OpenIddict](https://img.shields.io/badge/OpenIddict-7.7-512BD4)](https://documentation.openiddict.com/)
+[![OAuth 2.0 / OIDC](https://img.shields.io/badge/OAuth%202.0-OpenID%20Connect-EB5424?logo=openid&logoColor=white)](docs/integration.md)
+[![JWT](https://img.shields.io/badge/JWT-RS256-000000?logo=jsonwebtokens&logoColor=white)](docs/integration.md#4-формат-токена-и-авторизация-в-api)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14%2B-4169E1?logo=postgresql&logoColor=white)](docs/deployment.md#кластер)
+[![SQLite](https://img.shields.io/badge/SQLite-встроенная-003B57?logo=sqlite&logoColor=white)](docs/deployment.md#одиночный-режим)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/deployment.md)
+[![nginx](https://img.shields.io/badge/nginx-HA%20кластер-009639?logo=nginx&logoColor=white)](docs/deployment.md#кластер)
+[![Offline](https://img.shields.io/badge/работает-без%20интернета-informational)](docs/deployment.md#закрытый-контур-без-интернета)
+[![Демо](https://img.shields.io/badge/демо-.NET%20·%20Node%20·%20Go%20·%20Python-yellow)](samples/)
 
 ```mermaid
 flowchart LR
@@ -82,6 +113,10 @@ deploy/                 конфигурации nginx (HTTP и TLS)
 scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур
 docs/                   документация
 ```
+
+## Лицензия
+
+[MIT](LICENSE) © 2026 Alexey Kozlov
 
 > ⚠️ Значения в `samples/seed-demo.ps1`, `docker-compose*.yml` по умолчанию и тестах (например `demo-admin-cli-secret-2026`) —
 > только для демонстрационного стенда. В продуктиве задавайте свои секреты через `.env`.

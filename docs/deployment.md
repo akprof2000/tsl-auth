@@ -37,7 +37,7 @@ docker logs tsl-auth | grep "временным паролем"
 Данные (SQLite и сгенерированный `master.key`) лежат в томе `auth-data`. **Сохраните `master.key`** — без него зашифрованные данные не прочитать:
 
 ```bash
-docker run --rm -v auth_auth-data:/d alpine cat /d/master.key
+docker run --rm -v auth_auth-data:/d busybox cat /d/master.key   # в самом образе сервиса нет shell и cat
 ```
 
 ## Кластер
@@ -102,7 +102,7 @@ sequenceDiagram
     I->>M: копирование каталога dist/
     M->>T: копирование
     T->>T: ./import-images.sh (проверка SHA-256, docker load)
-    T->>T: cp .env.example .env; docker compose up -d
+    T->>T: cp .env.example .env, затем docker compose up -d
 ```
 
 В работе сервис не обращается во внешнюю сеть: интерфейс, справочник API, шрифты и скрипты встроены в образ,
@@ -140,7 +140,7 @@ docker compose up -d           # кластер: docker compose -f docker-compos
 | Что | Как | Важно |
 |---|---|---|
 | PostgreSQL | `pg_dump -Fc tsl_auth > tsl_auth.dump` | делать перед каждым обновлением |
-| SQLite | `docker run --rm -v auth_auth-data:/d -v $PWD:/b alpine sh -c "apk add sqlite && sqlite3 /d/tsl-auth.db '.backup /b/tsl-auth.db'"` | горячий бэкап (WAL) |
+| SQLite | `docker run --rm -u 1654:1654 -v auth_auth-data:/d -v $PWD:/b keinos/sqlite3 sqlite3 /d/tsl-auth.db ".backup /b/tsl-auth.db"` | горячий бэкап (WAL) |
 | Мастер-ключ | `.env` / `master.key` / docker secret | **хранить отдельно** от бэкапов БД |
 
 Восстановление: вернуть БД из бэкапа и запустить сервис с **тем же** мастер-ключом.

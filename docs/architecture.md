@@ -100,7 +100,7 @@ flowchart LR
     A --> G[Роли субъекта в этих приложениях<br/>AccessRoleAssignments]
     G --> M[Разрешения ролей<br/>матрица AccessRolePermissions]
     M --> C["claims: role = app:роль<br/>permissions = app:разрешение<br/>resource_access = {app: {roles, permissions}}"]
-    C --> L[Срок жизни: min(глобальный,<br/>приложения, запрошенный)]
+    C --> L["Срок жизни: min(глобальный,<br/>приложения, запрошенный)"]
     L --> S[Подпись RS256<br/>общим ключом кластера]
 ```
 

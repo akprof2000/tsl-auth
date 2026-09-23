@@ -3,7 +3,13 @@ using TslAuth.Api;
 using TslAuth.Infrastructure;
 using TslAuth.Options;
 
-// `tslauth admin ...` — служебные команды (восстановление доступа администратора).
+// `healthcheck` — проверка готовности для Docker HEALTHCHECK. В distroless-образе нет wget/curl и shell,
+// поэтому проверку выполняет сам процесс .NET: GET /health/ready на локальном порту, код выхода 0/1.
+// Выполняется до построения хоста — без подключения к БД и миграций.
+if (args is ["healthcheck", ..])
+    return await HealthProbe.RunAsync(args.Length > 1 ? args[1] : null);
+
+// `admin ...` — служебные команды (восстановление доступа администратора).
 var isCli = AdminCli.IsCliCommand(args);
 
 // В режиме CLI аргументы не передаются в конфигурацию, иначе "admin ..." разбирались бы как ключи настроек.

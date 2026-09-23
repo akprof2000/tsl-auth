@@ -17,8 +17,9 @@
 | CSV-инъекции | экранирование значений, начинающихся с `= + - @`, в выгрузке журнала |
 | Подмена вебхука | HMAC-SHA256 подпись тела секретом подписки |
 | Утечки через внешние сервисы | нет внешних вызовов: интерфейс и справочник API без CDN, облачные функции Scalar отключены |
-| Компрометация контейнера | non-root, read-only корневая ФС, `cap_drop: ALL`, `no-new-privileges`, лимиты pids/памяти, отключён диагностический IPC .NET, минимальный Alpine-образ |
+| Компрометация контейнера | non-root, read-only корневая ФС, `cap_drop: ALL`, `no-new-privileges`, лимиты pids/памяти/CPU, `noexec` tmpfs, отключён диагностический IPC .NET, distroless-образ без shell и пакетного менеджера |
 | Откат версии с порчей данных | старт на БД новее образа запрещён |
+| Подмена образа в реестре / цепочке поставки | подпись cosign (keyless, Sigstore), SBOM и provenance SLSA в реестре, базовые образы закреплены по digest, Dependabot |
 
 ## Криптография
 
@@ -31,23 +32,66 @@
 | Пароли | ASP.NET Core Identity v3: PBKDF2-HMAC-SHA512, 100 000 итераций, соль 128 бит |
 | TLS | 1.2 / 1.3 (Kestrel или nginx) |
 
+## Образ контейнера
+
+| Требование | Реализация |
+|---|---|
+| Минимальная поверхность атаки | `mcr.microsoft.com/dotnet/aspnet:10.0-azurelinux3.0-distroless`: только рантайм .NET и glibc — нет shell, пакетного менеджера, curl/wget |
+| Воспроизводимость | базовые образы сборки и выполнения закреплены по `sha256`-digest; Dependabot предлагает обновления, каждое проходит CI |
+| Непривилегированный запуск | `USER 1654:1654` в образе и `user: "1654:1654"` в compose; файлы приложения принадлежат root и доступны только на чтение (`0755`), каталог данных — только владельцу (`0700`) |
+| Неизменяемая ФС | `read_only: true`, запись только в том `/app/data` и tmpfs `/tmp` (`noexec,nosuid,nodev`, 64 МБ) |
+| Минимум прав ядра | `cap_drop: [ALL]`, `security_opt: no-new-privileges:true` |
+| Ограничение ресурсов | `pids_limit`, `mem_limit`, `cpus`; ротация логов json-file (5 × 20 МБ) |
+| Проверка состояния без shell | `HEALTHCHECK` вызывает сам сервис: `dotnet /app/TslAuth.dll healthcheck` |
+| Отключённая диагностика | `DOTNET_EnableDiagnostics=0` — нет IPC-канала отладчика/профилировщика |
+| Балансировщик (кластер) | nginx `read_only`, tmpfs для кэша и pid, `cap_drop: ALL` + только `CHOWN`, `SETGID`, `SETUID`, `no-new-privileges` |
+
+Почему distroless Azure Linux: при выборе базового образа Trivy показал
+
+| Базовый образ | Уязвимостей ОС (все уровни) |
+|---|---|
+| `aspnet:10.0-noble-chiseled` (Ubuntu) | 7 (MEDIUM, без исправлений) |
+| `aspnet:10.0-alpine` | 0, но есть shell и `apk` |
+| **`aspnet:10.0-azurelinux3.0-distroless`** | **0**, нет shell и пакетного менеджера |
+
 ## Результаты сканирования
 
-Проверки выполняются в CI при каждой сборке ([ci.yml](../.github/workflows/ci.yml)); публикация образа блокируется при находках CRITICAL/HIGH.
+Проверки выполняются в CI при каждой сборке ([ci.yml](../.github/workflows/ci.yml)); публикация образа блокируется при находках
+CRITICAL/HIGH в Trivy и предупреждениях Dockle. Полный отчёт Trivy (SARIF) загружается во вкладку **Security → Code scanning** репозитория.
 
 | Проверка | Инструмент | Результат |
 |---|---|---|
-| Уязвимости ОС образа (Alpine 3.24) | Trivy | **0** |
+| Уязвимости ОС образа (Azure Linux 3.0 distroless) | Trivy | **0** |
 | Уязвимости .NET-зависимостей и рантайма | Trivy, `dotnet list package --vulnerable` | **0** |
 | Секреты в образе и репозитории | Trivy secret | **0** |
 | Ошибки конфигурации Dockerfile / compose | Trivy misconfig | **0** |
+| Лучшие практики образа (CIS Docker Benchmark) | Dockle | **0** предупреждений |
 
 Запуск локально:
 
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image tsl-auth:latest
 docker run --rm -v "$PWD:/src:ro" aquasec/trivy fs --scanners secret,misconfig /src
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock goodwithtech/dockle tsl-auth:latest
 dotnet list src/TslAuth package --vulnerable --include-transitive
+```
+
+## Проверка подлинности образа
+
+Образы в GHCR и Docker Hub подписываются в CI через cosign без ключей (OIDC-идентичность GitHub Actions, журнал прозрачности Rekor).
+Перед развёртыванием (и перед переносом в закрытый контур) проверьте подпись:
+
+```bash
+cosign verify ghcr.io/akprof2000/tsl-auth:latest \
+  --certificate-identity-regexp 'https://github.com/akprof2000/tsl-auth/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Вместе с образом публикуются SBOM (SPDX) и provenance (SLSA, `mode=max`):
+
+```bash
+docker buildx imagetools inspect ghcr.io/akprof2000/tsl-auth:latest --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/akprof2000/tsl-auth:latest --format '{{ json .Provenance }}'
 ```
 
 ## Рекомендации по эксплуатации
@@ -57,4 +101,5 @@ dotnet list src/TslAuth package --vulnerable --include-transitive
 * Держите access-токены короткими (5–15 мин); для чувствительных API используйте introspection.
 * Выдавайте администраторам минимальные роли (`auditor` для просмотра), ботам — только `notifier` / `reset-bot`.
 * Настройте вебхук или бота на `security.alert` — блокировки, сбросы через бота, отказы в доступе.
-* Регулярно обновляйте образ (CI пересобирает его с актуальными пакетами Alpine и .NET).
+* Регулярно обновляйте образ: Dependabot еженедельно предлагает новые digest базовых образов и пакеты NuGet.
+* Проверяйте подпись cosign и используйте теги версий или digest, а не `latest`.

@@ -1,0 +1,22 @@
+# Автоматические обновления зависимостей: пакеты NuGet, базовые образы Docker (закреплены по digest),
+# GitHub Actions и зависимости демо-приложений. Каждое обновление проходит CI (тесты + Trivy + Dockle).
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      dotnet: { patterns: ["Microsoft.*", "System.*"] }
+      openiddict: { patterns: ["OpenIddict.*"] }
+
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+
+  - package-ecosystem: gomod
+    directory: /samples/go-api
+    schedule: { interval: monthly }

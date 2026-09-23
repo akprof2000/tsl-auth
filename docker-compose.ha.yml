@@ -4,13 +4,20 @@
 # Точка входа: http://localhost:8080 ; экземпляры напрямую: 8081, 8082, 8083.
 # Вместо встроенного postgres можно указать внешний: DB_CONNECTION_STRING и убрать сервис postgres.
 
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
 x-auth: &auth
+  user: "1654:1654"
   read_only: true
-  tmpfs: ["/tmp:size=64m,mode=1777"]
+  tmpfs: ["/tmp:size=64m,mode=1777,noexec,nosuid,nodev"]
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
   pids_limit: 256
   mem_limit: 512m
+  cpus: 2
+  logging: *logging
   image: tsl-auth:latest
   build: .
   restart: unless-stopped
@@ -40,6 +47,8 @@ services:
     image: postgres:17-alpine
     container_name: tsl-auth-postgres
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
     environment:
       POSTGRES_USER: tsl_auth
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tsl_auth_dev}"
@@ -74,6 +83,12 @@ services:
     image: nginx:1.29-alpine
     container_name: tsl-auth-lb
     restart: unless-stopped
+    read_only: true
+    tmpfs: ["/var/cache/nginx:size=32m", "/var/run:size=1m", "/tmp:size=16m"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]    # рабочие процессы nginx переключаются на пользователя nginx
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
     depends_on: [auth1, auth2, auth3]
     ports:
       - "${AUTH_PORT:-8080}:8080"

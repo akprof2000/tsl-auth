@@ -4,12 +4,17 @@
 # HTTPS прямо в контейнере:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
 
 x-hardening: &hardening
+  user: "1654:1654"                   # непривилегированный числовой UID (как в образе)
   read_only: true                     # корневая ФС только для чтения
-  tmpfs: ["/tmp:size=64m,mode=1777"]
+  tmpfs: ["/tmp:size=64m,mode=1777,noexec,nosuid,nodev"]
   cap_drop: [ALL]                     # никаких Linux capabilities
   security_opt: ["no-new-privileges:true"]
   pids_limit: 256
   mem_limit: 512m
+  cpus: 2
+  logging:                            # ротация логов: переполнение диска логами — вектор отказа в обслуживании
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
 
 services:
   auth:

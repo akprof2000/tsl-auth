@@ -70,14 +70,26 @@ jobs:
           exit-code: "1"
           skip-dirs: tests/artifacts
 
+  docs:
+    name: Документация (Mermaid, ссылки, якоря, таблицы)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Все диаграммы проверяются тем же парсером Mermaid, что и на GitHub; битая ссылка или якорь — ошибка сборки.
+      - name: Проверка README.md и docs/*.md
+        shell: pwsh
+        run: ./scripts/validate-docs.ps1
+
   docker:
     name: Образ → сканирование → публикация
-    needs: [build-test, security-scan]
+    needs: [build-test, security-scan, docs]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      id-token: write          # keyless-подпись cosign через OIDC GitHub (Sigstore)
+      security-events: write   # отчёт Trivy во вкладку Security → Code scanning
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
@@ -107,8 +119,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Полный отчёт (все уровни) — во вкладку Security репозитория, чтобы видеть и MEDIUM/LOW.
+      - name: Trivy — полный отчёт (SARIF)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          scanners: vuln,secret,misconfig
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Отчёт Trivy → GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
       # Публикация блокируется, если в образе есть уязвимости CRITICAL/HIGH с доступным исправлением.
-      - name: Trivy — уязвимости образа
+      - name: Trivy — уязвимости образа (блокирующая проверка)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}:scan
@@ -116,6 +144,12 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+
+      # CIS-правила для образов (пользователь, секреты в слоях, setuid-файлы, HEALTHCHECK и т.д.).
+      - name: Dockle — соответствие CIS Docker Benchmark
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock goodwithtech/dockle:latest \
+            --exit-code 1 --exit-level warn ${{ env.IMAGE_NAME }}:scan
 
       - name: Вход в GHCR
         uses: docker/login-action@v4
@@ -132,6 +166,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Публикация
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -139,5 +174,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          provenance: true
-          sbom: true
+          provenance: mode=max   # SLSA provenance: как, где и из какого коммита собран образ
+          sbom: true             # перечень компонентов (SPDX) прикладывается к образу
+
+      - uses: sigstore/cosign-installer@v4
+
+      # Keyless-подпись (Sigstore): подпись привязана к этому репозиторию и workflow, ключей хранить не нужно.
+      # Проверка перед запуском — см. docs/security.md («Проверка подписи образа»).
+      - name: Подпись образов (cosign)
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          for tag in $TAGS; do
+            cosign sign --yes "${tag%%:*}@${DIGEST}"
+          done

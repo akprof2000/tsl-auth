@@ -97,10 +97,28 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      # Имя пользователя Docker Hub без случайных пробелов/переводов строк (иначе имя образа некорректно).
-      - name: Имя в Docker Hub
+      # Вход в Docker Hub — до формирования тегов: если вход не удался, образ публикуется только в GHCR
+      # (с предупреждением), а не валит всю сборку. Пробелы и переводы строк, случайно попавшие в секреты
+      # при вставке, обрезаются. Значения секретов в лог не выводятся — только признаки типичных ошибок.
+      - name: Вход в Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        run: echo "DOCKERHUB_USERNAME=$(printf '%s' "$DOCKERHUB_USERNAME" | tr -d '[:space:]')" >> "$GITHUB_ENV"
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          user="$(printf '%s' "$DH_USER" | tr -d '[:space:]')"
+          token="$(printf '%s' "$DH_TOKEN" | tr -d '[:space:]')"
+          if printf '%s' "$token" | docker login docker.io -u "$user" --password-stdin; then
+            echo "DOCKERHUB_USERNAME=$user" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          hint=""
+          printf '%s' "$user"  | LC_ALL=C grep -q '[^ -~]' && hint="$hint DOCKERHUB_USERNAME содержит не-ASCII символы (кириллица? другая раскладка?)."
+          printf '%s' "$token" | LC_ALL=C grep -q '[^ -~]' && hint="$hint DOCKERHUB_TOKEN содержит не-ASCII символы."
+          case "$token" in dckr_pat_*|dckr_oat_*) ;; *) hint="$hint DOCKERHUB_TOKEN не похож на токен Docker Hub (ожидается dckr_pat_...).";; esac
+          [ -z "$token" ] && hint="$hint DOCKERHUB_TOKEN пуст."
+          echo "::warning title=Docker Hub::Вход не удался, образ публикуется только в GHCR.${hint:- Проверьте логин и токен (Account settings → Personal access tokens, права Read & Write).}"
+          echo "DOCKERHUB_USERNAME=" >> "$GITHUB_ENV"
 
       - name: Теги образа
         id: meta
@@ -162,17 +180,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Пробелы и переводы строк, случайно попавшие в секреты при вставке, ломают заголовок Authorization
-      # ("malformed HTTP Authorization header") — обрезаем их; токен передаётся через stdin, в лог не попадает.
-      - name: Вход в Docker Hub
-        if: env.DOCKERHUB_USERNAME != ''
-        env:
-          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          user="$(printf '%s' "$DH_USER" | tr -d '[:space:]')"
-          printf '%s' "$DH_TOKEN" | tr -d '[:space:]' | docker login docker.io -u "$user" --password-stdin
 
       - name: Публикация
         id: push

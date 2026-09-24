@@ -430,6 +430,27 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         }
     }
 
+    // ---------- Регистрация без взаимной блокировки на SQLite (регрессия M13) ----------
+
+    [Fact]
+    public async Task SelfRegistration_WithRequest_CompletesQuickly()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var (api, client) = await AppsAsync(admin);
+        await admin.PutJsonAsync($"/api/admin/applications/{client}", new
+        {
+            clientId = client, clientType = "public", grantTypes = new[] { "password", "refresh_token" },
+            scopes = new[] { "profile", api }, selfRegistration = true
+        });
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        using (var scope = fx.Factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AccessRequestService>().RegisterAsync(client,
+                new RegistrationInput(TestApi.Unique("reg"), null, null, Password, [new RoleRef(api, "reader")], "быстро"));
+        // Регистрация публикует события в отдельном соединении БД; внутри общей транзакции на SQLite это ждало
+        // снятия блокировки записи ~30 с (UI-тест упирался в таймаут).
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"Регистрация заняла {watch.Elapsed.TotalSeconds:F1} с");
+    }
+
     // ---------- Кабинет с временным паролем (M3) ----------
 
     [Fact]

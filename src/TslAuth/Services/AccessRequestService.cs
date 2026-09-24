@@ -111,19 +111,23 @@ public sealed class AccessRequestService(
         // Роли проверяем до создания учётной записи, чтобы не оставлять «полу-зарегистрированных» пользователей.
         await ResolveRequestableAsync(clientId, input.Roles, ct);
 
-        // Учётная запись, отметка владельца и заявки — одной транзакцией: без «полу-зарегистрированных»
-        // пользователей (учётка есть, заявок нет), если что-то упало посередине.
-        UserDto user;
-        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        // Без «полу-зарегистрированных» пользователей (учётка есть, заявок нет): роли проверены выше, а если заявки
+        // всё же не создались — только что созданная учётная запись удаляется (компенсация). Общая транзакция здесь
+        // не годится: создание пользователя и заявок публикует события в отдельном соединении БД, и на SQLite
+        // (одна блокировка записи на файл) эта запись ждала бы окончания транзакции — взаимная блокировка на 30 с.
+        var user = await users.CreateAsync(new UserInput(input.UserName, input.Email, input.DisplayName, true, input.Password), ct);
+        try
         {
-            user = await users.CreateAsync(new UserInput(input.UserName, input.Email, input.DisplayName, true, input.Password), ct);
             // Запоминаем приложение-«владельца»: AppSelfService разрешает ему управлять такими пользователями.
-            var entity = await db.Users.FirstAsync(u => u.Id == user.Id, ct);
-            entity.CreatedByClientId = clientId;
-            await db.SaveChangesAsync(ct);
+            await db.Users.Where(u => u.Id == user.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, clientId), ct);
             if (input.Roles is { Count: > 0 })
                 await CreateAsync(user.Id, clientId, input.Roles, input.Comment, ct);
-            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await users.DeleteAsync(user.Id, CancellationToken.None);
+            throw;
         }
 
         await webhooks.PublishAsync(WebhookEvents.UserRegistered,

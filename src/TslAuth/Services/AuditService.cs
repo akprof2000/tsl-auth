@@ -111,8 +111,14 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
     /// Регистрирует событие. Info — в очередь (пишется пачкой в течение ~200 мс), Warning/Critical — сразу в БД и в ленту событий.
     /// Актор, IP и User-Agent по умолчанию берутся из текущего HTTP-запроса.
     /// </summary>
+    /// <param name="required">
+    /// Запись обязательна (Warning/Critical): ошибка БД пробрасывается, а не глотается. Для записей, на которых
+    /// держится лимит (сбросы пароля через бота): не записали — действие не выполняется.
+    /// </param>
+    /// <param name="alert">Публиковать ли security.alert (false — вызывающий код публикует своё, более подробное событие).</param>
     public async Task WriteAsync(string type, bool success = true, AuditSeverity severity = AuditSeverity.Info,
-        string? clientId = null, Guid? subjectUserId = null, object? details = null, string? actor = null, string? actorName = null)
+        string? clientId = null, Guid? subjectUserId = null, object? details = null, string? actor = null, string? actorName = null,
+        bool required = false, bool alert = true)
     {
         // Контекст запроса снимаем здесь, синхронно: к моменту фоновой записи HttpContext уже недоступен.
         var ctx = http.HttpContext;
@@ -146,7 +152,7 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
             db.AuditEntries.Add(entry);
             await db.SaveChangesAsync();
 
-            if (severity >= AuditSeverity.Warning)
+            if (severity >= AuditSeverity.Warning && alert)
             {
                 var text = $"⚠️ [{severity}] {type}: {entry.ActorName ?? entry.Actor}" +
                            (clientId is null ? "" : $", приложение {clientId}") + (entry.Ip is null ? "" : $", IP {entry.Ip}");
@@ -154,7 +160,7 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
                     new { auditId = entry.Id, type, severity = severity.ToString(), entry.Actor, clientId, subjectUserId, entry.Ip });
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!required)
         {
             // Аудит не должен ронять основную операцию, но пропуск записи — повод для алерта в логах.
             logger.LogError(ex, "Не удалось записать событие аудита {Type} ({Actor}).", type, entry.Actor);
@@ -169,8 +175,10 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var query = db.AuditEntries.AsNoTracking().AsQueryable();
-        if (q.From is { } from) query = query.Where(e => e.OccurredAt >= from);
-        if (q.To is { } to) query = query.Where(e => e.OccurredAt <= to);
+        // Время из query-строки API приходит без зоны (Kind=Unspecified): PostgreSQL (timestamptz) такое отвергает,
+        // SQLite молча сравнивает строки. Нормализуем в UTC здесь, в одной точке для Admin API, App API и страниц.
+        if (q.From is { } from) { var f = AsUtc(from); query = query.Where(e => e.OccurredAt >= f); }
+        if (q.To is { } to) { var t = AsUtc(to); query = query.Where(e => e.OccurredAt <= t); }
         if (!string.IsNullOrWhiteSpace(q.Type)) query = query.Where(e => e.Type.StartsWith(q.Type));
         if (q.MinSeverity is { } sev) query = query.Where(e => e.Severity >= sev);
         if (!string.IsNullOrWhiteSpace(q.ClientId)) query = query.Where(e => e.ClientId == q.ClientId);
@@ -241,4 +249,12 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
         var name = user.Identity?.Name ?? user.GetClaim(Claims.PreferredUsername);
         return ($"user:{id}", name);
     }
+
+    /// <summary>Время без зоны считается UTC (так документирован API), локальное переводится в UTC.</summary>
+    internal static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
 }

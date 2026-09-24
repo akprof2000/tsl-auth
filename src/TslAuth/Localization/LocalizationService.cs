@@ -15,7 +15,7 @@ public sealed record LanguageInfo(string Culture, string Name, bool BuiltIn, boo
 /// Кэш 30 секунд — изменения, сделанные на одном экземпляре, подхватываются всеми.
 /// Singleton; строки для текущего запроса отдаёт <see cref="Texts"/>, управление пакетами — админка и Admin API.
 /// </summary>
-public sealed class LocalizationService(IServiceScopeFactory scopes)
+public sealed class LocalizationService(IServiceScopeFactory scopes, ILogger<LocalizationService> logger)
 {
     public const string DefaultCulture = "ru";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
@@ -93,9 +93,10 @@ public sealed class LocalizationService(IServiceScopeFactory scopes)
     /// </summary>
     public async Task SavePackAsync(string culture, string name, string json, bool enabled, string updatedBy, CancellationToken ct = default)
     {
-        culture = culture.Trim();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(culture, "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"))
-            throw new AdminException("Код языка: например ru, en, kk, uz-Latn.");
+        culture = Canonical(culture);
+        // 20 символов — длина первичного ключа в БД (на PostgreSQL длиннее просто не сохранится).
+        if (culture.Length > 20 || !System.Text.RegularExpressions.Regex.IsMatch(culture, "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"))
+            throw new AdminException("Код языка: например ru, en, kk, uz-Latn (до 20 символов).");
         Dictionary<string, string> strings;
         try
         {
@@ -111,7 +112,12 @@ public sealed class LocalizationService(IServiceScopeFactory scopes)
 
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        var pack = await db.LanguagePacks.FirstOrDefaultAsync(p => p.Culture == culture, ct);
+        // Сравнение без учёта регистра в памяти (пакетов единицы): в БД старых версий могли остаться «RU» и «ru» —
+        // оставляем одну запись с каноническим кодом, остальные удаляем.
+        var existing = (await db.LanguagePacks.ToListAsync(ct))
+            .Where(p => string.Equals(p.Culture, culture, StringComparison.OrdinalIgnoreCase)).ToList();
+        var pack = existing.FirstOrDefault(p => p.Culture == culture);
+        db.LanguagePacks.RemoveRange(existing.Where(p => p != pack));
         if (pack is null) db.LanguagePacks.Add(pack = new LanguagePack { Culture = culture, Name = "", Json = "" });
         pack.Name = string.IsNullOrWhiteSpace(name) ? strings.GetValueOrDefault("_name", culture) : name.Trim();
         pack.Json = JsonSerializer.Serialize(strings, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
@@ -128,9 +134,28 @@ public sealed class LocalizationService(IServiceScopeFactory scopes)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
-        if (await db.LanguagePacks.Where(p => p.Culture == culture).ExecuteDeleteAsync(ct) == 0)
-            throw AdminException.NotFound("Языковой пакет");
+        // Без учёта регистра: удаляются и варианты «RU»/«ru», оставшиеся от старых версий.
+        var matches = (await db.LanguagePacks.ToListAsync(ct))
+            .Where(p => string.Equals(p.Culture, culture.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count == 0) throw AdminException.NotFound("Языковой пакет");
+        db.LanguagePacks.RemoveRange(matches);
+        await db.SaveChangesAsync(ct);
         _loadedAt = DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// Канонический вид кода языка (BCP 47): язык — строчными, регион — прописными, письменность — с заглавной
+    /// (ru, en-US, uz-Latn). Без CultureInfo: образ работает в invariant-режиме глобализации.
+    /// </summary>
+    public static string Canonical(string culture)
+    {
+        var parts = culture.Trim().Split('-');
+        for (var i = 0; i < parts.Length; i++)
+            parts[i] = i == 0 ? parts[i].ToLowerInvariant()
+                : parts[i].Length == 2 ? parts[i].ToUpperInvariant()
+                : parts[i].Length == 4 ? char.ToUpperInvariant(parts[i][0]) + parts[i][1..].ToLowerInvariant()
+                : parts[i].ToLowerInvariant();
+        return string.Join('-', parts);
     }
 
     // Цепочка фолбэка культур: точная → родительская → язык по умолчанию.
@@ -151,10 +176,32 @@ public sealed class LocalizationService(IServiceScopeFactory scopes)
         try
         {
             if (DateTime.UtcNow - _loadedAt < CacheTtl) return;
-            using var scope = scopes.CreateScope();
-            var packs = await scope.ServiceProvider.GetRequiredService<AuthDbContext>().LanguagePacks.AsNoTracking().ToListAsync();
-            _db = packs.ToDictionary(p => p.Culture,
-                p => (p, JsonSerializer.Deserialize<Dictionary<string, string>>(p.Json) ?? []), StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var packs = await scope.ServiceProvider.GetRequiredService<AuthDbContext>().LanguagePacks.AsNoTracking().ToListAsync();
+                // Дубликаты кода, различающиеся регистром (данные старых версий), не должны ронять загрузку:
+                // берём последний изменённый пакет. Пакет с битым JSON пропускается, остальные работают.
+                var loaded = new Dictionary<string, (LanguagePack, Dictionary<string, string>)>(StringComparer.OrdinalIgnoreCase);
+                foreach (var pack in packs.OrderBy(p => p.UpdatedAt))
+                {
+                    try
+                    {
+                        loaded[pack.Culture] = (pack, JsonSerializer.Deserialize<Dictionary<string, string>>(pack.Json) ?? []);
+                    }
+                    catch (JsonException ex)
+                    {
+                        logger.LogWarning(ex, "Языковой пакет {Culture} в БД повреждён и пропущен.", pack.Culture);
+                    }
+                }
+                _db = loaded;
+            }
+            catch (Exception ex)
+            {
+                // Кэш загружается на каждом запросе (LanguageMiddleware): сбой БД или данных не должен превращать
+                // в 500 все страницы — работаем на прежнем кэше и встроенных пакетах, повтор через CacheTtl.
+                logger.LogError(ex, "Не удалось загрузить языковые пакеты из БД — используется прежний кэш.");
+            }
             _loadedAt = DateTime.UtcNow;
         }
         finally

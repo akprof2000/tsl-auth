@@ -239,7 +239,7 @@ public static class StartupInitializer
             if (permissions.Except(existing.Permissions).Any())
                 await access.SetRolePermissionsAsync(SystemApp.ClientId, role, existing.Permissions.Union(permissions), ct);
             if (existing.DisplayName is null)
-                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct);
+                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct, system: true);
         }
 
         // 2. Первый администратор — только если в системе ещё нет ни одного.

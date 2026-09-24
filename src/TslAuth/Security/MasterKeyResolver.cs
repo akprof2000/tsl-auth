@@ -33,11 +33,27 @@ public static class MasterKeyResolver
         if (File.Exists(path))
             return Decode(File.ReadAllText(path), path);
 
+        // Новый ключ — только для новой БД. Если файл БД уже есть, а ключа нет (не примонтирован том, ключ удалён),
+        // новый ключ сделал бы все зашифрованные поля и ключи подписи нечитаемыми — и перезаписал бы путь к ключу.
+        if (SqliteDatabaseExists(database, contentRoot))
+            throw new InvalidOperationException(
+                $"Файл мастер-ключа '{path}' не найден, а база данных уже существует. Без исходного ключа её данные " +
+                "не расшифровать: верните master.key (том с данными) или задайте Encryption__MasterKey. Новый ключ не создаётся.");
+
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var key = RandomNumberGenerator.GetBytes(32);
         File.WriteAllText(path, Convert.ToBase64String(key));
         logger.LogWarning("Сгенерирован новый мастер-ключ шифрования: {Path}. Сохраните его резервную копию — без него данные не расшифровать.", path);
         return key;
+    }
+
+    // Файл SQLite уже существует и не пуст (у новой установки его ещё нет — StartupInitializer создаст его позже).
+    private static bool SqliteDatabaseExists(DatabaseOptions database, string contentRoot)
+    {
+        var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(database.ConnectionString ?? "");
+        if (string.IsNullOrEmpty(builder.DataSource) || builder.DataSource == ":memory:") return false;
+        var file = new FileInfo(Path.GetFullPath(builder.DataSource, contentRoot));
+        return file.Exists && file.Length > 0;
     }
 
     // Каталог файла SQLite из строки подключения (относительные пути — от content root).

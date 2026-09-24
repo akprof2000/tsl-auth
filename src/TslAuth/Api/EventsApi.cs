@@ -1,6 +1,7 @@
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Abstractions;
 using TslAuth.Infrastructure;
@@ -84,9 +85,12 @@ public static class EventsApi
             await EnsureOwnerAsync(me, id, s, auth, ct);
             return await s.ListDeliveriesAsync(id, 100, ct);
         });
-        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, CancellationToken ct) =>
+        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, IAuthorizationService auth, CancellationToken ct) =>
         {
-            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct);
+            // Бот проверяет свои подписки и не должен слать тестовые события в чужие; администратор — во все.
+            var admin = (await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded;
+            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct,
+                onlyCreatedBy: admin ? null : Caller(me));
             return Results.Accepted();
         });
     }
@@ -119,13 +123,16 @@ public static class EventsApi
             if (batch.Count == 0 && ++idle % 15 == 0)
             {
                 // Пульс раз в ~15 с: держит соединение через прокси и позволяет боту заметить обрыв.
-                yield return new SseItem<EventDto>(new EventDto(cursor, "ping", DateTime.UtcNow, "", default), "ping");
+                // Data — пустой объект: default(JsonElement) не сериализуется и обрывал поток на первом же пульсе.
+                yield return new SseItem<EventDto>(new EventDto(cursor, "ping", DateTime.UtcNow, "", EmptyData), "ping");
             }
 
             try { await Task.Delay(TimeSpan.FromSeconds(1), ct); }
             catch (OperationCanceledException) { yield break; }
         }
     }
+
+    private static readonly JsonElement EmptyData = JsonDocument.Parse("{}").RootElement.Clone();
 
     private static IReadOnlyCollection<string>? ParseTypes(string? types) =>
         string.IsNullOrWhiteSpace(types) ? null : types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

@@ -46,7 +46,7 @@ public sealed class DemoDataSeeder(IServiceScopeFactory scopes, TslAuthClient au
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DocflowDb>();
         if (await db.Documents.AnyAsync(ct)) return;
-        var users = (await auth.UsersAsync(force: true, ct)).Where(u => u.IsActive).ToList();
+        var users = (await auth.UsersAsync(force: true, ct)).Where(u => !u.KnownInactive).ToList();
         var authors = users.Where(u => u.Roles.Any(r => r is "employee" or "reviewer" or "approver")).ToList();
         var reviewer = users.FirstOrDefault(u => u.Roles.Contains("reviewer"));
         var approver = users.FirstOrDefault(u => u.Roles.Contains("approver"));

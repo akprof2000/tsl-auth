@@ -38,10 +38,18 @@ public sealed record CurrentUser(Guid Id, string UserName, string DisplayName, I
     }
 }
 
-public sealed record DirectoryUser(Guid Id, string UserName, string? Email, string? DisplayName, bool IsActive, bool HasPassword,
-    bool MustChangePassword, bool CreatedByThisApp, List<string> Roles)
+/// <remarks>
+/// Для пользователей, которых приложение не создавало само (привязаны через /users/link), TSL Auth скрывает
+/// email, isActive, hasPassword и mustChangePassword (null/false) — поэтому поля nullable, а «неактивным»
+/// считается только явный isActive=false у своих пользователей.
+/// </remarks>
+public sealed record DirectoryUser(Guid Id, string UserName, string? Email, string? DisplayName, bool? IsActive, bool? HasPassword,
+    bool? MustChangePassword, bool CreatedByThisApp, List<string> Roles)
 {
     public string Display => string.IsNullOrWhiteSpace(DisplayName) ? UserName : DisplayName;
+
+    /// <summary>Заблокирован — только если это достоверно известно (свой пользователь с isActive=false).</summary>
+    public bool KnownInactive => CreatedByThisApp && IsActive == false;
 }
 
 /// <summary>
@@ -110,8 +118,15 @@ public sealed class TslAuthClient(IHttpClientFactory http, AuthOptions options, 
         if (!force && DateTime.UtcNow - _usersLoaded < TimeSpan.FromSeconds(30)) return _users;
         try
         {
-            var json = await CallAsync(HttpMethod.Get, "/users", ct: ct);
-            _users = json.Deserialize<List<DirectoryUser>>(Json) ?? [];
+            // Список постраничный (take ≤ 500): для демо одной страницы хватает, но читаем до конца.
+            var all = new List<DirectoryUser>();
+            for (var skip = 0; ; skip += 500)
+            {
+                var page = (await CallAsync(HttpMethod.Get, $"/users?skip={skip}&take=500", ct: ct)).Deserialize<List<DirectoryUser>>(Json) ?? [];
+                all.AddRange(page);
+                if (page.Count < 500) break;
+            }
+            _users = all;
             _usersLoaded = DateTime.UtcNow;
         }
         catch (Exception ex) when (ex is TslAuthException or HttpRequestException)

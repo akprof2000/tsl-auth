@@ -16,7 +16,7 @@ public static class Users
     {
         // Справочник для выбора исполнителей маршрута — доступен всем, кто работает с документами.
         app.MapGet("/api/directory", async (TslAuthClient auth, CancellationToken ct) =>
-            (await auth.UsersAsync(ct: ct)).Where(u => u.IsActive).Select(u => new { u.Id, u.UserName, name = u.Display, u.Roles }))
+            (await auth.UsersAsync(ct: ct)).Where(u => !u.KnownInactive).Select(u => new { u.Id, u.UserName, name = u.Display, u.Roles }))
             .RequireAuthorization("documents.view");
 
         // Роли приложения с названиями для людей (из матрицы TSL Auth, только чтение).

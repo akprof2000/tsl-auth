@@ -213,21 +213,27 @@ public static class StartupInitializer
         }
 
         // Роли системного приложения. Для существующих установок недостающие разрешения
-        // добавляются к ролям при обновлении (например, "events" появилось в новой версии).
-        foreach (var (role, description, permissions) in new[]
+        // добавляются к ролям при обновлении (например, "events" появилось в новой версии),
+        // а пустое название для пользователей заполняется (изменённое администратором не трогается).
+        foreach (var (role, displayName, description, permissions) in new[]
                  {
-                     (SystemApp.AdministratorRole, "Полный доступ к администрированию",
+                     (SystemApp.AdministratorRole, "Администратор", "Полный доступ к администрированию",
                          new[] { SystemApp.ViewPermission, SystemApp.ManagePermission, SystemApp.EventsPermission }),
-                     (SystemApp.AuditorRole, "Только просмотр", new[] { SystemApp.ViewPermission }),
-                     (SystemApp.NotifierRole, "Бот-уведомитель: только события", new[] { SystemApp.EventsPermission }),
-                     (SystemApp.ResetBotRole, "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission })
+                     (SystemApp.AuditorRole, "Аудитор", "Только просмотр", new[] { SystemApp.ViewPermission }),
+                     (SystemApp.NotifierRole, "Бот уведомлений", "Бот-уведомитель: только события", new[] { SystemApp.EventsPermission }),
+                     (SystemApp.ResetBotRole, "Бот сброса пароля", "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission })
                  })
         {
             var existing = matrix.Roles.FirstOrDefault(r => r.Name == role);
             if (existing is null)
-                await access.AddRoleAsync(SystemApp.ClientId, role, description, permissions, ct);
-            else if (permissions.Except(existing.Permissions).Any())
+            {
+                await access.AddRoleAsync(SystemApp.ClientId, role, description, permissions, ct, displayName: displayName);
+                continue;
+            }
+            if (permissions.Except(existing.Permissions).Any())
                 await access.SetRolePermissionsAsync(SystemApp.ClientId, role, existing.Permissions.Union(permissions), ct);
+            if (existing.DisplayName is null)
+                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct);
         }
 
         // 2. Первый администратор — только если в системе ещё нет ни одного.

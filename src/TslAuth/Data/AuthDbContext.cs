@@ -92,6 +92,7 @@ public abstract class AuthDbContext(DbContextOptions options)
             e.ToTable("AccessRoles");
             e.Property(r => r.ClientId).HasMaxLength(100);
             e.Property(r => r.Name).HasMaxLength(100);
+            e.Property(r => r.DisplayName).HasMaxLength(200);
             e.Property(r => r.Description).HasMaxLength(500);
             e.HasIndex(r => new { r.ClientId, r.Name }).IsUnique();
         });

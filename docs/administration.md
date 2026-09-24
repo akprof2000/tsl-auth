@@ -42,7 +42,17 @@ flowchart LR
 ```
 
 1. Добавьте **разрешения** — действия в приложении (`orders.read`).
-2. Добавьте **роли** — наборы разрешений (`operator`).
+2. Добавьте **роли** — наборы разрешений. У роли два имени:
+
+   | | Техническое имя | Название для пользователей |
+   |---|---|---|
+   | Пример | `orders-operator` | «Оператор заказов» |
+   | Формат | строчные латинские буквы, цифры, `-` `_` `.`, без пробелов, начинается с буквы | любой текст на языке установки, до 200 символов |
+   | Уникальность | уникально в приложении | может повторяться |
+   | Где видно | админка, API, токены (`role` = `orders-api:orders-operator`) | регистрация, «Запросить доступ», заявки, письма |
+   | Изменение | нельзя (на него ссылаются токены и код приложений) | «изменить название» в строке роли |
+
+   Если название не задано, пользователю показывается техническое имя.
 3. Отметьте ячейки и нажмите «Сохранить матрицу».
 4. «Разрешить запрос» — роль можно запросить при регистрации или в «Запросить доступ».
 
@@ -123,6 +133,13 @@ TOKEN=$(curl -s -X POST https://auth.corp/connect/token -d grant_type=client_cre
 curl -H "Authorization: Bearer $TOKEN" https://auth.corp/api/admin/users?search=ivan
 curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   https://auth.corp/api/admin/users/<id>/roles -d '[{"clientId":"orders-api","role":"operator"}]'
+
+# роль: техническое имя + название для пользователей; затем смена названия
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  https://auth.corp/api/admin/applications/orders-api/roles \
+  -d '{"name":"orders-operator","displayName":"Оператор заказов","permissions":["orders.read"],"requestable":true}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  https://auth.corp/api/admin/applications/orders-api/roles/orders-operator -d '{"displayName":"Оператор отдела заказов"}'
 ```
 
 Полный перечень — `/docs/api`. Готовый пример массовой настройки — `samples/seed-demo.ps1`.

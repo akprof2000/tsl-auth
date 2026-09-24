@@ -34,7 +34,7 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
     public bool IsNew => string.IsNullOrEmpty(ClientId);
     public bool IsSystem { get; private set; }
     public List<string> AvailableScopes { get; private set; } = [];
-    public List<RoleRef> AllRoles { get; private set; } = [];
+    public List<RoleOption> AllRoles { get; private set; } = [];
 
     /// <summary>Секрет показывается один раз — сразу после создания/перевыпуска.</summary>
     public string? Secret => TempData["Secret"] as string;
@@ -136,7 +136,7 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
         // Scope App API управляется флагом «Самоуправление», а не вручную.
         AvailableScopes = (await apps.ListAvailableScopesAsync(ct)).Where(s => s != SystemApp.AppApiScope).ToList();
         AllRoles = db.AccessRoles.OrderBy(r => r.ClientId).ThenBy(r => r.Name)
-            .Select(r => new RoleRef(r.ClientId, r.Name)).ToList();
+            .Select(r => new RoleOption(r.ClientId, r.Name, r.DisplayName)).ToList();
         if (!IsNew) IsSystem = (await apps.GetAsync(ClientId!, ct))?.IsSystem == true;
     }
 

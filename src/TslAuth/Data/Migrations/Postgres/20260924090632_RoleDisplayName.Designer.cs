@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using TslAuth.Data;
@@ -11,9 +12,11 @@ using TslAuth.Data;
 namespace TslAuth.Data.Migrations.Postgres
 {
     [DbContext(typeof(PostgresAuthDbContext))]
-    partial class PostgresAuthDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924090632_RoleDisplayName")]
+    partial class RoleDisplayName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

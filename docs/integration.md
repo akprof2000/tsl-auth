@@ -185,7 +185,7 @@ flowchart LR
 | Выдать свою роль существующему | `POST /api/app/users/link` `{"login":"ivan","roles":["support"]}` |
 | Сменить роли (только свои) | `PUT /api/app/users/{id}/roles` `["support"]` |
 | Удалить / отвязать | `DELETE /api/app/users/{id}` — удаляет, только если создан этим приложением и не имеет чужих ролей |
-| Роли и матрица | `POST /api/app/roles`, `PUT /api/app/matrix` |
+| Роли и матрица | `POST /api/app/roles` `{"name":"support","displayName":"Служба поддержки"}`, `PUT /api/app/roles/{name}` (название), `PUT /api/app/matrix` |
 | Заявки | `GET /api/app/access-requests`, `POST .../{id}/approve` |
 | Журнал | `GET /api/app/audit` |
 | Оформление входа | `PUT /api/app/branding` |

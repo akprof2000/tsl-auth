@@ -4,7 +4,10 @@ using TslAuth.Data;
 
 namespace TslAuth.Services;
 
-/// <summary>Заявка на роль в «плоском» виде для API и страниц (Status — строка в нижнем регистре: pending/approved/rejected).</summary>
+/// <summary>
+/// Заявка на роль в «плоском» виде для API и страниц (Status — строка в нижнем регистре: pending/approved/rejected).
+/// <c>Role</c> — техническое имя роли, <c>RoleDisplayName</c> — название для пользователей (null — не задано).
+/// </summary>
 public sealed record AccessRequestDto(
     Guid Id,
     Guid UserId,
@@ -17,12 +20,24 @@ public sealed record AccessRequestDto(
     DateTime CreatedAt,
     DateTime? DecidedAt,
     string? DecidedBy,
-    string? DecisionComment);
+    string? DecisionComment,
+    string? RoleDisplayName = null)
+{
+    /// <summary>Как роль называется для пользователя: название, а если оно не задано — техническое имя.</summary>
+    public string RoleTitle => RoleDisplayName ?? Role;
 
-/// <summary>Роль, которую можно запросить: <see cref="ClientId"/> — приложение, которому она принадлежит.</summary>
-public sealed record RequestableRole(string ClientId, string Name, string? Description)
+    /// <summary>Для администраторов и ботов: «Название (техническое-имя)».</summary>
+    public string RoleLabel => RoleDisplayName is null ? Role : $"{RoleDisplayName} ({Role})";
+}
+
+/// <summary>
+/// Роль, которую можно запросить: <see cref="ClientId"/> — приложение, которому она принадлежит;
+/// пользователю показывается <see cref="Title"/> (название на языке установки), в форме передаётся <see cref="Key"/>.
+/// </summary>
+public sealed record RequestableRole(string ClientId, string Name, string? Description, string? DisplayName = null)
 {
     public string Key => $"{ClientId}|{Name}";
+    public string Title => DisplayName ?? Name;
 }
 
 /// <summary>Данные формы самостоятельной регистрации (страница Account/Register): учётная запись + запрашиваемые роли.</summary>
@@ -70,7 +85,7 @@ public sealed class AccessRequestService(
         var apps = await RelatedAppsAsync(clientId, ct);
         return await db.AccessRoles.AsNoTracking().Where(r => apps.Contains(r.ClientId) && r.IsRequestable)
             .OrderBy(r => r.ClientId).ThenBy(r => r.Name)
-            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description)).ToListAsync(ct);
+            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description, r.DisplayName)).ToListAsync(ct);
     }
 
     /// <summary>Самостоятельная регистрация пользователя в приложении и (опционально) создание заявок на роли.</summary>
@@ -126,7 +141,7 @@ public sealed class AccessRequestService(
         var result = await QueryAsync(db.AccessRequests.Where(r => created.Contains(r.Id)), ct);
         foreach (var r in result)
             await webhooks.PublishAsync(WebhookEvents.AccessRequestCreated,
-                $"📝 {r.UserName} запрашивает роль «{r.Role}» в приложении {r.ClientId}." + (r.Comment is null ? "" : $" Комментарий: {r.Comment}"),
+                $"📝 {r.UserName} запрашивает роль «{r.RoleLabel}» в приложении {r.ClientId}." + (r.Comment is null ? "" : $" Комментарий: {r.Comment}"),
                 r, ct);
         return result;
     }
@@ -169,7 +184,7 @@ public sealed class AccessRequestService(
 
         var dto = (await QueryAsync(db.AccessRequests.Where(r => r.Id == id), ct)).Single();
         await webhooks.PublishAsync(approve ? WebhookEvents.AccessRequestApproved : WebhookEvents.AccessRequestRejected,
-            $"{(approve ? "✅" : "⛔")} Заявка {dto.UserName} на роль «{dto.Role}» в {dto.ClientId} {(approve ? "одобрена" : "отклонена")} ({decidedBy}).",
+            $"{(approve ? "✅" : "⛔")} Заявка {dto.UserName} на роль «{dto.RoleLabel}» в {dto.ClientId} {(approve ? "одобрена" : "отклонена")} ({decidedBy}).",
             dto, ct);
         await NotifyAsync(dto, ct);
         return dto;
@@ -192,7 +207,7 @@ public sealed class AccessRequestService(
     private async Task<List<AccessRequestDto>> QueryAsync(IQueryable<AccessRequest> query, CancellationToken ct)
     {
         var rows = await query.AsNoTracking().OrderByDescending(r => r.CreatedAt)
-            .Select(r => new { r, r.Role.ClientId, RoleName = r.Role.Name }).Take(1000).ToListAsync(ct);
+            .Select(r => new { r, r.Role.ClientId, RoleName = r.Role.Name, RoleDisplayName = r.Role.DisplayName }).Take(1000).ToListAsync(ct);
         // Имена/email подтягиваем отдельным запросом: у AccessRequest нет навигации на пользователя.
         var userIds = rows.Select(x => x.r.UserId).Distinct().ToList();
         var people = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id))
@@ -200,7 +215,7 @@ public sealed class AccessRequestService(
 
         return rows.Select(x => new AccessRequestDto(x.r.Id, x.r.UserId, people.GetValueOrDefault(x.r.UserId)?.UserName,
             people.GetValueOrDefault(x.r.UserId)?.Email, x.ClientId, x.RoleName, x.r.Status.ToString().ToLowerInvariant(),
-            x.r.Comment, x.r.CreatedAt, x.r.DecidedAt, x.r.DecidedBy, x.r.DecisionComment)).ToList();
+            x.r.Comment, x.r.CreatedAt, x.r.DecidedAt, x.r.DecidedBy, x.r.DecisionComment, x.RoleDisplayName)).ToList();
     }
 
     private async Task NotifyAsync(AccessRequestDto request, CancellationToken ct)
@@ -210,7 +225,7 @@ public sealed class AccessRequestService(
         try
         {
             await email.SendAsync(request.Email, $"Заявка на доступ {decision}", $"""
-                <p>Ваша заявка на роль <b>{WebUtility.HtmlEncode(request.Role)}</b> в приложении
+                <p>Ваша заявка на роль <b>{WebUtility.HtmlEncode(request.RoleTitle)}</b> в приложении
                    <b>{WebUtility.HtmlEncode(request.ClientId)}</b> {decision}.</p>
                 {(request.DecisionComment is null ? "" : $"<p>Комментарий: {WebUtility.HtmlEncode(request.DecisionComment)}</p>")}
                 """, ct);

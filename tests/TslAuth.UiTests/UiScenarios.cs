@@ -92,8 +92,11 @@ public sealed class UiScenarios(UiFixture fx)
         await page.ClickAsync("text=Матрица доступа →");
         await page.FillAsync("form[action*=AddPermission] input[name=Name]", "docs.read");
         await page.ClickAsync("form[action*=AddPermission] button");
+        // Роль: техническое имя (в токенах) + название для пользователей.
         await page.FillAsync("form[action*=AddRole] input[name=Name]", "reader");
+        await page.FillAsync("form[action*=AddRole] input[name=DisplayName]", "Читатель документов");
         await page.ClickAsync("form[action*=AddRole] button");
+        await Expect(page.Locator("table.matrix")).ToContainTextAsync("Читатель документов");
         await page.CheckAsync("input[value='reader|docs.read']");
         await page.ClickAsync("button[form=matrix]");
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync("Матрица сохранена");
@@ -101,6 +104,7 @@ public sealed class UiScenarios(UiFixture fx)
 
         var matrix = await fx.Admin.GetFromJsonAsync<JsonElement>($"/api/admin/applications/{clientId}/matrix");
         Assert.Equal("docs.read", matrix.GetProperty("roles")[0].GetProperty("permissions")[0].GetString());
+        Assert.Equal("Читатель документов", matrix.GetProperty("roles")[0].GetProperty("displayName").GetString());
     }
 
     [Fact]

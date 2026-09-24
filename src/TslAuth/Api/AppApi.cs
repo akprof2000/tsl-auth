@@ -64,7 +64,9 @@ public static class AppApi
             return Results.NoContent();
         });
         api.MapPost("/roles", (ClaimsPrincipal me, RoleInput input, AccessService s, CancellationToken ct) =>
-            s.AddRoleAsync(Client(me), input.Name, input.Description, input.Permissions, ct, input.Requestable));
+            s.AddRoleAsync(Client(me), input.Name, input.Description, input.Permissions, ct, input.Requestable, input.DisplayName));
+        api.MapPut("/roles/{name}", (ClaimsPrincipal me, string name, RoleUpdateInput input, AccessService s, CancellationToken ct) =>
+            s.UpdateRoleAsync(Client(me), name, input.DisplayName, input.Description, ct));
         api.MapPut("/roles/{name}/requestable", async (ClaimsPrincipal me, string name, bool value, AccessService s, CancellationToken ct) =>
         {
             await s.SetRoleRequestableAsync(Client(me), name, value, ct);

@@ -8,7 +8,15 @@ namespace TslAuth.Api;
 
 // DTO входных данных REST API (используются также в AppApi).
 public sealed record PermissionInput(string Name, string? Description);
-public sealed record RoleInput(string Name, string? Description, List<string>? Permissions, bool Requestable = false);
+/// <summary>
+/// Новая роль: <c>Name</c> — техническое имя (строчные латинские, без пробелов, уникально в приложении; попадает в токены),
+/// <c>DisplayName</c> — название для пользователей на языке установки (может содержать пробелы и повторяться).
+/// </summary>
+public sealed record RoleInput(string Name, string? Description, List<string>? Permissions, bool Requestable = false,
+    string? DisplayName = null);
+
+/// <summary>Изменение роли: название для пользователей и описание (техническое имя не меняется).</summary>
+public sealed record RoleUpdateInput(string? DisplayName, string? Description);
 public sealed record DecisionInput(string? Comment);
 public sealed record LanguagePackInput(string? Name, Dictionary<string, string> Strings, bool IsEnabled = true);
 public sealed record PasswordInput(string Password, bool MustChangePassword = false);
@@ -138,8 +146,12 @@ public static class AdminApi
             CancellationToken ct) =>
         {
             await EnsureAppAsync(a, clientId, ct);
-            return Results.Ok(await s.AddRoleAsync(clientId, input.Name, input.Description, input.Permissions, ct, input.Requestable));
+            return Results.Ok(await s.AddRoleAsync(clientId, input.Name, input.Description, input.Permissions, ct, input.Requestable,
+                input.DisplayName));
         }).RequireAuthorization(AdminPolicies.ApiManage);
+        apps.MapPut("/{clientId}/roles/{name}", (string clientId, string name, RoleUpdateInput input, AccessService s,
+            CancellationToken ct) => s.UpdateRoleAsync(clientId, name, input.DisplayName, input.Description, ct))
+            .RequireAuthorization(AdminPolicies.ApiManage);
         apps.MapPut("/{clientId}/roles/{name}/permissions", async (string clientId, string name, List<string> permissions,
             AccessService s, CancellationToken ct) =>
         {

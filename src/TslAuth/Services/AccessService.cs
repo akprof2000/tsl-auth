@@ -6,8 +6,12 @@ namespace TslAuth.Services;
 /// <summary>Разрешение приложения (атомарное право, например <c>orders.read</c>).</summary>
 public sealed record PermissionDto(string Name, string? Description);
 
-/// <summary>Роль приложения со списком входящих в неё разрешений; <c>IsRequestable</c> — роль можно запросить через заявку.</summary>
-public sealed record RoleDto(string Name, string? Description, List<string> Permissions, bool IsRequestable = false);
+/// <summary>
+/// Роль приложения со списком входящих в неё разрешений; <c>IsRequestable</c> — роль можно запросить через заявку.
+/// <c>Name</c> — техническое имя (в токенах и API), <c>DisplayName</c> — название для пользователей.
+/// </summary>
+public sealed record RoleDto(string Name, string? Description, List<string> Permissions, bool IsRequestable = false,
+    string? DisplayName = null);
 
 /// <summary>Матрица «роль × разрешение» одного приложения (страница Admin/Apps/Matrix и Admin API).</summary>
 public sealed record MatrixDto(string ClientId, List<PermissionDto> Permissions, List<RoleDto> Roles);
@@ -32,7 +36,7 @@ public sealed class AccessService(AuthDbContext db)
         var roles = await db.AccessRoles.AsNoTracking()
             .Where(r => r.ClientId == clientId).OrderBy(r => r.Name)
             .Select(r => new RoleDto(r.Name, r.Description,
-                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable))
+                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable, r.DisplayName))
             .ToListAsync(ct);
 
         return new MatrixDto(clientId, permissions, roles);
@@ -58,14 +62,22 @@ public sealed class AccessService(AuthDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Создаёт роль. <paramref name="name"/> — техническое имя (строчные латинские, без пробелов, уникально в приложении),
+    /// <paramref name="displayName"/> — название для пользователей на языке установки (может повторяться).
+    /// </summary>
     public async Task<RoleDto> AddRoleAsync(string clientId, string name, string? description,
-        IEnumerable<string>? permissions = null, CancellationToken ct = default, bool requestable = false)
+        IEnumerable<string>? permissions = null, CancellationToken ct = default, bool requestable = false, string? displayName = null)
     {
-        name = Names.Validate(name, "Имя роли");
+        name = Names.ValidateRole(name);
+        displayName = Names.DisplayName(displayName);
         if (await db.AccessRoles.AnyAsync(r => r.ClientId == clientId && r.Name == name, ct))
-            throw AdminException.Conflict($"Роль '{name}' уже существует.");
+            throw AdminException.Conflict($"Роль '{name}' уже существует в этом приложении.");
 
-        db.AccessRoles.Add(new AccessRole { ClientId = clientId, Name = name, Description = description, IsRequestable = requestable });
+        db.AccessRoles.Add(new AccessRole
+        {
+            ClientId = clientId, Name = name, DisplayName = displayName, Description = description, IsRequestable = requestable
+        });
         await db.SaveChangesAsync(ct);
 
         if (permissions is not null)
@@ -81,6 +93,21 @@ public sealed class AccessService(AuthDbContext db)
         GuardSystem(clientId);
         db.AccessRoles.Remove(role);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Меняет название роли для пользователей и описание. Техническое имя не меняется: на него ссылаются
+    /// выданные токены и код приложений.
+    /// </summary>
+    public async Task<RoleDto> UpdateRoleAsync(string clientId, string name, string? displayName, string? description,
+        CancellationToken ct = default)
+    {
+        displayName = Names.DisplayName(displayName);
+        description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == name)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.DisplayName, displayName).SetProperty(r => r.Description, description), ct);
+        if (affected == 0) throw AdminException.NotFound($"Роль '{name}'");
+        return (await GetMatrixAsync(clientId, ct)).Roles.First(r => r.Name == name);
     }
 
     /// <summary>Помечает роль как доступную (или недоступную) для запроса через заявку.</summary>

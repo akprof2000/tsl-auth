@@ -92,7 +92,19 @@ public sealed class AccessRole
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string ClientId { get; set; }
+
+    /// <summary>
+    /// Техническое имя: строчные латинские буквы, цифры, «-», «_», «.»; уникально в приложении.
+    /// Попадает в токены (claims role/permissions) и API, видно администраторам.
+    /// </summary>
     public required string Name { get; set; }
+
+    /// <summary>
+    /// Отображаемое название на языке установки («Оператор склада»): видят пользователи при регистрации,
+    /// в заявках и уведомлениях. Может содержать пробелы и повторяться; пусто — показывается Name.
+    /// </summary>
+    public string? DisplayName { get; set; }
+
     public string? Description { get; set; }
 
     /// <summary>Роль можно запросить при самостоятельной регистрации / через «Запросить доступ».</summary>

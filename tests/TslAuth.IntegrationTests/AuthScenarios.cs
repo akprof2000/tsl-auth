@@ -494,6 +494,66 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Contains(roles.EnumerateArray(), r => r.GetProperty("role").GetString() == "reader");
     }
 
+    // ---------- Роли: техническое имя и название для пользователей ----------
+
+    [Fact]
+    public async Task Role_TechnicalNameForTokens_DisplayNameForUsers()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var (api, client) = await CreateAppsAsync(admin, selfRegistration: true);
+
+        // Техническое имя: только строчные латинские без пробелов; название — любой текст.
+        foreach (var bad in new[] { "Manager", "orders manager", "менеджер", "app:role" })
+        {
+            var rejected = await admin.PostAsJsonAsync($"/api/admin/applications/{api}/roles", new { name = bad, displayName = "Роль" });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+        var role = await admin.PostJsonAsync($"/api/admin/applications/{api}/roles",
+            new { name = "orders-manager", displayName = "Менеджер по заказам", permissions = new[] { "read" }, requestable = true });
+        Assert.Equal("orders-manager", role.GetProperty("name").GetString());
+        Assert.Equal("Менеджер по заказам", role.GetProperty("displayName").GetString());
+
+        // Техническое имя уникально в приложении, а название может повторяться.
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsJsonAsync($"/api/admin/applications/{api}/roles",
+            new { name = "orders-manager", displayName = "Другое" })).StatusCode);
+        await admin.PostJsonAsync($"/api/admin/applications/{api}/roles", new { name = "orders-manager-2", displayName = "Менеджер по заказам" });
+
+        // Название меняется, техническое имя — нет.
+        var updated = await admin.PutJsonAsync($"/api/admin/applications/{api}/roles/orders-manager",
+            new { displayName = "Менеджер заказов", description = "Ведёт заказы" });
+        Assert.Equal("orders-manager", updated.GetProperty("name").GetString());
+        Assert.Equal("Менеджер заказов", updated.GetProperty("displayName").GetString());
+
+        // Страница регистрации показывает пользователю название, техническое имя уходит только значением чекбокса.
+        var returnUrl = Uri.EscapeDataString($"/connect/authorize?client_id={client}&response_type=code");
+        var page = await fx.Factory.CreateClient().GetStringAsync($"/Account/Register?returnUrl={returnUrl}");
+        Assert.Contains("<b>Менеджер заказов</b>", page);
+        Assert.Contains($"value=\"{api}|orders-manager\"", page);
+        Assert.DoesNotContain("<b>orders-manager</b>", page);
+
+        // Заявка: у администратора и бота — оба имени; после одобрения в токене — техническое имя.
+        Guid userId;
+        var userName = TestApi.Unique("reg");
+        using (var scope = fx.Factory.Services.CreateScope())
+            userId = await scope.ServiceProvider.GetRequiredService<AccessRequestService>().RegisterAsync(client,
+                new RegistrationInput(userName, null, null, Password, [new RoleRef(api, "orders-manager")], null));
+        var pending = (await admin.GetJsonAsync($"/api/admin/access-requests?status=pending&clientId={api}"))[0];
+        Assert.Equal("orders-manager", pending.GetProperty("role").GetString());
+        Assert.Equal("Менеджер заказов", pending.GetProperty("roleDisplayName").GetString());
+        await admin.PostJsonAsync($"/api/admin/access-requests/{pending.GetProperty("id").GetGuid()}/approve", new { comment = "ok" });
+
+        var claims = TestApi.Claims((await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, userName))
+            .GetProperty("access_token").GetString()!);
+        Assert.Contains($"{api}:orders-manager", claims.Strings("role"));
+        Assert.DoesNotContain(claims.Strings("role"), r => r.Contains("Менеджер"));
+        Assert.NotEqual(Guid.Empty, userId);
+
+        // Системные роли получили названия для пользователей.
+        var system = await admin.GetJsonAsync($"/api/admin/applications/{SystemApp.ClientId}/matrix");
+        var administrator = system.GetProperty("roles").EnumerateArray().Single(r => r.GetProperty("name").GetString() == SystemApp.AdministratorRole);
+        Assert.Equal("Администратор", administrator.GetProperty("displayName").GetString());
+    }
+
     // ---------- Хранение ----------
 
     [Fact]

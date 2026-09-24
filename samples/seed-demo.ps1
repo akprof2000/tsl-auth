@@ -31,8 +31,12 @@ function Matrix($clientId, $perms, $roles) {
     $m = Api GET "/applications/$clientId/matrix"
     foreach ($p in $perms) { if (-not ($m.permissions.name -contains $p)) { Api POST "/applications/$clientId/permissions" @{ name = $p } | Out-Null } }
     foreach ($r in $roles.Keys) {
-        if (-not ($m.roles.name -contains $r)) { Api POST "/applications/$clientId/roles" @{ name = $r; permissions = $roles[$r].perms; requestable = $roles[$r].requestable } | Out-Null }
-        else { Api PUT "/applications/$clientId/roles/$r/permissions" $roles[$r].perms | Out-Null }
+        # name — техническое имя (в токенах), title — название для пользователей (регистрация, заявки).
+        if (-not ($m.roles.name -contains $r)) { Api POST "/applications/$clientId/roles" @{ name = $r; displayName = $roles[$r].title; permissions = $roles[$r].perms; requestable = $roles[$r].requestable } | Out-Null }
+        else {
+            Api PUT "/applications/$clientId/roles/$r/permissions" $roles[$r].perms | Out-Null
+            Api PUT "/applications/$clientId/roles/$r" @{ displayName = $roles[$r].title } | Out-Null
+        }
     }
 }
 
@@ -40,8 +44,8 @@ function Matrix($clientId, $perms, $roles) {
 $goSecret = Upsert-App @{ clientId = "demo-go-api"; displayName = "Демо Go API"; clientType = "confidential";
     grantTypes = @("token_exchange"); scopes = @("demo-node-api") }
 Upsert-App @{ clientId = "demo-node-api"; displayName = "Демо Node API"; clientType = "public"; grantTypes = @() } | Out-Null
-Matrix "demo-go-api" @("reports.view", "reports.export") @{ analyst = @{ perms = @("reports.view"); requestable = $true }; manager = @{ perms = @("reports.view", "reports.export"); requestable = $false } }
-Matrix "demo-node-api" @("orders.read", "orders.write") @{ viewer = @{ perms = @("orders.read"); requestable = $true }; operator = @{ perms = @("orders.read", "orders.write"); requestable = $false } }
+Matrix "demo-go-api" @("reports.view", "reports.export") @{ analyst = @{ title = "Аналитик"; perms = @("reports.view"); requestable = $true }; manager = @{ title = "Руководитель отдела"; perms = @("reports.view", "reports.export"); requestable = $false } }
+Matrix "demo-node-api" @("orders.read", "orders.write") @{ viewer = @{ title = "Просмотр заказов"; perms = @("orders.read"); requestable = $true }; operator = @{ title = "Оператор заказов"; perms = @("orders.read", "orders.write"); requestable = $false } }
 
 # --- Клиенты с разными типами фронта ---
 $dotnetSecret = Upsert-App @{ clientId = "demo-dotnet"; displayName = "Демо .NET MVC"; clientType = "confidential";
@@ -52,8 +56,8 @@ Upsert-App @{ clientId = "demo-node-spa"; displayName = "Демо SPA (Node)"; c
     redirectUris = @("http://localhost:5102/callback"); postLogoutRedirectUris = @("http://localhost:5102/"); selfRegistration = $true } | Out-Null
 $pySecret = Upsert-App @{ clientId = "demo-python"; displayName = "Демо Python"; clientType = "confidential";
     grantTypes = @("password", "refresh_token"); scopes = @("profile"); selfManagement = $true }
-Matrix "demo-python" @("tickets.read", "tickets.close") @{ support = @{ perms = @("tickets.read", "tickets.close"); requestable = $true } }
-Matrix "demo-dotnet" @("dashboard.view") @{ user = @{ perms = @("dashboard.view"); requestable = $true } }
+Matrix "demo-python" @("tickets.read", "tickets.close") @{ support = @{ title = "Служба поддержки"; perms = @("tickets.read", "tickets.close"); requestable = $true } }
+Matrix "demo-dotnet" @("dashboard.view") @{ user = @{ title = "Сотрудник"; perms = @("dashboard.view"); requestable = $true } }
 
 # --- Оформление страницы входа у SPA ---
 Api PUT "/applications/demo-node-spa/branding" @{ title = "Портал заказов"; welcomeText = "Вход для сотрудников отдела продаж";

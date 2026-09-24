@@ -455,6 +455,10 @@ namespace TslAuth.Data.Migrations.Sqlite
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsRequestable")
                         .HasColumnType("INTEGER");
 

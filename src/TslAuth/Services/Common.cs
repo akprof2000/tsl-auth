@@ -71,6 +71,37 @@ public static partial class Names
             throw new AdminException($"{what}: допустимы латинские буквы, цифры и символы . _ : - (до 100 символов).");
         return value;
     }
+
+    // Техническое имя роли: без пробелов и заглавных букв, начинается с буквы. Без «:» — это разделитель
+    // приложения и роли в claims ("app:role") и в ссылках на роль.
+    [GeneratedRegex("^[a-z][a-z0-9._-]{0,99}$")]
+    private static partial Regex RolePattern();
+
+    /// <summary>Проверяет техническое имя роли (уникальность в приложении проверяет вызывающий код).</summary>
+    public static string ValidateRole(string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrEmpty(value) || !RolePattern().IsMatch(value))
+            throw new AdminException("Техническое имя роли: строчные латинские буквы, цифры и символы . _ - без пробелов, " +
+                                     "начинается с буквы (до 100 символов), например orders-manager. " +
+                                     "Название для пользователей задаётся отдельно (displayName).");
+        return value;
+    }
+
+    /// <summary>Отображаемое название: любой текст до 200 символов; пустое — null (показывается техническое имя).</summary>
+    public static string? DisplayName(string? value)
+    {
+        value = value?.Trim();
+        if (string.IsNullOrEmpty(value)) return null;
+        if (value.Length > 200) throw new AdminException("Название роли: не более 200 символов.");
+        return value;
+    }
+}
+
+/// <summary>Роль для выбора в админке: ссылка на роль и её название для пользователей (если задано).</summary>
+public sealed record RoleOption(string ClientId, string Role, string? DisplayName)
+{
+    public RoleRef Ref => new(ClientId, Role);
 }
 
 /// <summary>Ссылка на роль конкретного приложения; строковая форма — "client_id:role".</summary>

@@ -36,9 +36,15 @@
         </form>
         <form method="post" asp-page-handler="AddRole" asp-route-clientId="@Model.ClientId" class="card">
             <h2 style="margin-top:0">Новая роль</h2>
-            <input name="Name" placeholder="manager" required />
+            <label>Техническое имя</label>
+            <input name="Name" placeholder="orders-manager" required pattern="[a-z][a-z0-9._\-]{0,99}" autocapitalize="off" spellcheck="false"
+                   title="Строчные латинские буквы, цифры и . _ - без пробелов, начинается с буквы" />
+            <div class="small muted">Для администраторов и токенов (<code>@Model.ClientId:orders-manager</code>): строчные латинские, без пробелов, уникально в приложении.</div>
+            <label>Название для пользователей</label>
+            <input name="DisplayName" placeholder="Менеджер по заказам" maxlength="200" />
+            <div class="small muted">Видно при регистрации и в заявках; может содержать пробелы и повторяться.</div>
             <label>Описание</label>
-            <input name="Description" placeholder="Менеджер по заказам" />
+            <input name="Description" placeholder="Ведёт заказы клиентов" />
             <div class="actions"><button type="submit">Добавить роль</button></div>
         </form>
     </div>
@@ -67,7 +73,8 @@ else
             {
                 <tr>
                     <td>
-                        <b>@r.Name</b>
+                        <b>@(r.DisplayName ?? r.Name)</b>
+                        @if (r.DisplayName is not null) { <code class="small">@r.Name</code> }
                         @if (r.IsRequestable) { <span class="badge ok" title="Пользователь может запросить роль при регистрации">запрашиваемая</span> }
                         @if (r.Description is not null) { <div class="small muted">@r.Description</div> }
                         @if (Model.CanManage && !system)
@@ -77,6 +84,15 @@ else
                                 <input type="hidden" name="value" value="@((!r.IsRequestable).ToString())" />
                                 <button class="link small" type="submit">@(r.IsRequestable ? "запретить запрос" : "разрешить запрос")</button>
                             </form>
+                            <details class="small">
+                                <summary>изменить название</summary>
+                                <form method="post" asp-page-handler="UpdateRole" asp-route-clientId="@Model.ClientId">
+                                    <input type="hidden" name="Name" value="@r.Name" />
+                                    <input name="DisplayName" value="@r.DisplayName" placeholder="Название для пользователей" maxlength="200" />
+                                    <input name="Description" value="@r.Description" placeholder="Описание" />
+                                    <button type="submit">Сохранить</button>
+                                </form>
+                            </details>
                         }
                     </td>
                     @foreach (var p in Model.Matrix.Permissions)

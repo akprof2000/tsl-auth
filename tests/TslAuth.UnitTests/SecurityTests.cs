@@ -89,6 +89,47 @@ public sealed class NamesTests
     public void TooLong() => Assert.Throws<AdminException>(() => Names.Validate(new string('a', 101), "x"));
 }
 
+/// <summary>
+/// Роль: техническое имя (строчные латинские, без пробелов, для токенов и администраторов)
+/// и название для пользователей (любой текст).
+/// </summary>
+public sealed class RoleNameTests
+{
+    [Theory]
+    [InlineData("reader")]
+    [InlineData("orders-manager")]
+    [InlineData("reset-bot")]
+    [InlineData("level_2")]
+    [InlineData("sales.head")]
+    [InlineData("  support  ")]
+    public void TechnicalName_Valid(string name) => Assert.Equal(name.Trim(), Names.ValidateRole(name));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Manager")]          // заглавные
+    [InlineData("orders manager")]   // пробел
+    [InlineData("менеджер")]         // не латиница
+    [InlineData("2nd-line")]         // начинается не с буквы
+    [InlineData("-dash")]
+    [InlineData("app:role")]         // «:» — разделитель в claims
+    [InlineData("a|b")]
+    public void TechnicalName_Invalid(string name) => Assert.Throws<AdminException>(() => Names.ValidateRole(name));
+
+    [Fact]
+    public void TechnicalName_TooLong() => Assert.Throws<AdminException>(() => Names.ValidateRole(new string('a', 101)));
+
+    [Theory]
+    [InlineData("Менеджер по заказам", "Менеджер по заказам")]
+    [InlineData("  Оператор склада  ", "Оператор склада")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void DisplayName_AnyTextOrNull(string? input, string? expected) => Assert.Equal(expected, Names.DisplayName(input));
+
+    [Fact]
+    public void DisplayName_TooLong() => Assert.Throws<AdminException>(() => Names.DisplayName(new string('я', 201)));
+}
+
 /// <summary>Генератор временных паролей: длина, все классы символов, уникальность.</summary>
 public sealed class PasswordGeneratorTests
 {

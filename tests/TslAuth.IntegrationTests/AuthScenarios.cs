@@ -187,8 +187,10 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         var http = fx.Factory.CreateClient();
         for (var i = 0; i < 5; i++) await PasswordGrantAsync(http, client, api, user, "wrong", expectSuccess: false);
 
+        // Даже верный пароль не принимается; текст ошибки тот же, что для неверного пароля (не раскрывает существование).
         var locked = await PasswordGrantAsync(http, client, api, user, expectSuccess: false);
-        Assert.Contains("заблокирована", locked.GetProperty("error_description").GetString());
+        Assert.Equal("invalid_grant", locked.GetProperty("error").GetString());
+        Assert.False(locked.TryGetProperty("access_token", out _));
 
         var audit = await admin.GetJsonAsync($"/api/admin/audit?userId={userId}&type=auth.");
         Assert.Contains(audit.EnumerateArray(), e => e.GetProperty("type").GetString() == AuditTypes.LockedOut);
@@ -205,7 +207,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
         var result = await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, user, temp, expectSuccess: false);
         Assert.Equal("invalid_grant", result.GetProperty("error").GetString());
-        Assert.Contains("временный", result.GetProperty("error_description").GetString());
+        Assert.False(result.TryGetProperty("access_token", out _));
     }
 
     // ---------- Token exchange ----------
@@ -440,6 +442,84 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Contains("/Account/ResetPassword?uid=", reset.GetProperty("resetLink").GetString());
     }
 
+    [Fact]
+    public async Task Bot_LockAndForcePasswordChange()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var (api, client) = await CreateAppsAsync(admin);
+        var (officerId, officer) = await CreateUserAsync(admin, api, "reader");
+        var (victimId, victim) = await CreateUserAsync(admin, api, "reader");
+        var (bystanderId, bystander) = await CreateUserAsync(admin, api, "reader");
+
+        // Бот безопасности: все три разрешения. Бот только со сбросом пароля в /lock не попадает.
+        var bot = TestApi.Unique("secbot");
+        var created = await admin.PostJsonAsync("/api/admin/applications", new
+        {
+            clientId = bot, clientType = "confidential", grantTypes = new[] { "client_credentials" }, scopes = new[] { SystemApp.ClientId }
+        });
+        await admin.PutJsonAsync($"/api/admin/applications/{bot}/service-roles", new[] { new { clientId = SystemApp.ClientId, role = SystemApp.ResetBotRole } });
+        var secret = created.GetProperty("clientSecret").GetString()!;
+        async Task<HttpClient> BotHttpAsync()
+        {
+            var token = await fx.Factory.CreateClient().TokenAsync(new()
+            {
+                ["grant_type"] = "client_credentials", ["client_id"] = bot, ["client_secret"] = secret, ["scope"] = SystemApp.ClientId
+            });
+            return fx.Factory.CreateClient().WithBearer(token.GetProperty("access_token").GetString()!);
+        }
+        var botHttp = await BotHttpAsync();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1" })).StatusCode);
+        await admin.PutJsonAsync($"/api/admin/applications/{bot}/service-roles", new[] { new { clientId = SystemApp.ClientId, role = SystemApp.SecurityBotRole } });
+
+        // Привязываем офицера и обычного пользователя.
+        using (var scope = fx.Factory.Services.CreateScope())
+        {
+            var s = scope.ServiceProvider.GetRequiredService<BotService>();
+            var (c1, _) = await s.CreateLinkCodeAsync(officerId);
+            await botHttp.PostJsonAsync("/api/bot/link", new { provider = "chat", externalId = "o-1", code = c1 });
+            var (c2, _) = await s.CreateLinkCodeAsync(bystanderId);
+            await botHttp.PostJsonAsync("/api/bot/link", new { provider = "chat", externalId = "b-1", code = c2 });
+        }
+
+        // Без роли security-officer чужую учётку заблокировать нельзя.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1", target = victim })).StatusCode);
+        await admin.PutJsonAsync($"/api/admin/users/{officerId}/roles",
+            new[] { new { clientId = api, role = "reader" }, new { clientId = SystemApp.ClientId, role = SystemApp.SecurityOfficerRole } });
+
+        // Офицер блокирует: пользователь перестаёт входить, refresh отзывается.
+        var victimTokens = await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim);
+        var locked = await botHttp.PostJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.True(locked.GetProperty("changed").GetBoolean());
+        Assert.False(locked.GetProperty("self").GetBoolean());
+        Assert.False((await admin.GetJsonAsync($"/api/admin/users/{victimId}")).GetProperty("isActive").GetBoolean());
+        await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim, expectSuccess: false);
+        await RefreshAsync(fx.Factory.CreateClient(), client, victimTokens.GetProperty("refresh_token").GetString()!, expectSuccess: false);
+
+        // Себя разблокировать нельзя даже офицеру; чужого — можно.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/unlock", new { provider = "chat", externalId = "o-1" })).StatusCode);
+        var unlocked = await botHttp.PostJsonAsync("/api/bot/unlock", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.True(unlocked.GetProperty("changed").GetBoolean());
+        await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim);
+
+        // Принудительная смена пароля: флаг выставлен, вход по паролю через password grant запрещён до смены.
+        var forced = await botHttp.PostJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.Equal(victim, forced.GetProperty("userName").GetString());
+        Assert.True((await admin.GetJsonAsync($"/api/admin/users/{victimId}")).GetProperty("mustChangePassword").GetBoolean());
+
+        // Обычный пользователь: только над собой. Самоблокировка — сценарий «телефон украли».
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "b-1", target = officer })).StatusCode);
+        var selfLock = await botHttp.PostJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "b-1" });
+        Assert.True(selfLock.GetProperty("self").GetBoolean());
+        Assert.Equal(bystander, selfLock.GetProperty("userName").GetString());
+        // Заблокированный отправитель больше ничего не может.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "b-1" })).StatusCode);
+    }
+
     // ---------- События ----------
 
     [Fact]
@@ -447,8 +527,8 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
     {
         var admin = await fx.Factory.AdminAsync();
         var start = (await admin.GetJsonAsync("/api/admin/events?after=0&limit=500")).GetProperty("next").GetInt64();
+        // Задержка не нужна: опрос идёт от курсора start, событие вернётся, даже если создано раньше начала ожидания.
         var pending = admin.GetJsonAsync($"/api/admin/events?after={start}&wait=15&types=user.created");
-        await Task.Delay(300);
         await admin.PostJsonAsync("/api/admin/users", new { userName = TestApi.Unique("evt"), password = Password });
 
         var result = await pending;
@@ -481,7 +561,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
             // Запросить можно только роль, помеченную как «запрашиваемая».
             var ex = await Assert.ThrowsAsync<AdminException>(() => requests.RegisterAsync(api,
                 new RegistrationInput(TestApi.Unique("x"), null, null, Password, [new RoleRef(api, "writer")], null)));
-            Assert.Contains("нельзя запросить", ex.Message);
+            Assert.Equal("error.rolesNotRequestable", ex.Key);
             userId = await requests.RegisterAsync(api, new RegistrationInput(TestApi.Unique("reg"), null, null, Password, [new RoleRef(api, "reader")], "нужен доступ"));
         }
 
@@ -492,6 +572,66 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         await admin.PostJsonAsync($"/api/admin/access-requests/{pending[0].GetProperty("id").GetGuid()}/approve", new { comment = "ok" });
         var roles = await admin.GetJsonAsync($"/api/admin/users/{userId}/roles");
         Assert.Contains(roles.EnumerateArray(), r => r.GetProperty("role").GetString() == "reader");
+    }
+
+    // ---------- Роли: техническое имя и название для пользователей ----------
+
+    [Fact]
+    public async Task Role_TechnicalNameForTokens_DisplayNameForUsers()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var (api, client) = await CreateAppsAsync(admin, selfRegistration: true);
+
+        // Техническое имя: только строчные латинские без пробелов; название — любой текст.
+        foreach (var bad in new[] { "Manager", "orders manager", "менеджер", "app:role" })
+        {
+            var rejected = await admin.PostAsJsonAsync($"/api/admin/applications/{api}/roles", new { name = bad, displayName = "Роль" });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+        var role = await admin.PostJsonAsync($"/api/admin/applications/{api}/roles",
+            new { name = "orders-manager", displayName = "Менеджер по заказам", permissions = new[] { "read" }, requestable = true });
+        Assert.Equal("orders-manager", role.GetProperty("name").GetString());
+        Assert.Equal("Менеджер по заказам", role.GetProperty("displayName").GetString());
+
+        // Техническое имя уникально в приложении, а название может повторяться.
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.PostAsJsonAsync($"/api/admin/applications/{api}/roles",
+            new { name = "orders-manager", displayName = "Другое" })).StatusCode);
+        await admin.PostJsonAsync($"/api/admin/applications/{api}/roles", new { name = "orders-manager-2", displayName = "Менеджер по заказам" });
+
+        // Название меняется, техническое имя — нет.
+        var updated = await admin.PutJsonAsync($"/api/admin/applications/{api}/roles/orders-manager",
+            new { displayName = "Менеджер заказов", description = "Ведёт заказы" });
+        Assert.Equal("orders-manager", updated.GetProperty("name").GetString());
+        Assert.Equal("Менеджер заказов", updated.GetProperty("displayName").GetString());
+
+        // Страница регистрации показывает пользователю название, техническое имя уходит только значением чекбокса.
+        var returnUrl = Uri.EscapeDataString($"/connect/authorize?client_id={client}&response_type=code");
+        var page = await fx.Factory.CreateClient().GetStringAsync($"/Account/Register?returnUrl={returnUrl}");
+        Assert.Contains("<b>Менеджер заказов</b>", page);
+        Assert.Contains($"value=\"{api}|orders-manager\"", page);
+        Assert.DoesNotContain("<b>orders-manager</b>", page);
+
+        // Заявка: у администратора и бота — оба имени; после одобрения в токене — техническое имя.
+        Guid userId;
+        var userName = TestApi.Unique("reg");
+        using (var scope = fx.Factory.Services.CreateScope())
+            userId = await scope.ServiceProvider.GetRequiredService<AccessRequestService>().RegisterAsync(client,
+                new RegistrationInput(userName, null, null, Password, [new RoleRef(api, "orders-manager")], null));
+        var pending = (await admin.GetJsonAsync($"/api/admin/access-requests?status=pending&clientId={api}"))[0];
+        Assert.Equal("orders-manager", pending.GetProperty("role").GetString());
+        Assert.Equal("Менеджер заказов", pending.GetProperty("roleDisplayName").GetString());
+        await admin.PostJsonAsync($"/api/admin/access-requests/{pending.GetProperty("id").GetGuid()}/approve", new { comment = "ok" });
+
+        var claims = TestApi.Claims((await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, userName))
+            .GetProperty("access_token").GetString()!);
+        Assert.Contains($"{api}:orders-manager", claims.Strings("role"));
+        Assert.DoesNotContain(claims.Strings("role"), r => r.Contains("Менеджер"));
+        Assert.NotEqual(Guid.Empty, userId);
+
+        // Системные роли получили названия для пользователей.
+        var system = await admin.GetJsonAsync($"/api/admin/applications/{SystemApp.ClientId}/matrix");
+        var administrator = system.GetProperty("roles").EnumerateArray().Single(r => r.GetProperty("name").GetString() == SystemApp.AdministratorRole);
+        Assert.Equal("Администратор", administrator.GetProperty("displayName").GetString());
     }
 
     // ---------- Хранение ----------
@@ -549,10 +689,11 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
     public async Task LoginPage_IsLocalized()
     {
         var http = fx.Factory.CreateClient();
+        // Ожидаемые строки — из встроенных пакетов, а не зашитым в тест текстом.
         var en = await http.GetStringAsync("/Account/Login?lang=en");
-        Assert.Contains("Sign in", en);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode(Localization.LocalizationService.GetBuiltIn("en", "login.title")!), en);
         var ru = await fx.Factory.CreateClient().GetStringAsync("/Account/Login?lang=ru");
-        Assert.Contains("Вход", ru);
+        Assert.Contains(Localization.LocalizationService.GetBuiltIn("ru", "login.title")!, ru);
     }
 }
 

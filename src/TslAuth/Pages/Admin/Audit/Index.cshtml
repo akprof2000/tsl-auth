@@ -16,8 +16,9 @@
     <a class="btn" asp-page="Index" asp-page-handler="Csv" asp-all-route-data="query">Выгрузить CSV (до 1000 строк)</a>
 </div>
 
-<form method="get" class="card row">
-    <select name="Type" style="max-width:220px">
+<form method="get" class="card row filters">
+    <label>Тип события
+    <select name="Type" class="w-md">
         <option value="">все типы</option>
         @foreach (var group in Model.Types.Select(t => t.Split('.')[0] + ".").Distinct())
         {
@@ -27,33 +28,35 @@
         {
             <option value="@t" selected="@(Model.Type == t)">@t</option>
         }
-    </select>
-    <select name="MinSeverity" style="max-width:160px">
+    </select></label>
+    <label>Уровень
+    <select name="MinSeverity" class="w-sm">
         <option value="">любой уровень</option>
         <option value="Warning" selected="@(Model.MinSeverity == AuditSeverity.Warning)">warning+</option>
         <option value="Critical" selected="@(Model.MinSeverity == AuditSeverity.Critical)">critical</option>
-    </select>
-    <select name="Success" style="max-width:150px">
+    </select></label>
+    <label>Результат
+    <select name="Success" class="w-sm">
         <option value="">любой результат</option>
         <option value="true" selected="@(Model.Success == true)">успешно</option>
         <option value="false" selected="@(Model.Success == false)">неуспешно</option>
-    </select>
-    <input name="ClientId" value="@Model.ClientId" placeholder="client_id" style="max-width:160px" />
-    <input name="UserId" value="@Model.UserId" placeholder="id пользователя" style="max-width:300px" />
-    <input name="From" type="datetime-local" value="@Model.From?.ToString("yyyy-MM-ddTHH:mm")" style="max-width:200px" />
-    <input name="To" type="datetime-local" value="@Model.To?.ToString("yyyy-MM-ddTHH:mm")" style="max-width:200px" />
+    </select></label>
+    <label>Приложение <input name="ClientId" value="@Model.ClientId" placeholder="client_id" class="w-sm" /></label>
+    <label>Пользователь <input name="UserId" value="@Model.UserId" placeholder="id пользователя" class="w-lg" /></label>
+    <label>С (UTC) <input name="From" type="datetime-local" value="@Model.FromValue" class="w-md" /></label>
+    <label>По (UTC) <input name="To" type="datetime-local" value="@Model.ToValue" class="w-md" /></label>
     <button class="primary" type="submit">Показать</button>
     <a asp-page="Index">Сбросить</a>
 </form>
 
 <div class="table-wrap">
     <table>
-        <thead><tr><th>Время</th><th>Событие</th><th>Кто</th><th>Приложение</th><th>IP / экземпляр</th><th>Детали</th></tr></thead>
+        <thead><tr><th>Время (UTC)</th><th>Событие</th><th>Кто</th><th>Приложение</th><th>IP / экземпляр</th><th>Детали</th></tr></thead>
         <tbody>
         @foreach (var e in Model.Items)
         {
             <tr>
-                <td class="small">@e.OccurredAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                <td class="small">@Ui.UtcTime(e.OccurredAt)</td>
                 <td>
                     <code>@e.Type</code>
                     <div>
@@ -67,7 +70,7 @@
                 </td>
                 <td><code>@e.ClientId</code></td>
                 <td class="small">@e.Ip<div class="muted">@e.Instance</div></td>
-                <td class="small"><code style="white-space:pre-wrap">@e.Details?.GetRawText()</code></td>
+                <td class="small"><code class="pre-wrap">@e.Details?.GetRawText()</code></td>
             </tr>
         }
         </tbody>

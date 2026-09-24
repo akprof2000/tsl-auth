@@ -8,7 +8,15 @@ namespace TslAuth.Api;
 
 // DTO входных данных REST API (используются также в AppApi).
 public sealed record PermissionInput(string Name, string? Description);
-public sealed record RoleInput(string Name, string? Description, List<string>? Permissions, bool Requestable = false);
+/// <summary>
+/// Новая роль: <c>Name</c> — техническое имя (строчные латинские, без пробелов, уникально в приложении; попадает в токены),
+/// <c>DisplayName</c> — название для пользователей на языке установки (может содержать пробелы и повторяться).
+/// </summary>
+public sealed record RoleInput(string Name, string? Description, List<string>? Permissions, bool Requestable = false,
+    string? DisplayName = null);
+
+/// <summary>Изменение роли: название для пользователей и описание (техническое имя не меняется).</summary>
+public sealed record RoleUpdateInput(string? DisplayName, string? Description);
 public sealed record DecisionInput(string? Comment);
 public sealed record LanguagePackInput(string? Name, Dictionary<string, string> Strings, bool IsEnabled = true);
 public sealed record PasswordInput(string Password, bool MustChangePassword = false);
@@ -30,7 +38,7 @@ public static class AdminApi
         // ApiAuditFilter пишет изменяющие вызовы в журнал безопасности.
         var api = endpoints.MapGroup("/api/admin")
             .RequireAuthorization(AdminPolicies.ApiView)
-            .AddEndpointFilter(HandleErrors)
+            .AddEndpointFilter(ApiErrors.Handle)
             .AddEndpointFilter(new ApiAuditFilter(AuditTypes.AdminChange))
             .WithTags("Admin");
 
@@ -138,8 +146,12 @@ public static class AdminApi
             CancellationToken ct) =>
         {
             await EnsureAppAsync(a, clientId, ct);
-            return Results.Ok(await s.AddRoleAsync(clientId, input.Name, input.Description, input.Permissions, ct, input.Requestable));
+            return Results.Ok(await s.AddRoleAsync(clientId, input.Name, input.Description, input.Permissions, ct, input.Requestable,
+                input.DisplayName));
         }).RequireAuthorization(AdminPolicies.ApiManage);
+        apps.MapPut("/{clientId}/roles/{name}", (string clientId, string name, RoleUpdateInput input, AccessService s,
+            CancellationToken ct) => s.UpdateRoleAsync(clientId, name, input.DisplayName, input.Description, ct))
+            .RequireAuthorization(AdminPolicies.ApiManage);
         apps.MapPut("/{clientId}/roles/{name}/permissions", async (string clientId, string name, List<string> permissions,
             AccessService s, CancellationToken ct) =>
         {
@@ -262,7 +274,22 @@ public static class AdminApi
     public static AccessRequestStatus? ParseStatus(string? status) =>
         Enum.TryParse<AccessRequestStatus>(status, true, out var s) ? s : status is null or "all" ? null : AccessRequestStatus.Pending;
 
-    /// <summary>Строка «кто выполнил действие» для аудита: "client:{client_id}" или "user:{логин}".</summary>
+    /// <summary>
+    /// Идентификатор владельца (подписки вебхуков и т.п.): "client:{client_id}" или "user:{id}" — не меняется при
+    /// переименовании пользователя и совпадает с полем Actor журнала безопасности (AuditService.ResolveActor).
+    /// </summary>
+    public static string OwnerId(ClaimsPrincipal me) =>
+        me.GetClaim(CustomClaims.SubjectType) == "client"
+            ? $"client:{me.GetClaim(OpenIddictConstants.Claims.Subject)}"
+            : $"user:{me.GetClaim(OpenIddictConstants.Claims.Subject)}";
+
+    /// <summary>
+    /// Все метки, которыми может быть помечен владелец: текущая (<see cref="OwnerId"/>) и прежняя «user:{логин}»
+    /// (так подписки помечались в ранних версиях — они не должны «потеряться» после обновления).
+    /// </summary>
+    public static string[] OwnerIds(ClaimsPrincipal me) => [.. new[] { OwnerId(me), Caller(me) }.Distinct()];
+
+    /// <summary>Строка «кто выполнил действие» для отображения (решения по заявкам, изменения): "client:{client_id}" или "user:{логин}".</summary>
     public static string Caller(ClaimsPrincipal me) =>
         me.GetClaim(CustomClaims.SubjectType) == "client"
             ? $"client:{me.GetClaim(OpenIddictConstants.Claims.Subject)}"
@@ -274,15 +301,4 @@ public static class AdminApi
             throw AdminException.NotFound($"Приложение '{clientId}'");
     }
 
-    private static async ValueTask<object?> HandleErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        try
-        {
-            return await next(context);
-        }
-        catch (AdminException ex)
-        {
-            return Results.Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
 }

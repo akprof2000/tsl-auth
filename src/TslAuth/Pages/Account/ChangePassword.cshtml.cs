@@ -11,7 +11,7 @@ namespace TslAuth.Pages.Account;
 /// Требует аутентификации (конвенция AuthorizePage). Сюда же перенаправляют Login при истёкшем/временном пароле
 /// и MustChangePasswordFilter при попытке открыть админку. Использует UserManager, SignInManager и AuditService.
 /// </summary>
-public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManager<AppUser> signIn, Services.AuditService audit) : PageModel
+public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManager<AppUser> signIn, Services.AuditService audit) : UserPageModel
 {
     [BindProperty, Required(ErrorMessage = "validation.required"), DataType(DataType.Password)]
     public string Current { get; set; } = "";
@@ -46,8 +46,7 @@ public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManage
         var result = await users.ChangePasswordAsync(user, Current, Password);
         if (!result.Succeeded)
         {
-            foreach (var error in result.Errors)
-                ModelState.AddModelError("", error.Code == "PasswordMismatch" ? "change.wrongCurrent" : error.Description);
+            AddIdentityErrors(result.Errors, code => code == "PasswordMismatch" ? "change.wrongCurrent" : null);
             return Page();
         }
 
@@ -58,8 +57,8 @@ public sealed class ChangePasswordModel(UserManager<AppUser> users, SignInManage
         await signIn.RefreshSignInAsync(user);
         await audit.WriteAsync(Services.AuditTypes.PasswordChanged, true, Data.AuditSeverity.Info, null, user.Id, new { wasTemporary });
 
-        TempData["Flash"] = "change.done";
-        // Возврат только на локальный адрес (защита от open redirect).
-        return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/Admin");
+        Flash("change.done");
+        // Возврат только на локальный адрес (защита от open redirect); без него — админка или личный кабинет по правам.
+        return LocalRedirect(Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : await HomeAsync(HttpContext, User));
     }
 }

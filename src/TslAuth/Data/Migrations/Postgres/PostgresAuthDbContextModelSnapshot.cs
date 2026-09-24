@@ -448,6 +448,11 @@ namespace TslAuth.Data.Migrations.Postgres
 
                     b.HasIndex("Status", "CreatedAt");
 
+                    b.HasIndex("UserId", "RoleId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AccessRequests_Pending")
+                        .HasFilter("\"Status\" = 0");
+
                     b.ToTable("AccessRequests", (string)null);
                 });
 
@@ -465,6 +470,10 @@ namespace TslAuth.Data.Migrations.Postgres
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<bool>("IsRequestable")
                         .HasColumnType("boolean");

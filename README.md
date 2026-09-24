@@ -73,6 +73,17 @@ flowchart LR
 | **Интеграция** | Admin API, App API, Bot API, лента событий (long-polling, SSE, вебхуки), OpenAPI + интерактивный справочник `/docs/api`, руководство `/docs` |
 | **Интерфейс** | Веб-админка; страницы входа на нескольких языках (языковые пакеты), брендирование под приложение |
 
+## Образы
+
+| Реестр | Страница | Загрузка |
+|---|---|---|
+| Docker Hub | [hub.docker.com/r/akprof2000/tsl-auth](https://hub.docker.com/r/akprof2000/tsl-auth) | `docker pull akprof2000/tsl-auth:latest` |
+| GitHub Container Registry | [ghcr.io/akprof2000/tsl-auth](https://github.com/akprof2000/tsl-auth/pkgs/container/tsl-auth) | `docker pull ghcr.io/akprof2000/tsl-auth:latest` |
+
+Теги: `latest` (ветка `main`), `X.Y.Z` и `X.Y` (релизы), `sha-<коммит>`. Образы собираются GitHub Actions после
+тестов, полного E2E-стенда и сканирования, подписаны cosign и содержат SBOM — [проверка подлинности](docs/security.md#проверка-подлинности-образа).
+Для закрытого контура — [перенос образов без интернета](docs/deployment.md#закрытый-контур-без-интернета).
+
 ## Быстрый старт
 
 ```bash
@@ -81,14 +92,19 @@ docker logs tsl-auth | grep "временным паролем"
 ```
 
 Откройте http://localhost:8080, войдите как `admin` с паролем из лога и задайте постоянный пароль.
+Публичный адрес сервиса (`AUTH_ISSUER`, по умолчанию `http://localhost:8080/`) обязателен — при запуске образа без
+compose задайте `Auth__Issuer` явно ([развёртывание](docs/deployment.md#одиночный-режим)).
 Руководство по интеграции: http://localhost:8080/docs, справочник API: http://localhost:8080/docs/api.
 
 Кластер (PostgreSQL + 3 узла + nginx):
 
 ```bash
-cp .env.example .env    # заполните ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD
+cp .env.example .env    # заполните ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD (обязательны)
 docker compose -f docker-compose.ha.yml up -d --build
 ```
+
+Точка входа кластера — только nginx; секреты можно передать файлами через docker secrets
+(`docker-compose.ha-secrets.yml`, см. [развёртывание](docs/deployment.md#секреты-файлами-docker-secrets)).
 
 ## Документация
 
@@ -109,8 +125,10 @@ docker compose -f docker-compose.ha.yml up -d --build
 src/TslAuth/            сервис (ASP.NET Core, OpenIddict, EF Core)
 tests/                  unit, интеграционные, UI (Playwright), нагрузка (k6), отказоустойчивость
 samples/                демо-приложения: .NET MVC, Node.js SPA+API, Go API, Python
+                        docflow-demo — документооборот: PWA (React) + C# API + бот безопасности
 deploy/                 конфигурации nginx (HTTP и TLS)
-scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур
+docker-compose*.yml     одиночный режим, кластер и оверлеи: HTTPS (PEM/PFX), docker secrets, доступ к узлам для диагностики
+scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации
 docs/                   документация
 ```
 

@@ -1,10 +1,24 @@
+# Контекст сборки — только то, что нужно Dockerfile (src/TslAuth). Остальное исключено: меньше контекст,
+# стабильнее кэш слоёв и нет риска унести в образ локальные секреты (.env, сертификаты, демо-секреты).
 **/bin
 **/obj
 **/data
 **/*.db
 **/master.key
+**/.env
+**/*.env
+certs
+dist
 tests
+samples
+docs
+deploy
+scripts
+.github
+.claude
 .git
 .vs
+.vscode
 .idea
 *.md
+docker-compose*.yml

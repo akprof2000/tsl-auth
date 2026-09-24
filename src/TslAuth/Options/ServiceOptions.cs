@@ -13,6 +13,9 @@ public sealed class DatabaseOptions
 
     public string? ConnectionString { get; set; }
 
+    /// <summary>Файл со строкой подключения (docker secrets); если задан, имеет приоритет над <see cref="ConnectionString"/>.</summary>
+    public string? ConnectionStringFile { get; set; }
+
     public bool IsPostgres => Provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)
                               || Provider.Equals("PostgreSQL", StringComparison.OrdinalIgnoreCase);
 }
@@ -53,6 +56,13 @@ public sealed class AuthServerOptions
 
     /// <summary>Доверять заголовкам X-Forwarded-* (сервис за балансировщиком).</summary>
     public bool TrustForwardedHeaders { get; set; }
+
+    /// <summary>
+    /// Сети (CIDR через запятую), от которых принимаются X-Forwarded-* при <see cref="TrustForwardedHeaders"/>.
+    /// Пусто — loopback и частные сети (10/8, 172.16/12, 192.168/16, fc00::/7): там работают Docker-сети и балансировщик.
+    /// Запрос из других адресов (например, прямо на порт узла из интернета) не сможет подменить IP клиента и схему.
+    /// </summary>
+    public string? KnownNetworks { get; set; }
 }
 
 /// <summary>
@@ -69,7 +79,13 @@ public sealed class BootstrapOptions
     /// <summary>Если не задан — будет сгенерирован и выведен в лог при первом запуске.</summary>
     public string? AdminPassword { get; set; }
 
+    /// <summary>Файл с паролем первого администратора (docker secrets); имеет приоритет над <see cref="AdminPassword"/>.</summary>
+    public string? AdminPasswordFile { get; set; }
+
     /// <summary>Опционально: клиент для внешнего Admin API (client_credentials).</summary>
     public string? AdminApiClientId { get; set; }
     public string? AdminApiClientSecret { get; set; }
+
+    /// <summary>Файл с секретом клиента Admin API (docker secrets); имеет приоритет над <see cref="AdminApiClientSecret"/>.</summary>
+    public string? AdminApiClientSecretFile { get; set; }
 }

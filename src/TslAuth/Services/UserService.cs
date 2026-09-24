@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TslAuth.Data;
+using TslAuth.Security;
 using TslAuth.Infrastructure;
 
 namespace TslAuth.Services;
@@ -70,10 +71,10 @@ public sealed class UserService(
         }
 
         var total = await db.Users.CountAsync(ct);
-        var page = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).Skip(skip).Take(Math.Clamp(take, 1, 500)).ToListAsync(ct);
-        var result = new List<UserDto>(page.Count);
-        foreach (var user in page) result.Add(await ToDtoAsync(user, ct));
-        return new PagedResult<UserDto>(result, total);
+        var page = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).Skip(Math.Max(skip, 0)).Take(Math.Clamp(take, 1, 500)).ToListAsync(ct);
+        // Роли всей страницы — одним запросом, а не по запросу на пользователя.
+        var roles = await access.GetAssignmentsAsync(SubjectType.User, page.Select(u => u.Id.ToString()).ToList(), ct: ct);
+        return new PagedResult<UserDto>(page.Select(u => ToDto(u, roles.GetValueOrDefault(u.Id.ToString()) ?? [])).ToList(), total);
     }
 
     /// <summary>
@@ -92,6 +93,7 @@ public sealed class UserService(
     /// <summary>Создаёт пользователя (с паролем или без — тогда он активируется по приглашению) и назначает роли.</summary>
     public async Task<UserDto> CreateAsync(UserInput input, CancellationToken ct = default)
     {
+        CheckLengths(input);
         // MustChangePassword имеет смысл только при заданном пароле: без пароля пользователь сам задаст его по приглашению.
         var user = new AppUser
         {
@@ -119,6 +121,7 @@ public sealed class UserService(
     /// <summary>Изменяет профиль, статус, (опционально) пароль и роли; при отключении — разлогинивает пользователя везде.</summary>
     public async Task<UserDto> UpdateAsync(Guid id, UserInput input, CancellationToken ct = default)
     {
+        CheckLengths(input);
         var user = await Require(id);
 
         user.UserName = input.UserName?.Trim();
@@ -197,7 +200,8 @@ public sealed class UserService(
     public async Task<bool> AcceptInviteAsync(Guid id, string token, string password)
     {
         var user = await users.FindByIdAsync(id.ToString());
-        if (user is null || !await links.ValidateInviteAsync(user, token)) return false;
+        // Отключённый администратором пользователь не должен «оживать» по старой ссылке приглашения.
+        if (user is not { IsActive: true } || !await links.ValidateInviteAsync(user, token)) return false;
 
         // Пароль может уже быть (повторное приглашение существующему пользователю) — тогда перезаписываем его.
         Check(await users.HasPasswordAsync(user)
@@ -211,6 +215,24 @@ public sealed class UserService(
         Check(await users.UpdateAsync(user));
         return true;
     }
+
+    // Хеш-«пустышка» того же формата (PBKDF2), что у настоящих паролей.
+    private static readonly Lazy<string> DummyHash =
+        new(() => new PasswordHasher<AppUser>().HashPassword(new AppUser(), Guid.NewGuid().ToString()));
+
+    /// <summary>
+    /// Проверка пароля «вхолостую» для неизвестного/отключённого логина: время ответа совпадает с проверкой
+    /// настоящего пароля (PBKDF2), и по таймингу нельзя узнать, существует ли учётная запись.
+    /// </summary>
+    public void SimulatePasswordCheck(string? password) =>
+        users.PasswordHasher.VerifyHashedPassword(new AppUser(), DummyHash.Value, password ?? "");
+
+    /// <summary>
+    /// Что писать в журнал о введённом логине при неудачном входе: в поле логина нередко вводят пароль,
+    /// поэтому сырой ввод не сохраняется — только первые символы и длина.
+    /// </summary>
+    public static string MaskLogin(string? login) =>
+        string.IsNullOrEmpty(login) ? "" : $"{login[..Math.Min(2, login.Length)]}… ({login.Length})";
 
     /// <summary>Администратор отправляет пользователю ссылку для сброса пароля.</summary>
     public async Task SendPasswordResetAsync(Guid id, CancellationToken ct = default)
@@ -229,14 +251,8 @@ public sealed class UserService(
         // Молча выходим: одинаковый ответ для существующих и несуществующих логинов защищает от перебора учётных записей.
         if (user is not { IsActive: true, Email: not null }) return;
 
-        try
-        {
-            await links.SendPasswordResetAsync(user, await links.CreatePasswordResetLinkAsync(user), ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Не удалось отправить письмо сброса пароля пользователю {UserId}.", user.Id);
-        }
+        // Письмо — в фоне: синхронная отправка по SMTP только для существующих выдавала бы их по времени ответа.
+        links.QueuePasswordReset(user, await links.CreatePasswordResetLinkAsync(user), logger);
     }
 
     /// <summary>
@@ -246,7 +262,10 @@ public sealed class UserService(
     public async Task<IdentityResult> CompletePasswordResetAsync(Guid id, string token, string password, CancellationToken ct = default)
     {
         var user = await users.FindByIdAsync(id.ToString());
-        if (user is null) return IdentityResult.Failed(new IdentityError { Description = "Ссылка недействительна." });
+        if (user is null) return IdentityResult.Failed(new IdentityError { Code = "InvalidToken", Description = "Ссылка недействительна." });
+        // Сброс пароля не включает отключённую учётную запись (и не должен давать ей новый пароль).
+        if (!user.IsActive)
+            return IdentityResult.Failed(new IdentityError { Code = "AccountDisabled", Description = "Учётная запись отключена." });
 
         var result = await users.ResetPasswordAsync(user, token, password);
         if (!result.Succeeded) return result;
@@ -269,6 +288,43 @@ public sealed class UserService(
             ? db.Users.Where(u => u.Id == id).ExecuteUpdateAsync(s => s
                 .SetProperty(u => u.LastLoginAt, DateTime.UtcNow).SetProperty(u => u.MustChangePassword, true), ct)
             : db.Users.Where(u => u.Id == id).ExecuteUpdateAsync(s => s.SetProperty(u => u.LastLoginAt, DateTime.UtcNow), ct);
+
+    /// <summary>
+    /// Включает/отключает учётную запись. Отключение — как в <see cref="UpdateAsync"/>: security stamp меняется
+    /// (cookie админки перестаёт действовать), все сессии и refresh-токены отзываются. Включение заодно снимает
+    /// блокировку за неверные пароли. Возвращает false, если состояние уже было таким.
+    /// </summary>
+    public async Task<bool> SetActiveAsync(Guid id, bool active, CancellationToken ct = default)
+    {
+        var user = await Require(id);
+        if (user.IsActive == active) return false;
+        user.IsActive = active;
+        if (active)
+        {
+            user.LockoutEnd = null;
+            user.AccessFailedCount = 0;
+        }
+        Check(await users.UpdateAsync(user));
+        if (!active)
+        {
+            await users.UpdateSecurityStampAsync(user);
+            await sessions.RevokeBySubjectAsync(user.Id.ToString(), ct);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Требует сменить пароль при следующем входе и отзывает все сессии: текущий пароль остаётся,
+    /// но воспользоваться им можно только один раз — для установки нового.
+    /// </summary>
+    public async Task RequirePasswordChangeAsync(Guid id, CancellationToken ct = default)
+    {
+        var user = await Require(id);
+        user.MustChangePassword = true;
+        Check(await users.UpdateAsync(user));
+        await users.UpdateSecurityStampAsync(user);
+        await sessions.RevokeBySubjectAsync(user.Id.ToString(), ct);
+    }
 
     /// <summary>Снимает блокировку после неудачных попыток входа и сбрасывает счётчик.</summary>
     public async Task UnlockAsync(Guid id)
@@ -293,7 +349,10 @@ public sealed class UserService(
     private async Task<AppUser> Require(Guid id) =>
         await users.FindByIdAsync(id.ToString()) ?? throw AdminException.NotFound("Пользователь");
 
-    private async Task<UserDto> ToDtoAsync(AppUser user, CancellationToken ct) => new(
+    private async Task<UserDto> ToDtoAsync(AppUser user, CancellationToken ct) =>
+        ToDto(user, await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct));
+
+    private static UserDto ToDto(AppUser user, List<RoleRef> roles) => new(
         user.Id,
         user.UserName!,
         user.Email,
@@ -304,14 +363,24 @@ public sealed class UserService(
         user.MustChangePassword,
         user.CreatedAt,
         user.LastLoginAt,
-        await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct));
+        roles);
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    // Ошибки Identity (валидация логина/пароля) превращаются в AdminException → 400 с понятным текстом.
-    private static void Check(IdentityResult result)
+    /// <summary>
+    /// Длины полей профиля — до записи в БД. Поля хранятся зашифрованными (шифротекст до 1024 символов ≈ 730 байт
+    /// исходного текста): без проверки длинное значение давало бы на PostgreSQL ошибку БД (500), на SQLite — ничего.
+    /// </summary>
+    internal static void CheckLengths(UserInput input)
     {
-        if (!result.Succeeded)
-            throw new AdminException(string.Join(" ", result.Errors.Select(e => e.Description)));
+        if (input.UserName?.Trim().Length > 256)
+            throw AdminException.Localized("error.userNameInvalid", "Логин: не длиннее 256 символов.");
+        if (input.Email?.Trim().Length > 254)
+            throw AdminException.Localized("error.emailInvalid", "Email: не длиннее 254 символов.");
+        if (input.DisplayName?.Trim().Length > 200)
+            throw new AdminException("Имя: не длиннее 200 символов.");
     }
+
+    // Ошибки Identity (валидация логина/пароля) превращаются в AdminException → 400 с понятным текстом и ключом локализации.
+    private static void Check(IdentityResult result) => IdentityErrors.ThrowIfFailed(result);
 }

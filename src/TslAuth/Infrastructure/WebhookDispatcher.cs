@@ -36,40 +36,49 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
         }
     }
 
+    // Одновременных доставок на экземпляр: одна зависшая подписка (таймаут 10 с) не задерживает остальные.
+    private const int Parallelism = 5;
+
     private async Task DispatchBatchAsync(CancellationToken ct)
     {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+        List<Guid> candidates;
         var now = DateTime.UtcNow;
-
-        // Сначала только id кандидатов (без блокировки), затем каждый захватывается атомарно ниже.
-        var candidates = await db.WebhookDeliveries.AsNoTracking()
-            .Where(d => d.Status == WebhookDeliveryStatus.Pending && d.NextAttemptAt <= now && (d.LockedUntil == null || d.LockedUntil < now))
-            .OrderBy(d => d.NextAttemptAt).Select(d => d.Id).Take(20).ToListAsync(ct);
-
-        foreach (var id in candidates)
+        using (var scope = scopes.CreateScope())
         {
-            // Условный UPDATE — оптимистичный захват без транзакций и SELECT FOR UPDATE: работает одинаково
-            // на SQLite и PostgreSQL; обновит строку только тот экземпляр, который успел первым.
-            var lockUntil = DateTime.UtcNow + LockDuration;
-            var claimed = await db.WebhookDeliveries
-                .Where(d => d.Id == id && d.Status == WebhookDeliveryStatus.Pending && (d.LockedUntil == null || d.LockedUntil < now))
-                .ExecuteUpdateAsync(s => s.SetProperty(d => d.LockedUntil, lockUntil).SetProperty(d => d.LockedBy, Instance), ct);
-            if (claimed == 0) continue; // забрал другой экземпляр
-
-            var delivery = await db.WebhookDeliveries.Include(d => d.Subscription).Include(d => d.Event).FirstAsync(d => d.Id == id, ct);
-            // Доставки идут последовательно; таймаут HTTP-клиента (10 с) меньше LockDuration, так что захват не истечёт посреди отправки.
-            await SendAsync(delivery, ct);
-            delivery.LockedUntil = null;
-            await db.SaveChangesAsync(ct);
+            // Сначала только id кандидатов (без блокировки), затем каждый захватывается атомарно ниже.
+            candidates = await scope.ServiceProvider.GetRequiredService<AuthDbContext>().WebhookDeliveries.AsNoTracking()
+                .Where(d => d.Status == WebhookDeliveryStatus.Pending && d.NextAttemptAt <= now && (d.LockedUntil == null || d.LockedUntil < now))
+                .OrderBy(d => d.NextAttemptAt).Select(d => d.Id).Take(20).ToListAsync(ct);
         }
+
+        // Параллельно, у каждой доставки свой scope/DbContext (DbContext не потокобезопасен).
+        await Parallel.ForEachAsync(candidates, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct },
+            async (id, token) =>
+            {
+                using var scope = scopes.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+
+                // Условный UPDATE — оптимистичный захват без транзакций и SELECT FOR UPDATE: работает одинаково
+                // на SQLite и PostgreSQL; обновит строку только тот экземпляр, который успел первым.
+                var lockUntil = DateTime.UtcNow + LockDuration;
+                var claimed = await db.WebhookDeliveries
+                    .Where(d => d.Id == id && d.Status == WebhookDeliveryStatus.Pending && (d.LockedUntil == null || d.LockedUntil < now))
+                    .ExecuteUpdateAsync(u => u.SetProperty(d => d.LockedUntil, lockUntil).SetProperty(d => d.LockedBy, Instance), token);
+                if (claimed == 0) return; // забрал другой экземпляр
+
+                var delivery = await db.WebhookDeliveries.Include(d => d.Subscription).Include(d => d.Event).FirstAsync(d => d.Id == id, token);
+                // Таймаут HTTP-клиента (10 с) меньше LockDuration, так что захват не истечёт посреди отправки.
+                await SendAsync(delivery, token);
+                delivery.LockedUntil = null;
+                await db.SaveChangesAsync(token);
+            });
     }
 
     /// <summary>
     /// Одна попытка отправки. Результат (статус, ошибка, время следующей попытки) записывается в delivery;
     /// сохраняет вызывающий код.
     /// </summary>
-    private async Task SendAsync(WebhookDelivery delivery, CancellationToken ct)
+    internal async Task SendAsync(WebhookDelivery delivery, CancellationToken ct)
     {
         var dto = WebhookService.ToDto(delivery.Event);
         var body = JsonSerializer.Serialize(new
@@ -95,7 +104,8 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
             if (delivery.Subscription.Secret is not null)
                 request.Headers.Add("X-TSL-Signature", WebhookService.Sign(delivery.Subscription.Secret, body));
 
-            using var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
+            // Только заголовки: тело ответа получателя не нужно, а его буферизация дала бы чтение произвольных данных.
+            using var response = await http.CreateClient(HttpClientName).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             delivery.LastStatusCode = (int)response.StatusCode;
             if (response.IsSuccessStatusCode)
             {

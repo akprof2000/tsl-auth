@@ -17,6 +17,15 @@ public sealed record BotLinkInput(string Provider, string ExternalId, string Cod
 /// <summary>Идентификация пользователя мессенджера: провайдер (например mattermost) + его внешний Id.</summary>
 public sealed record BotUserRef(string Provider, string ExternalId);
 
+/// <summary>
+/// Команда бота над учётной записью: отправитель (provider + externalId) и цель — логин или email.
+/// <c>Target</c> пустой — действие над собственной учётной записью отправителя.
+/// </summary>
+public sealed record BotTargetInput(string Provider, string ExternalId, string? Target = null);
+
+/// <summary>Результат команды блокировки/смены пароля: кто инициировал, над кем выполнено, изменилось ли состояние.</summary>
+public sealed record BotActionResult(string Action, string Actor, string UserName, bool Self, bool Changed);
+
 /// <summary>Результат сброса пароля через бота.</summary>
 /// <param name="Mode">"link" — ResetLink заполнена (отправьте пользователю лично); "temporary" — TemporaryPassword.</param>
 public sealed record BotResetResult(string Mode, string UserName, string? ResetLink, string? TemporaryPassword, DateTime ExpiresAt);
@@ -33,7 +42,8 @@ public sealed class BotService(
     AccountLinks links,
     SettingsService settings,
     AuditService audit,
-    WebhookService webhooks)
+    WebhookService webhooks,
+    AccessService access)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
     private const string ResetAuditType = "bot.password_reset";
@@ -57,24 +67,31 @@ public sealed class BotService(
     public async Task<LinkedIdentityDto> LinkAsync(string botClientId, BotLinkInput input, CancellationToken ct = default)
     {
         var provider = Provider(input.Provider);
-        var externalId = input.ExternalId?.Trim();
-        if (string.IsNullOrEmpty(externalId) || externalId.Length > 200) throw new AdminException("Укажите externalId пользователя мессенджера.");
+        var externalId = ExternalId(input.ExternalId);
 
         var hash = Hash((input.Code ?? "").Trim().ToUpperInvariant());
         var code = await db.BotLinkCodes.FirstOrDefaultAsync(c => c.CodeHash == hash && c.ExpiresAt > DateTime.UtcNow, ct);
         if (code is null)
         {
-            // Warning: серия неверных кодов может означать перебор — попадёт в ленту security.alert.
-            await audit.WriteAsync("bot.link", false, AuditSeverity.Warning, botClientId, details: new { provider, reason = "bad_code" });
+            // Одиночная ошибка (опечатка в коде) — Info, без рассылки. Серия ошибок от бота — признак перебора:
+            // на пороге пишется Warning и уходит один security.alert (а не на каждый неверный код).
+            var burst = BadCodeBurst(botClientId);
+            await audit.WriteAsync("bot.link", false, burst ? AuditSeverity.Warning : AuditSeverity.Info, botClientId,
+                details: new { provider, reason = burst ? "bad_code_burst" : "bad_code" });
             throw new AdminException("Код привязки неверный или истёк.", StatusCodes.Status400BadRequest);
         }
 
-        // Один аккаунт мессенджера — одна учётная запись: повторная привязка переносит её.
-        await db.ExternalIdentities.Where(x => x.Provider == provider && x.ExternalId == externalId).ExecuteDeleteAsync(ct);
+        // Один аккаунт мессенджера — одна учётная запись: повторная привязка переносит её. Удаление прежней привязки,
+        // новая привязка и погашение кода — одной транзакцией (иначе сбой оставил бы пользователя без привязки).
         var identity = new ExternalIdentity { UserId = code.UserId, Provider = provider, ExternalId = externalId, LinkedByClientId = botClientId };
-        db.ExternalIdentities.Add(identity);
-        db.BotLinkCodes.Remove(code);
-        await db.SaveChangesAsync(ct);
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.ExternalIdentities.Where(x => x.Provider == provider && x.ExternalId == externalId).ExecuteDeleteAsync(ct);
+            db.ExternalIdentities.Add(identity);
+            db.BotLinkCodes.Remove(code);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
 
         await audit.WriteAsync("bot.link", true, AuditSeverity.Info, botClientId, code.UserId, new { provider });
         return new LinkedIdentityDto(identity.Id, provider, botClientId, identity.CreatedAt);
@@ -84,7 +101,7 @@ public sealed class BotService(
     public async Task<bool> UnlinkAsync(string botClientId, BotUserRef user, CancellationToken ct = default)
     {
         var provider = Provider(user.Provider);
-        var identity = await db.ExternalIdentities.FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == user.ExternalId, ct);
+        var identity = await db.ExternalIdentities.FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == ExternalId(user.ExternalId), ct);
         if (identity is null) return false;
         db.ExternalIdentities.Remove(identity);
         await db.SaveChangesAsync(ct);
@@ -96,7 +113,7 @@ public sealed class BotService(
     public async Task<string?> WhoIsAsync(BotUserRef user, CancellationToken ct = default)
     {
         var provider = Provider(user.Provider);
-        var userId = await db.ExternalIdentities.Where(x => x.Provider == provider && x.ExternalId == user.ExternalId)
+        var userId = await db.ExternalIdentities.Where(x => x.Provider == provider && x.ExternalId == ExternalId(user.ExternalId))
             .Select(x => (Guid?)x.UserId).FirstOrDefaultAsync(ct);
         return userId is null ? null : (await users.GetAsync(userId.Value, ct))?.UserName;
     }
@@ -112,7 +129,7 @@ public sealed class BotService(
 
         var provider = Provider(input.Provider);
         var identity = await db.ExternalIdentities.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == input.ExternalId, ct);
+            .FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == ExternalId(input.ExternalId), ct);
         if (identity is null)
             throw AdminException.NotFound("Привязка мессенджера (пользователь должен сначала выполнить /link с кодом из личного кабинета)");
 
@@ -120,15 +137,20 @@ public sealed class BotService(
         if (!user.IsActive) throw new AdminException("Учётная запись отключена.", StatusCodes.Status403Forbidden);
 
         // Лимит считается по журналу аудита: он общий для всех узлов кластера, отдельный счётчик не нужен.
-        // Успешные сбросы пишутся с Warning, т.е. сразу (не через пакетную очередь), поэтому подсчёт точен.
+        // Сброс записывается ДО выполнения и обязательно (required): если запись не удалась, сброса нет —
+        // иначе сбой записи в журнал снимал бы ограничение.
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.AuditEntries.CountAsync(a => a.Type == ResetAuditType && a.SubjectUserId == user.Id && a.Success &&
                                                            a.OccurredAt > since, ct);
         if (recent >= policy.MaxPerUserPerHour)
         {
-            await audit.WriteAsync(ResetAuditType, false, AuditSeverity.Warning, botClientId, user.Id, new { provider, reason = "rate_limit" });
+            await audit.WriteAsync("bot.password_reset_limited", false, AuditSeverity.Warning, botClientId, user.Id, new { provider, reason = "rate_limit" });
             throw new AdminException("Слишком много сбросов за последний час, попробуйте позже.", StatusCodes.Status429TooManyRequests);
         }
+
+        var mode = policy.Mode == "temporary" ? "temporary" : "link";
+        await audit.WriteAsync(ResetAuditType, true, AuditSeverity.Warning, botClientId, user.Id, new { provider, mode },
+            required: true, alert: false);
 
         BotResetResult result;
         if (policy.Mode == "temporary")
@@ -143,10 +165,71 @@ public sealed class BotService(
             result = new BotResetResult("link", user.UserName!, await links.CreatePasswordResetLinkAsync(user), null, DateTime.UtcNow.AddHours(2));
         }
 
-        await audit.WriteAsync(ResetAuditType, true, AuditSeverity.Warning, botClientId, user.Id, new { provider, mode = result.Mode });
+        // Один security.alert с подробностями (автоматический алерт аудита для этой записи отключён).
         await webhooks.PublishAsync("security.alert", $"🔑 Сброс пароля {user.UserName} через бота {botClientId} ({provider}, режим {result.Mode}).",
             new { userId = user.Id, userName = user.UserName, bot = botClientId, provider, mode = result.Mode }, ct);
         return result;
+    }
+
+    /// <summary>
+    /// Блокировка учётной записи по команде в боте. Свою учётку («телефон украли») может заблокировать любой
+    /// привязанный пользователь; чужую — только имеющий разрешение user_lock в системном приложении.
+    /// </summary>
+    public Task<BotActionResult> LockAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.user_lock", SystemApp.UserLockPermission, allowSelf: true,
+            (user, c) => users.SetActiveAsync(user.Id, false, c),
+            user => $"🔒 Учётная запись {user.UserName} заблокирована через бота", ct);
+
+    /// <summary>Разблокировка (включение) учётной записи: только по разрешению user_lock — себя разблокировать нельзя.</summary>
+    public Task<BotActionResult> UnlockAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.user_unlock", SystemApp.UserLockPermission, allowSelf: false,
+            (user, c) => users.SetActiveAsync(user.Id, true, c),
+            user => $"🔓 Учётная запись {user.UserName} разблокирована через бота", ct);
+
+    /// <summary>
+    /// Принудительная смена пароля: сессии отзываются, при следующем входе потребуется новый пароль.
+    /// Для себя — любой привязанный пользователь, для других — разрешение password_force.
+    /// </summary>
+    public Task<BotActionResult> ForcePasswordChangeAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.password_force", SystemApp.PasswordForcePermission, allowSelf: true,
+            async (user, c) => { await users.RequirePasswordChangeAsync(user.Id, c); return true; },
+            user => $"🔑 Для {user.UserName} через бота потребована смена пароля", ct);
+
+    /// <summary>
+    /// Общий сценарий команд над учётной записью: отправитель обязан быть привязан и активен; цель — он сам
+    /// (если <paramref name="allowSelf"/>) или другой пользователь при наличии разрешения в tsl-auth-admin.
+    /// Каждое действие — запись аудита уровня Warning и событие security.alert для ботов-уведомителей.
+    /// </summary>
+    private async Task<BotActionResult> ExecuteAsync(string botClientId, BotTargetInput input, string auditType, string permission,
+        bool allowSelf, Func<AppUser, CancellationToken, Task<bool>> action, Func<AppUser, string> text, CancellationToken ct)
+    {
+        var provider = Provider(input.Provider);
+        var identity = await db.ExternalIdentities.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == ExternalId(input.ExternalId), ct);
+        if (identity is null)
+            throw AdminException.NotFound("Привязка мессенджера (пользователь должен сначала выполнить /link с кодом из личного кабинета)");
+        var actor = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == identity.UserId, ct) ?? throw AdminException.NotFound("Пользователь");
+        if (!actor.IsActive) throw new AdminException("Ваша учётная запись отключена.", StatusCodes.Status403Forbidden);
+
+        var target = string.IsNullOrWhiteSpace(input.Target) ? actor : await users.FindByLoginAsync(input.Target.Trim());
+        if (target is null) throw AdminException.NotFound("Пользователь");
+        var self = target.Id == actor.Id;
+
+        if (self && !allowSelf)
+            throw new AdminException("Эту команду нельзя применить к самому себе.", StatusCodes.Status403Forbidden);
+        if (!self && !await access.HasPermissionAsync(SubjectType.User, actor.Id.ToString(), SystemApp.ClientId, permission, ct))
+        {
+            await audit.WriteAsync(auditType, false, AuditSeverity.Warning, botClientId, actor.Id,
+                new { provider, target = target.UserName, reason = "forbidden" });
+            throw new AdminException("Недостаточно прав для действий над другими пользователями.", StatusCodes.Status403Forbidden);
+        }
+
+        var changed = await action(target, ct);
+        await audit.WriteAsync(auditType, true, AuditSeverity.Warning, botClientId, target.Id,
+            new { provider, actor = actor.UserName, self, changed });
+        await webhooks.PublishAsync("security.alert", $"{text(target)} (инициатор {actor.UserName}, бот {botClientId}).",
+            new { userId = target.Id, userName = target.UserName, actor = actor.UserName, bot = botClientId, provider, action = auditType }, ct);
+        return new BotActionResult(auditType, actor.UserName!, target.UserName!, self, changed);
     }
 
     /// <summary>Привязки пользователя (для страницы Account/Messenger).</summary>
@@ -171,4 +254,27 @@ public sealed class BotService(
     }
 
     private static string Hash(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+
+    /// <summary>Идентификатор пользователя мессенджера без пробелов по краям — одинаково во всех операциях бота.</summary>
+    private static string ExternalId(string? value)
+    {
+        var id = value?.Trim();
+        if (string.IsNullOrEmpty(id) || id.Length > 100)
+            throw new AdminException("Укажите externalId пользователя мессенджера (до 100 символов).");
+        return id;
+    }
+
+    // Неверные коды привязки по боту: окно 10 минут, порог 5 (на экземпляр — для сигнала о переборе этого достаточно).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int Count, DateTime Since)> BadCodes = new();
+
+    /// <summary>true, если неудачная попытка довела серию до порога (тогда серия начинается заново).</summary>
+    private static bool BadCodeBurst(string botClientId)
+    {
+        var now = DateTime.UtcNow;
+        var state = BadCodes.AddOrUpdate(botClientId, _ => (1, now),
+            (_, s) => now - s.Since > TimeSpan.FromMinutes(10) ? (1, now) : (s.Count + 1, s.Since));
+        if (state.Count < 5) return false;
+        BadCodes.TryRemove(botClientId, out _);
+        return true;
+    }
 }

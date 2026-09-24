@@ -12,7 +12,10 @@ public sealed class MatrixModel(ApplicationService apps, AccessService access) :
 {
     [BindProperty(SupportsGet = true)] public string ClientId { get; set; } = "";
 
+    /// <summary>Техническое имя роли/разрешения.</summary>
     [BindProperty] public string? Name { get; set; }
+    /// <summary>Название роли для пользователей.</summary>
+    [BindProperty] public string? DisplayName { get; set; }
     [BindProperty] public string? Description { get; set; }
 
     /// <summary>Отмеченные ячейки в формате "роль|разрешение".</summary>
@@ -27,7 +30,12 @@ public sealed class MatrixModel(ApplicationService apps, AccessService access) :
         await RunAsync(() => access.AddPermissionAsync(ClientId, Name ?? "", Description, ct), $"Разрешение {Name} добавлено.", ct);
 
     public async Task<IActionResult> OnPostAddRoleAsync(CancellationToken ct) =>
-        await RunAsync(() => access.AddRoleAsync(ClientId, Name ?? "", Description, null, ct), $"Роль {Name} добавлена.", ct);
+        await RunAsync(() => access.AddRoleAsync(ClientId, Name ?? "", Description, null, ct, displayName: DisplayName),
+            $"Роль {DisplayName ?? Name} добавлена.", ct);
+
+    /// <summary>Меняет название роли для пользователей и описание (техническое имя не меняется).</summary>
+    public async Task<IActionResult> OnPostUpdateRoleAsync(CancellationToken ct) =>
+        await RunAsync(() => access.UpdateRoleAsync(ClientId, Name ?? "", DisplayName, Description, ct), $"Роль {Name} изменена.", ct);
 
     public async Task<IActionResult> OnPostDeletePermissionAsync(CancellationToken ct) =>
         await RunAsync(() => access.DeletePermissionAsync(ClientId, Name ?? "", ct), $"Разрешение {Name} удалено.", ct);

@@ -156,12 +156,18 @@ def render_home(session: dict | None, message: str = "") -> str:
         <input name="username" placeholder="логин" required><input name="password" type="password" placeholder="пароль" required>
         <button>Войти</button></form></div>""")
 
-    # 2) Управление своими пользователями через App API
+    # 2) Управление своими пользователями через App API — только для вошедших. Токен App API выдаётся самому
+    # приложению, а не пользователю: без проверки сессии любой аноним получил бы через демо список логинов/email
+    # и мог бы создавать и удалять учётные записи. В настоящем приложении проверяйте ещё и разрешение из матрицы.
+    if not session:
+        parts.append('<div class="card"><b>Мои пользователи (App API)</b><p>Доступно после входа.</p></div>')
+        return PAGE.format(client=CLIENT_ID, body="".join(parts))
     status, users = app_api("GET", "/users")
     _, matrix = app_api("GET", "/matrix")
     role_names = [r["name"] for r in (matrix or {}).get("roles", [])]
     rows = "".join(
-        f"<tr><td>{html.escape(u['userName'])}</td><td>{html.escape(u.get('email') or '')}</td>"
+        # email привязанных (не созданных этим приложением) пользователей App API не раскрывает — приходит null.
+        f"<tr><td>{html.escape(u['userName'])}</td><td>{html.escape(u.get('email') or '—')}</td>"
         f"<td>{html.escape(', '.join(u['roles']))}</td><td>{'да' if u['createdByThisApp'] else 'нет'}</td>"
         f"<td><form method='post' action='/users/delete'><input type='hidden' name='id' value='{u['id']}'><button>Удалить/отвязать</button></form></td></tr>"
         for u in (users or []) if status == 200)
@@ -244,6 +250,8 @@ class Handler(BaseHTTPRequestHandler):
                                                                "token": session["tokens"].get("refresh_token", "")})
             SESSIONS.pop(sid, None)
             return self.redirect("Вы вышли (refresh-токен отозван).")
+        if self.path.startswith("/users/") and not session:
+            return self.redirect("Управление пользователями доступно после входа.")
         if self.path == "/users/create":
             status, body = app_api("POST", "/users", {"userName": f["userName"], "email": f.get("email") or None,
                                                       "roles": [f["role"]] if f.get("role") else []})

@@ -7,7 +7,7 @@
 }
 
 <div class="card">
-    <h2 style="margin-top:0">@L["login.title"]</h2>
+    <h2>@L["login.title"]</h2>
     @if (Model.Error is not null)
     {
         <div class="alert error">@L[Model.Error]</div>
@@ -29,7 +29,7 @@
         </div>
         @if (Model.RegistrationEnabled)
         {
-            <p class="small" style="text-align:center">@L["login.noAccount"]
+            <p class="small center">@L["login.noAccount"]
                 <a asp-page="/Account/Register" asp-route-returnUrl="@Model.ReturnUrl">@L["login.register"]</a></p>
         }
     </form>

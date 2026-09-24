@@ -1,0 +1,54 @@
+# Демо «Документооборот» на готовом образе TSL Auth с Docker Hub.
+#   1) docker compose up -d tsl-auth                 — сервис авторизации (http://localhost:8080)
+#   2) ./seed.ps1                                     — приложения, роли, сотрудники; секреты → .env
+#   3) docker compose up -d --build                   — API + PWA (http://localhost:5200) и бот
+# Команды бота /lock, /unlock, /forcepwd есть в akprof2000/tsl-auth:latest с 24.09.2026.
+# Свой образ: TSL_AUTH_IMAGE=tsl-auth:local (docker build -t tsl-auth:local в корне репозитория).
+name: docflow-demo
+
+services:
+  tsl-auth:
+    image: ${TSL_AUTH_IMAGE:-akprof2000/tsl-auth:latest}
+    container_name: docflow-tsl-auth
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      Database__Provider: Sqlite
+      Database__ConnectionString: "Data Source=/app/data/tsl-auth.db"
+      Auth__Issuer: "http://localhost:8080/"
+      Auth__RequireHttps: "false"
+      Bootstrap__AdminUserName: admin
+      Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
+      # Клиент Admin API для seed.ps1 — только для демо-стенда.
+      Bootstrap__AdminApiClientId: admin-cli
+      Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-demo-admin-cli-secret-2026}"
+    volumes: [auth-data:/app/data]
+
+  docflow-api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    image: docflow-demo-api:latest
+    container_name: docflow-api
+    restart: unless-stopped
+    depends_on: [tsl-auth, docflow-bot]
+    ports: ["5200:8080"]
+    environment:
+      Auth__Issuer: "http://localhost:8080/"          # как в токенах (адрес для браузера)
+      Auth__InternalUrl: "http://tsl-auth:8080/"      # адрес внутри сети Docker
+      Auth__ClientSecret: "${DOCFLOW_API_SECRET:-}"   # пишет seed.ps1 в .env
+      BotUrl: "http://docflow-bot:8080/"
+    volumes: [docflow-data:/app/data]
+
+  docflow-bot:
+    build: { context: ., dockerfile: bot/Dockerfile }
+    image: docflow-demo-bot:latest
+    container_name: docflow-bot
+    restart: unless-stopped
+    depends_on: [tsl-auth]
+    environment:
+      Auth__Issuer: "http://localhost:8080/"
+      Auth__InternalUrl: "http://tsl-auth:8080/"
+      Auth__BotClientSecret: "${DOCFLOW_BOT_SECRET:-}"   # пишет seed.ps1 в .env
+
+volumes:
+  auth-data:
+  docflow-data:

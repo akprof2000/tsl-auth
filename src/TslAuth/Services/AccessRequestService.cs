@@ -1,10 +1,14 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using OpenIddict.EntityFrameworkCore.Models;
 using TslAuth.Data;
 
 namespace TslAuth.Services;
 
-/// <summary>Заявка на роль в «плоском» виде для API и страниц (Status — строка в нижнем регистре: pending/approved/rejected).</summary>
+/// <summary>
+/// Заявка на роль в «плоском» виде для API и страниц (Status — строка в нижнем регистре: pending/approved/rejected).
+/// <c>Role</c> — техническое имя роли, <c>RoleDisplayName</c> — название для пользователей (null — не задано).
+/// </summary>
 public sealed record AccessRequestDto(
     Guid Id,
     Guid UserId,
@@ -17,12 +21,28 @@ public sealed record AccessRequestDto(
     DateTime CreatedAt,
     DateTime? DecidedAt,
     string? DecidedBy,
-    string? DecisionComment);
+    string? DecisionComment,
+    string? RoleDisplayName = null)
+{
+    /// <summary>Как роль называется для пользователя: название, а если оно не задано — техническое имя.</summary>
+    public string RoleTitle => RoleDisplayName ?? Role;
 
-/// <summary>Роль, которую можно запросить: <see cref="ClientId"/> — приложение, которому она принадлежит.</summary>
-public sealed record RequestableRole(string ClientId, string Name, string? Description)
+    /// <summary>Для администраторов и ботов: «Название (техническое-имя)».</summary>
+    public string RoleLabel => RoleDisplayName is null ? Role : $"{RoleDisplayName} ({Role})";
+}
+
+/// <summary>
+/// Роль, которую можно запросить: <see cref="ClientId"/> — приложение, которому она принадлежит;
+/// пользователю показывается <see cref="Title"/> (название на языке установки), в форме передаётся <see cref="Key"/>.
+/// </summary>
+public sealed record RequestableRole(string ClientId, string Name, string? Description, string? DisplayName = null,
+    string? AppDisplayName = null)
 {
     public string Key => $"{ClientId}|{Name}";
+    public string Title => DisplayName ?? Name;
+
+    /// <summary>Название приложения для пользователя (как в карточке приложения), иначе client_id.</summary>
+    public string AppTitle => AppDisplayName ?? ClientId;
 }
 
 /// <summary>Данные формы самостоятельной регистрации (страница Account/Register): учётная запись + запрашиваемые роли.</summary>
@@ -68,32 +88,51 @@ public sealed class AccessRequestService(
     public async Task<List<RequestableRole>> ListRequestableRolesAsync(string clientId, CancellationToken ct = default)
     {
         var apps = await RelatedAppsAsync(clientId, ct);
-        return await db.AccessRoles.AsNoTracking().Where(r => apps.Contains(r.ClientId) && r.IsRequestable)
+        var roles = await db.AccessRoles.AsNoTracking().Where(r => apps.Contains(r.ClientId) && r.IsRequestable)
             .OrderBy(r => r.ClientId).ThenBy(r => r.Name)
-            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description)).ToListAsync(ct);
+            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description, r.DisplayName, null)).ToListAsync(ct);
+        // Пользователю показываем названия приложений, а не client_id.
+        var titles = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
+            .Where(a => apps.Contains(a.ClientId!)).Select(a => new { a.ClientId, a.DisplayName }).ToListAsync(ct);
+        var byClient = titles.Where(a => !string.IsNullOrWhiteSpace(a.DisplayName)).ToDictionary(a => a.ClientId!, a => a.DisplayName);
+        // Порядок — как видит пользователь: по названию приложения, затем по названию роли.
+        return roles.Select(r => r with { AppDisplayName = byClient.GetValueOrDefault(r.ClientId) })
+            .OrderBy(r => r.AppTitle, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>Самостоятельная регистрация пользователя в приложении и (опционально) создание заявок на роли.</summary>
     public async Task<Guid> RegisterAsync(string clientId, RegistrationInput input, CancellationToken ct = default)
     {
         if (!await apps.IsSelfRegistrationEnabledAsync(clientId, ct))
-            throw new AdminException("Самостоятельная регистрация для этого приложения отключена.", StatusCodes.Status403Forbidden);
+            throw AdminException.Localized("error.registrationDisabled", "Самостоятельная регистрация для этого приложения отключена.",
+                StatusCodes.Status403Forbidden);
 
         // Роли проверяем до создания учётной записи, чтобы не оставлять «полу-зарегистрированных» пользователей.
         await ResolveRequestableAsync(clientId, input.Roles, ct);
 
+        // Без «полу-зарегистрированных» пользователей (учётка есть, заявок нет): роли проверены выше, а если заявки
+        // всё же не создались — только что созданная учётная запись удаляется (компенсация). Общая транзакция здесь
+        // не годится: создание пользователя и заявок публикует события в отдельном соединении БД, и на SQLite
+        // (одна блокировка записи на файл) эта запись ждала бы окончания транзакции — взаимная блокировка на 30 с.
         var user = await users.CreateAsync(new UserInput(input.UserName, input.Email, input.DisplayName, true, input.Password), ct);
-        // Запоминаем приложение-«владельца»: AppSelfService разрешает ему управлять такими пользователями.
-        var entity = await db.Users.FirstAsync(u => u.Id == user.Id, ct);
-        entity.CreatedByClientId = clientId;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            // Запоминаем приложение-«владельца»: AppSelfService разрешает ему управлять такими пользователями.
+            await db.Users.Where(u => u.Id == user.Id)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, clientId), ct);
+            if (input.Roles is { Count: > 0 })
+                await CreateAsync(user.Id, clientId, input.Roles, input.Comment, ct);
+        }
+        catch
+        {
+            await users.DeleteAsync(user.Id, CancellationToken.None);
+            throw;
+        }
 
         await webhooks.PublishAsync(WebhookEvents.UserRegistered,
             $"👤 Новая регистрация: {user.UserName} ({user.Email ?? "без email"}) в приложении {clientId}.",
             new { userId = user.Id, userName = user.UserName, email = user.Email, clientId }, ct);
-
-        if (input.Roles is { Count: > 0 })
-            await CreateAsync(user.Id, clientId, input.Roles, input.Comment, ct);
         return user.Id;
     }
 
@@ -122,11 +161,21 @@ public sealed class AccessRequestService(
             created.Add(request.Id);
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Уникальный индекс IX_AccessRequests_Pending: параллельный запрос уже создал такую же ожидающую заявку.
+            foreach (var entry in db.ChangeTracker.Entries<AccessRequest>().Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+            throw AdminException.Conflict("Заявка на эту роль уже подана и ожидает рассмотрения.");
+        }
         var result = await QueryAsync(db.AccessRequests.Where(r => created.Contains(r.Id)), ct);
         foreach (var r in result)
             await webhooks.PublishAsync(WebhookEvents.AccessRequestCreated,
-                $"📝 {r.UserName} запрашивает роль «{r.Role}» в приложении {r.ClientId}." + (r.Comment is null ? "" : $" Комментарий: {r.Comment}"),
+                $"📝 {r.UserName} запрашивает роль «{r.RoleLabel}» в приложении {r.ClientId}." + (r.Comment is null ? "" : $" Комментарий: {r.Comment}"),
                 r, ct);
         return result;
     }
@@ -161,15 +210,23 @@ public sealed class AccessRequestService(
         request.Status = approve ? AccessRequestStatus.Approved : AccessRequestStatus.Rejected;
         request.DecidedAt = DateTime.UtcNow;
         request.DecidedBy = decidedBy;
-        request.DecisionComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
-        await db.SaveChangesAsync(ct);
+        comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        if (comment is { Length: > 2048 }) throw new AdminException("Комментарий к решению: не более 2048 символов.");
+        request.DecisionComment = comment;
 
-        if (approve)
-            await access.AssignAsync(SubjectType.User, request.UserId.ToString(), new RoleRef(request.Role.ClientId, request.Role.Name), ct);
+        // Статус и назначение роли — одной транзакцией: иначе при сбое назначения заявка осталась бы
+        // «одобренной» без роли, и переоткрыть её было бы нельзя.
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.SaveChangesAsync(ct);
+            if (approve)
+                await access.AssignAsync(SubjectType.User, request.UserId.ToString(), new RoleRef(request.Role.ClientId, request.Role.Name), ct);
+            await tx.CommitAsync(ct);
+        }
 
         var dto = (await QueryAsync(db.AccessRequests.Where(r => r.Id == id), ct)).Single();
         await webhooks.PublishAsync(approve ? WebhookEvents.AccessRequestApproved : WebhookEvents.AccessRequestRejected,
-            $"{(approve ? "✅" : "⛔")} Заявка {dto.UserName} на роль «{dto.Role}» в {dto.ClientId} {(approve ? "одобрена" : "отклонена")} ({decidedBy}).",
+            $"{(approve ? "✅" : "⛔")} Заявка {dto.UserName} на роль «{dto.RoleLabel}» в {dto.ClientId} {(approve ? "одобрена" : "отклонена")} ({decidedBy}).",
             dto, ct);
         await NotifyAsync(dto, ct);
         return dto;
@@ -185,14 +242,14 @@ public sealed class AccessRequestService(
         var found = candidates.Where(r => wanted.Contains(new RoleRef(r.ClientId, r.Name))).ToList();
         var missing = wanted.Where(w => found.All(f => f.ClientId != w.ClientId || f.Name != w.Role)).Select(w => w.ToString()).ToList();
         if (missing.Count > 0)
-            throw new AdminException($"Эти роли нельзя запросить: {string.Join(", ", missing)}.");
+            throw AdminException.Localized("error.rolesNotRequestable", $"Эти роли нельзя запросить: {string.Join(", ", missing)}.");
         return found;
     }
 
     private async Task<List<AccessRequestDto>> QueryAsync(IQueryable<AccessRequest> query, CancellationToken ct)
     {
         var rows = await query.AsNoTracking().OrderByDescending(r => r.CreatedAt)
-            .Select(r => new { r, r.Role.ClientId, RoleName = r.Role.Name }).Take(1000).ToListAsync(ct);
+            .Select(r => new { r, r.Role.ClientId, RoleName = r.Role.Name, RoleDisplayName = r.Role.DisplayName }).Take(1000).ToListAsync(ct);
         // Имена/email подтягиваем отдельным запросом: у AccessRequest нет навигации на пользователя.
         var userIds = rows.Select(x => x.r.UserId).Distinct().ToList();
         var people = await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id))
@@ -200,7 +257,7 @@ public sealed class AccessRequestService(
 
         return rows.Select(x => new AccessRequestDto(x.r.Id, x.r.UserId, people.GetValueOrDefault(x.r.UserId)?.UserName,
             people.GetValueOrDefault(x.r.UserId)?.Email, x.ClientId, x.RoleName, x.r.Status.ToString().ToLowerInvariant(),
-            x.r.Comment, x.r.CreatedAt, x.r.DecidedAt, x.r.DecidedBy, x.r.DecisionComment)).ToList();
+            x.r.Comment, x.r.CreatedAt, x.r.DecidedAt, x.r.DecidedBy, x.r.DecisionComment, x.RoleDisplayName)).ToList();
     }
 
     private async Task NotifyAsync(AccessRequestDto request, CancellationToken ct)
@@ -210,7 +267,7 @@ public sealed class AccessRequestService(
         try
         {
             await email.SendAsync(request.Email, $"Заявка на доступ {decision}", $"""
-                <p>Ваша заявка на роль <b>{WebUtility.HtmlEncode(request.Role)}</b> в приложении
+                <p>Ваша заявка на роль <b>{WebUtility.HtmlEncode(request.RoleTitle)}</b> в приложении
                    <b>{WebUtility.HtmlEncode(request.ClientId)}</b> {decision}.</p>
                 {(request.DecisionComment is null ? "" : $"<p>Комментарий: {WebUtility.HtmlEncode(request.DecisionComment)}</p>")}
                 """, ct);

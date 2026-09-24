@@ -30,7 +30,7 @@
     <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
     <div class="grid2">
         <div class="card">
-            <h2 style="margin-top:0">Профиль</h2>
+            <h2>Профиль</h2>
             <label asp-for="UserName">Логин</label>
             <input asp-for="UserName" required disabled="@readOnly" />
             <label asp-for="Email">Email</label>
@@ -43,20 +43,21 @@
             {
                 <fieldset>
                     <legend>Как пользователь получит доступ</legend>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="invite" checked="@(Model.Onboarding == "invite")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="invite" checked="@(Model.Onboarding == "invite")" />
                         <span>Приглашение — пользователь сам задаст пароль по ссылке@(Model.EmailConfigured ? " (отправим на email)" : " (ссылку нужно передать вручную)")</span></label>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="temporary" checked="@(Model.Onboarding == "temporary")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="temporary" checked="@(Model.Onboarding == "temporary")" />
                         <span>Одноразовый пароль — будет сгенерирован и показан вам, при первом входе потребуется сменить</span></label>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="password" checked="@(Model.Onboarding == "password")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="password" checked="@(Model.Onboarding == "password")" />
                         <span>Задать постоянный пароль:</span></label>
-                    <input asp-for="Password" type="password" autocomplete="new-password" placeholder="только для варианта «постоянный пароль»" />
+                    <input asp-for="Password" type="password" autocomplete="new-password" placeholder="только для варианта «постоянный пароль»"
+                           aria-label="Постоянный пароль" />
                 </fieldset>
             }
             else
             {
                 <p class="small muted">
-                    Создан: @Model.Current!.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"),
-                    последний вход: @(Model.Current.LastLoginAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—").
+                    Создан: @Ui.Time(Model.Current!.CreatedAt),
+                    последний вход: @Ui.Time(Model.Current.LastLoginAt, "—").
                     @if (!Model.Current.HasPassword) { <span class="badge warn">ожидает приглашения</span> }
                     @if (Model.Current.MustChangePassword) { <span class="badge warn">временный пароль</span> }
                     @if (Model.Current.IsLockedOut) { <span class="badge danger">заблокирован после неудачных попыток</span> }
@@ -65,7 +66,7 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-top:0">Роли в приложениях</h2>
+            <h2>Роли в приложениях</h2>
             <partial name="_RoleCheckboxes" model="@(("Roles", Model.AllRoles, Model.Roles, readOnly))" />
         </div>
     </div>
@@ -110,45 +111,11 @@
 {
     <h2>Активные сессии (@Model.Sessions.Count)</h2>
     <div class="table-wrap">
-        <table>
-            <thead><tr><th>Приложение</th><th>Тип</th><th>Начата</th><th>Последняя выдача токена</th><th>Токенов</th></tr></thead>
-            <tbody>
-            @foreach (var s in Model.Sessions)
-            {
-                <tr>
-                    <td><code>@s.ClientId</code></td>
-                    <td>@s.Type</td>
-                    <td class="small">@s.CreatedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                    <td class="small">@s.LastTokenIssuedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                    <td>@s.ActiveTokens</td>
-                </tr>
-            }
-            </tbody>
-        </table>
+        <partial name="_SessionTable" model="@(new SessionTableModel(Model.Sessions, ShowSubject: false, CanRevoke: false))" />
     </div>
     <h2>Персональные токены (@Model.Tokens.Count(t => t.IsActive) активных)</h2>
     <div class="table-wrap">
-        <table>
-            <thead><tr><th>Название</th><th>Приложения</th><th>Действует до</th><th>Использован</th><th></th></tr></thead>
-            @foreach (var t in Model.Tokens)
-            {
-                <tr>
-                    <td>@t.Name <div class="small muted"><code>@t.Prefix</code></div></td>
-                    <td>@foreach (var a in t.Audiences) { <span class="badge">@a</span> }</td>
-                    <td class="small">@t.ExpiresAt?.ToLocalTime().ToString("dd.MM.yyyy")</td>
-                    <td class="small">@t.LastUsedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") @t.LastUsedIp</td>
-                    <td>
-                        @if (t.IsActive && !readOnly)
-                        {
-                            <form method="post" asp-page-handler="RevokeToken" asp-route-id="@Model.Id" class="inline" data-confirm="Отозвать токен?">
-                                <input type="hidden" name="tokenId" value="@t.Id" /><button class="danger" type="submit">Отозвать</button>
-                            </form>
-                        }
-                        else if (!t.IsActive) { <span class="badge">неактивен</span> }
-                    </td>
-                </tr>
-            }
-        </table>
+        <partial name="_PatTable" model="@(new PatTableModel(Model.Tokens, Admin: true, CanRevoke: !readOnly, Handler: "RevokeToken", RouteId: Model.Id))" />
     </div>
     @if (!readOnly)
     {

@@ -42,6 +42,7 @@ public sealed class AccountLinks(
     IEmailSender email,
     IOptions<AuthServerOptions> server,
     IHttpContextAccessor http,
+    IHostEnvironment environment,
     Localization.Texts L)
 {
     public bool EmailConfigured => email.IsConfigured;
@@ -72,6 +73,23 @@ public sealed class AccountLinks(
             WebUtility.HtmlEncode(user.UserName), WebUtility.HtmlEncode(link)), ct);
     }
 
+    /// <summary>
+    /// Письмо сброса пароля в фоне: текст собирается сразу (на языке текущего запроса), отправка по SMTP — после ответа.
+    /// Время ответа «забыли пароль» не должно зависеть от того, существует ли пользователь (перечисление по таймингу).
+    /// </summary>
+    public void QueuePasswordReset(AppUser user, string link, ILogger logger)
+    {
+        if (user.Email is not { } address || !email.IsConfigured) return;
+        var subject = L["email.reset.subject"];
+        var body = L.Get("email.reset.body", WebUtility.HtmlEncode(user.UserName), WebUtility.HtmlEncode(link));
+        var userId = user.Id;
+        _ = Task.Run(async () =>
+        {
+            try { await email.SendAsync(address, subject, body); }
+            catch (Exception ex) { logger.LogWarning(ex, "Не удалось отправить письмо сброса пароля пользователю {UserId}.", userId); }
+        });
+    }
+
     public async Task SendPasswordResetAsync(AppUser user, string link, CancellationToken ct = default)
     {
         var address = user.Email ?? throw new AdminException("У пользователя не указан email.");
@@ -81,11 +99,15 @@ public sealed class AccountLinks(
 
     private string BuildUrl(string path, Guid userId, string token)
     {
-        // Предпочитаем настроенный Issuer: за reverse proxy Host запроса может быть внутренним адресом.
-        // Хост запроса — лишь запасной вариант, когда Issuer не задан.
+        // Только настроенный Issuer: Host запроса подделывается (письмо сброса со ссылкой на чужой домен).
+        // Вне Development Issuer обязателен (проверяется при старте); адрес из запроса — лишь удобство локальной разработки.
         var baseUrl = server.Value.Issuer?.TrimEnd('/');
-        if (string.IsNullOrEmpty(baseUrl) && http.HttpContext?.Request is { } request)
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            if (!environment.IsDevelopment() || http.HttpContext?.Request is not { } request)
+                throw new InvalidOperationException("Не задан Auth:Issuer — ссылку в письме построить нельзя.");
             baseUrl = $"{request.Scheme}://{request.Host}{request.PathBase}";
+        }
 
         return QueryHelpers.AddQueryString(baseUrl + path, new Dictionary<string, string?>
         {

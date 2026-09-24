@@ -54,25 +54,32 @@ public sealed record DeliveryDto(Guid Id, long EventId, string Event, string Sta
 /// Публикуют события сервисы (пользователи, заявки, приложения, аудит), AuthorizationController и страница входа;
 /// ленту читает Api/EventsApi.cs, подписками управляют Admin/Webhooks и API.
 /// </summary>
-public sealed class WebhookService(AuthDbContext db, ILogger<WebhookService> logger)
+public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes, Infrastructure.WebhookTargetPolicy targets,
+    ILogger<WebhookService> logger)
 {
     /// <summary>
     /// Сохраняет событие в ленту и ставит в очередь доставки (таблица в БД, по принципу outbox) для подходящих подписок.
     /// Сама HTTP-отправка — позже, в WebhookDispatcher, с повторами. Не бросает исключений, кроме отмены.
+    /// Пишет в собственном scope БД: сбой публикации не оставляет «висящих» сущностей в DbContext вызывающего
+    /// сервиса (иначе его следующий SaveChanges повторил бы неудачную вставку и упал уже в основной операции).
     /// </summary>
-    public async Task PublishAsync(string type, string text, object data, CancellationToken ct = default)
+    /// <param name="onlyCreatedBy">Доставить только подпискам этих владельцев (тестовое событие бота — только в его подписки).</param>
+    public async Task PublishAsync(string type, string text, object data, CancellationToken ct = default,
+        IReadOnlyCollection<string>? onlyCreatedBy = null)
     {
         try
         {
+            using var scope = scopes.CreateScope();
+            var own = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
             var ev = new WebhookEvent { Type = type, Text = text, Data = JsonSerializer.Serialize(data) };
-            db.WebhookEvents.Add(ev);
+            own.WebhookEvents.Add(ev);
             // Первое сохранение нужно, чтобы получить автоинкрементный Id события для записей доставки.
-            await db.SaveChangesAsync(ct);
+            await own.SaveChangesAsync(ct);
 
-            var subscriptions = await db.WebhookSubscriptions.AsNoTracking().Where(s => s.IsEnabled).ToListAsync(ct);
-            foreach (var s in subscriptions.Where(s => Matches(s.Events, type)))
-                db.WebhookDeliveries.Add(new WebhookDelivery { SubscriptionId = s.Id, EventId = ev.Id });
-            await db.SaveChangesAsync(ct);
+            var subscriptions = await own.WebhookSubscriptions.AsNoTracking().Where(s => s.IsEnabled).ToListAsync(ct);
+            foreach (var s in subscriptions.Where(s => Matches(s.Events, type) && (onlyCreatedBy is null || (s.CreatedBy is { } by && onlyCreatedBy.Contains(by)))))
+                own.WebhookDeliveries.Add(new WebhookDelivery { SubscriptionId = s.Id, EventId = ev.Id });
+            await own.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -162,20 +169,27 @@ public sealed class WebhookService(AuthDbContext db, ILogger<WebhookService> log
     private static bool Matches(string events, string type) =>
         events == "*" || events.Split(',', StringSplitOptions.TrimEntries).Contains(type);
 
-    private static void Apply(WebhookSubscription entity, SubscriptionInput input)
+    private void Apply(WebhookSubscription entity, SubscriptionInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name)) throw new AdminException("Укажите название подписки.");
+        // Длины — как у столбцов БД (на PostgreSQL превышение иначе давало бы 500 вместо понятной ошибки).
+        if (input.Name.Trim().Length > 100) throw new AdminException("Название подписки: не длиннее 100 символов.");
+        if (input.Secret is { Length: > 256 }) throw new AdminException("Секрет подписки: не длиннее 256 символов.");
         // Только http(s): схемы вроде file:// не должны попадать в HTTP-клиент диспетчера.
         if (!Uri.TryCreate(input.Url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
             throw new AdminException("URL вебхука должен быть абсолютным http(s)-адресом.");
+        if (uri.AbsoluteUri.Length > 2000) throw new AdminException("URL вебхука: не длиннее 2000 символов.");
+        if (targets.Reject(uri) is { } reason) throw new AdminException(reason);
 
         var events = (input.Events ?? []).Select(e => e.Trim()).Where(e => e.Length > 0).Distinct().ToList();
         var unknown = events.Where(e => e != "*" && !WebhookEvents.All.Contains(e)).ToList();
         if (unknown.Count > 0) throw new AdminException($"Неизвестные события: {string.Join(", ", unknown)}.");
 
         entity.Name = input.Name.Trim();
-        entity.Url = uri.ToString();
+        // AbsoluteUri, а не ToString(): ToString() разэкранирует адрес (%2F → /), и сохранялся бы другой URL.
+        entity.Url = uri.AbsoluteUri;
         entity.Events = events.Count == 0 || events.Contains("*") ? "*" : string.Join(",", events);
+        if (entity.Events.Length > 2000) throw new AdminException("Список событий подписки слишком длинный.");
         entity.Secret = string.IsNullOrWhiteSpace(input.Secret) ? null : input.Secret;
         entity.IsEnabled = input.IsEnabled;
     }

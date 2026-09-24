@@ -55,7 +55,7 @@ public static class StartupInitializer
     /// Автоматическое обновление схемы БД до версии, с которой собран сервис.
     /// Миграции применяются последовательно, каждая в своей транзакции; повторный запуск безопасен.
     /// </summary>
-    private static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct)
+    internal static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct)
     {
         var known = db.Database.GetMigrations().ToList();
         // На пустой БД таблицы истории ещё нет — не запрашиваем её (иначе EF пишет в лог ложную ошибку).
@@ -94,7 +94,9 @@ public static class StartupInitializer
         // БД может стартовать позже сервиса (docker compose) — ждём её доступности.
         for (var attempt = 1; ; attempt++)
         {
-            var connection = new NpgsqlConnection(connectionString);
+            // Без пула: сессионная блокировка снимается при закрытии соединения. Соединение из пула при «закрытии»
+            // лишь возвращается в пул, и блокировка висела бы до его повторного использования — остальные узлы ждали бы.
+            var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
             try
             {
                 await EnsurePostgresDatabaseAsync(connectionString, logger, ct);
@@ -114,7 +116,7 @@ public static class StartupInitializer
     }
 
     /// <summary>Создаёт базу данных, если её ещё нет (подключение к служебной БД "postgres").</summary>
-    private static async Task EnsurePostgresDatabaseAsync(string connectionString, ILogger logger, CancellationToken ct)
+    internal static async Task EnsurePostgresDatabaseAsync(string connectionString, ILogger logger, CancellationToken ct)
     {
         var target = new NpgsqlConnectionStringBuilder(connectionString);
         var databaseName = target.Database ?? throw new InvalidOperationException("В строке подключения не указан Database.");
@@ -205,7 +207,9 @@ public static class StartupInitializer
                      (SystemApp.ViewPermission, "Просмотр приложений, пользователей и сессий"),
                      (SystemApp.ManagePermission, "Изменение приложений, матриц доступа, пользователей и сессий"),
                      (SystemApp.EventsPermission, "Лента событий (long-polling/SSE) и управление подписками-вебхуками"),
-                     (SystemApp.PasswordResetPermission, "Бот: привязка мессенджера и сброс пароля пользователя")
+                     (SystemApp.PasswordResetPermission, "Бот: привязка мессенджера и сброс пароля пользователя"),
+                     (SystemApp.UserLockPermission, "Бот: блокировка и разблокировка учётной записи по команде"),
+                     (SystemApp.PasswordForcePermission, "Бот: принудительная смена пароля по команде")
                  })
         {
             if (matrix.Permissions.All(p => p.Name != name))
@@ -213,21 +217,31 @@ public static class StartupInitializer
         }
 
         // Роли системного приложения. Для существующих установок недостающие разрешения
-        // добавляются к ролям при обновлении (например, "events" появилось в новой версии).
-        foreach (var (role, description, permissions) in new[]
+        // добавляются к ролям при обновлении (например, "events" появилось в новой версии),
+        // а пустое название для пользователей заполняется (изменённое администратором не трогается).
+        foreach (var (role, displayName, description, permissions) in new[]
                  {
-                     (SystemApp.AdministratorRole, "Полный доступ к администрированию",
+                     (SystemApp.AdministratorRole, "Администратор", "Полный доступ к администрированию",
                          new[] { SystemApp.ViewPermission, SystemApp.ManagePermission, SystemApp.EventsPermission }),
-                     (SystemApp.AuditorRole, "Только просмотр", new[] { SystemApp.ViewPermission }),
-                     (SystemApp.NotifierRole, "Бот-уведомитель: только события", new[] { SystemApp.EventsPermission }),
-                     (SystemApp.ResetBotRole, "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission })
+                     (SystemApp.AuditorRole, "Аудитор", "Только просмотр", new[] { SystemApp.ViewPermission }),
+                     (SystemApp.NotifierRole, "Бот уведомлений", "Бот-уведомитель: только события", new[] { SystemApp.EventsPermission }),
+                     (SystemApp.ResetBotRole, "Бот сброса пароля", "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission }),
+                     (SystemApp.SecurityBotRole, "Бот безопасности", "Бот мессенджера: сброс пароля, блокировка, принудительная смена пароля",
+                         new[] { SystemApp.PasswordResetPermission, SystemApp.UserLockPermission, SystemApp.PasswordForcePermission }),
+                     (SystemApp.SecurityOfficerRole, "Офицер безопасности", "Через бота блокирует чужие учётные записи и требует смену пароля",
+                         new[] { SystemApp.UserLockPermission, SystemApp.PasswordForcePermission })
                  })
         {
             var existing = matrix.Roles.FirstOrDefault(r => r.Name == role);
             if (existing is null)
-                await access.AddRoleAsync(SystemApp.ClientId, role, description, permissions, ct);
-            else if (permissions.Except(existing.Permissions).Any())
+            {
+                await access.AddRoleAsync(SystemApp.ClientId, role, description, permissions, ct, displayName: displayName);
+                continue;
+            }
+            if (permissions.Except(existing.Permissions).Any())
                 await access.SetRolePermissionsAsync(SystemApp.ClientId, role, existing.Permissions.Union(permissions), ct);
+            if (existing.DisplayName is null)
+                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct, system: true);
         }
 
         // 2. Первый администратор — только если в системе ещё нет ни одного.

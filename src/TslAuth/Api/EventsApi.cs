@@ -1,6 +1,7 @@
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using OpenIddict.Abstractions;
 using TslAuth.Infrastructure;
@@ -49,7 +50,7 @@ public static class EventsApi
 
         // Подписки на вебхуки. Доставка идёт через outbox (WebhookDelivery) с повторами и подписью HMAC.
         var hooks = endpoints.MapGroup("/api/admin/webhooks").RequireAuthorization(AdminPolicies.ApiEvents).WithTags("Events")
-            .AddEndpointFilter(HandleErrors)
+            .AddEndpointFilter(ApiErrors.Handle)
             .AddEndpointFilter(new ApiAuditFilter(AuditTypes.AdminChange));
 
         // Администратор видит все подписки, бот-notifier — только созданные им самим.
@@ -58,11 +59,11 @@ public static class EventsApi
             var all = await s.ListSubscriptionsAsync(ct);
             return (await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded
                 ? all
-                : all.Where(x => x.CreatedBy == Caller(me)).ToList();
+                : all.Where(x => x.CreatedBy is { } by && AdminApi.OwnerIds(me).Contains(by)).ToList();
         });
         hooks.MapPost("/", async (ClaimsPrincipal me, SubscriptionInput input, WebhookService s, CancellationToken ct) =>
         {
-            var created = await s.CreateSubscriptionAsync(input, Caller(me), ct);
+            var created = await s.CreateSubscriptionAsync(input, AdminApi.OwnerId(me), ct);
             return Results.Created($"/api/admin/webhooks/{created.Id}", created);
         });
         hooks.MapPut("/{id:guid}", async (ClaimsPrincipal me, Guid id, SubscriptionInput input, WebhookService s,
@@ -84,9 +85,12 @@ public static class EventsApi
             await EnsureOwnerAsync(me, id, s, auth, ct);
             return await s.ListDeliveriesAsync(id, 100, ct);
         });
-        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, CancellationToken ct) =>
+        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, IAuthorizationService auth, CancellationToken ct) =>
         {
-            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct);
+            // Бот проверяет свои подписки и не должен слать тестовые события в чужие; администратор — во все.
+            var admin = (await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded;
+            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct,
+                onlyCreatedBy: admin ? null : AdminApi.OwnerIds(me));
             return Results.Accepted();
         });
     }
@@ -119,13 +123,16 @@ public static class EventsApi
             if (batch.Count == 0 && ++idle % 15 == 0)
             {
                 // Пульс раз в ~15 с: держит соединение через прокси и позволяет боту заметить обрыв.
-                yield return new SseItem<EventDto>(new EventDto(cursor, "ping", DateTime.UtcNow, "", default), "ping");
+                // Data — пустой объект: default(JsonElement) не сериализуется и обрывал поток на первом же пульсе.
+                yield return new SseItem<EventDto>(new EventDto(cursor, "ping", DateTime.UtcNow, "", EmptyData), "ping");
             }
 
             try { await Task.Delay(TimeSpan.FromSeconds(1), ct); }
             catch (OperationCanceledException) { yield break; }
         }
     }
+
+    private static readonly JsonElement EmptyData = JsonDocument.Parse("{}").RootElement.Clone();
 
     private static IReadOnlyCollection<string>? ParseTypes(string? types) =>
         string.IsNullOrWhiteSpace(types) ? null : types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -137,13 +144,8 @@ public static class EventsApi
         CancellationToken ct)
     {
         var sub = (await s.ListSubscriptionsAsync(ct)).FirstOrDefault(x => x.Id == id) ?? throw AdminException.NotFound("Подписка");
-        if (sub.CreatedBy != Caller(me) && !(await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded)
+        if (!(sub.CreatedBy is { } by && AdminApi.OwnerIds(me).Contains(by)) && !(await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded)
             throw AdminException.NotFound("Подписка");
     }
 
-    private static async ValueTask<object?> HandleErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        try { return await next(context); }
-        catch (AdminException ex) { return Results.Problem(detail: ex.Message, statusCode: ex.StatusCode); }
-    }
 }

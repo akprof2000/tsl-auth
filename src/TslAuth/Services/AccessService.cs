@@ -6,8 +6,12 @@ namespace TslAuth.Services;
 /// <summary>Разрешение приложения (атомарное право, например <c>orders.read</c>).</summary>
 public sealed record PermissionDto(string Name, string? Description);
 
-/// <summary>Роль приложения со списком входящих в неё разрешений; <c>IsRequestable</c> — роль можно запросить через заявку.</summary>
-public sealed record RoleDto(string Name, string? Description, List<string> Permissions, bool IsRequestable = false);
+/// <summary>
+/// Роль приложения со списком входящих в неё разрешений; <c>IsRequestable</c> — роль можно запросить через заявку.
+/// <c>Name</c> — техническое имя (в токенах и API), <c>DisplayName</c> — название для пользователей.
+/// </summary>
+public sealed record RoleDto(string Name, string? Description, List<string> Permissions, bool IsRequestable = false,
+    string? DisplayName = null);
 
 /// <summary>Матрица «роль × разрешение» одного приложения (страница Admin/Apps/Matrix и Admin API).</summary>
 public sealed record MatrixDto(string ClientId, List<PermissionDto> Permissions, List<RoleDto> Roles);
@@ -32,7 +36,7 @@ public sealed class AccessService(AuthDbContext db)
         var roles = await db.AccessRoles.AsNoTracking()
             .Where(r => r.ClientId == clientId).OrderBy(r => r.Name)
             .Select(r => new RoleDto(r.Name, r.Description,
-                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable))
+                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable, r.DisplayName))
             .ToListAsync(ct);
 
         return new MatrixDto(clientId, permissions, roles);
@@ -41,6 +45,7 @@ public sealed class AccessService(AuthDbContext db)
     public async Task<PermissionDto> AddPermissionAsync(string clientId, string name, string? description, CancellationToken ct = default)
     {
         name = Names.Validate(name, "Имя разрешения");
+        if (description is { Length: > 500 }) throw new AdminException("Описание разрешения: не более 500 символов.");
         if (await db.AccessPermissions.AnyAsync(p => p.ClientId == clientId && p.Name == name, ct))
             throw AdminException.Conflict($"Разрешение '{name}' уже существует.");
 
@@ -58,18 +63,32 @@ public sealed class AccessService(AuthDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Создаёт роль. <paramref name="name"/> — техническое имя (строчные латинские, без пробелов, уникально в приложении),
+    /// <paramref name="displayName"/> — название для пользователей на языке установки (может повторяться).
+    /// </summary>
     public async Task<RoleDto> AddRoleAsync(string clientId, string name, string? description,
-        IEnumerable<string>? permissions = null, CancellationToken ct = default, bool requestable = false)
+        IEnumerable<string>? permissions = null, CancellationToken ct = default, bool requestable = false, string? displayName = null)
     {
-        name = Names.Validate(name, "Имя роли");
+        name = Names.ValidateRole(name);
+        displayName = Names.DisplayName(displayName);
         if (await db.AccessRoles.AnyAsync(r => r.ClientId == clientId && r.Name == name, ct))
-            throw AdminException.Conflict($"Роль '{name}' уже существует.");
+            throw AdminException.Conflict($"Роль '{name}' уже существует в этом приложении.");
 
-        db.AccessRoles.Add(new AccessRole { ClientId = clientId, Name = name, Description = description, IsRequestable = requestable });
-        await db.SaveChangesAsync(ct);
-
-        if (permissions is not null)
-            await SetRolePermissionsAsync(clientId, name, permissions, ct);
+        if (description is { Length: > 500 }) throw new AdminException("Описание роли: не более 500 символов.");
+        // Роль и её разрешения — одной транзакцией: неизвестное разрешение не должно оставлять созданную роль
+        // (повторный запрос получил бы 409 «уже существует»).
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            db.AccessRoles.Add(new AccessRole
+            {
+                ClientId = clientId, Name = name, DisplayName = displayName, Description = description, IsRequestable = requestable
+            });
+            await db.SaveChangesAsync(ct);
+            if (permissions is not null)
+                await SetRolePermissionsAsync(clientId, name, permissions, ct);
+            await tx.CommitAsync(ct);
+        }
 
         return (await GetMatrixAsync(clientId, ct)).Roles.First(r => r.Name == name);
     }
@@ -83,9 +102,28 @@ public sealed class AccessService(AuthDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Меняет название роли для пользователей и описание. Техническое имя не меняется: на него ссылаются
+    /// выданные токены и код приложений.
+    /// </summary>
+    /// <param name="system">Вызов из StartupInitializer: только он может менять описание встроенных ролей администрирования.</param>
+    public async Task<RoleDto> UpdateRoleAsync(string clientId, string name, string? displayName, string? description,
+        CancellationToken ct = default, bool system = false)
+    {
+        if (!system) GuardSystem(clientId, "изменить");
+        displayName = Names.DisplayName(displayName);
+        description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == name)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.DisplayName, displayName).SetProperty(r => r.Description, description), ct);
+        if (affected == 0) throw AdminException.NotFound($"Роль '{name}'");
+        return (await GetMatrixAsync(clientId, ct)).Roles.First(r => r.Name == name);
+    }
+
     /// <summary>Помечает роль как доступную (или недоступную) для запроса через заявку.</summary>
     public async Task SetRoleRequestableAsync(string clientId, string roleName, bool requestable, CancellationToken ct = default)
     {
+        // Иначе прямым POST можно было сделать роль administrator «запрашиваемой» при самостоятельной регистрации.
+        GuardSystem(clientId, "сделать запрашиваемыми");
         // Точечный UPDATE без загрузки сущности; 0 затронутых строк = роли нет.
         var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == roleName)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRequestable, requestable), ct);
@@ -126,6 +164,20 @@ public sealed class AccessService(AuthDbContext db)
         foreach (var role in roles)
             await SetRolePermissionsAsync(clientId, role, matrix.TryGetValue(role, out var p) ? p : [], ct);
         await tx.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// Роли сразу нескольких субъектов одним запросом (для списков: без запроса на каждую строку).
+    /// <paramref name="clientId"/> — только роли этого приложения.
+    /// </summary>
+    public async Task<Dictionary<string, List<RoleRef>>> GetAssignmentsAsync(SubjectType type, IReadOnlyCollection<string> subjectIds,
+        string? clientId = null, CancellationToken ct = default)
+    {
+        var query = db.AccessRoleAssignments.AsNoTracking().Where(a => a.SubjectType == type && subjectIds.Contains(a.SubjectId));
+        if (clientId is not null) query = query.Where(a => a.Role.ClientId == clientId);
+        var rows = await query.OrderBy(a => a.Role.ClientId).ThenBy(a => a.Role.Name)
+            .Select(a => new { a.SubjectId, a.Role.ClientId, a.Role.Name }).ToListAsync(ct);
+        return rows.GroupBy(r => r.SubjectId).ToDictionary(g => g.Key, g => g.Select(r => new RoleRef(r.ClientId, r.Name)).ToList());
     }
 
     /// <summary>Роли, назначенные субъекту (пользователю или клиенту-сервису) во всех приложениях.</summary>
@@ -223,9 +275,9 @@ public sealed class AccessService(AuthDbContext db)
     public Task RemoveSubjectAsync(SubjectType type, string subjectId, CancellationToken ct = default) =>
         db.AccessRoleAssignments.Where(a => a.SubjectType == type && a.SubjectId == subjectId).ExecuteDeleteAsync(ct);
 
-    private static void GuardSystem(string clientId)
+    private static void GuardSystem(string clientId, string action = "удалить")
     {
         if (clientId == SystemApp.ClientId)
-            throw new AdminException("Встроенные роли и разрешения администрирования нельзя удалить.");
+            throw new AdminException($"Встроенные роли и разрешения администрирования нельзя {action}.", StatusCodes.Status403Forbidden);
     }
 }

@@ -19,7 +19,19 @@ public sealed class Texts(LocalizationService localization, IHttpContextAccessor
     public string Get(string key, params object?[] args)
     {
         var text = localization.Get(Culture, key) ?? key;
-        return args.Length == 0 ? text : string.Format(text, args);
+        if (args.Length == 0) return text;
+        try
+        {
+            return string.Format(text, args);
+        }
+        catch (FormatException)
+        {
+            // Перевод из пакета в БД с опечаткой в плейсхолдере («{» без пары) не должен ронять страницу:
+            // берём встроенный текст, а если и его нет — показываем строку без подстановки.
+            var builtIn = LocalizationService.GetBuiltIn(Culture, key);
+            try { return builtIn is null ? text : string.Format(builtIn, args); }
+            catch (FormatException) { return text; }
+        }
     }
 
     /// <summary>Строка с HTML-разметкой из пакета (например, тексты писем). Аргументы должны быть уже экранированы.</summary>

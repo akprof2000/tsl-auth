@@ -5,6 +5,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -16,6 +17,9 @@ var clientId = builder.Configuration["Auth:ClientId"] ?? "demo-dotnet";
 var goApi = builder.Configuration["GoApiUrl"] ?? "http://localhost:5103";
 
 builder.Services.AddHttpClient();
+// Действия, меняющие состояние (выход, refresh), — только POST с antiforgery-токеном: GET-ссылку можно подсунуть
+// с чужого сайта (картинкой, редиректом), и браузер отправит её с cookie сессии.
+builder.Services.AddAntiforgery();
 builder.Services.AddAuthorization(o =>
     // Разрешение из матрицы приложения demo-dotnet (claim "permissions" = "client:permission").
     o.AddPolicy("dashboard", p => p.RequireClaim("permissions", $"{clientId}:dashboard.view")));
@@ -60,8 +64,9 @@ builder.Services.AddAuthentication(o =>
 var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAntiforgery();
 
-app.MapGet("/", async (HttpContext ctx) =>
+app.MapGet("/", async (HttpContext ctx, IAntiforgery antiforgery) =>
 {
     var user = ctx.User;
     if (user.Identity?.IsAuthenticated != true)
@@ -70,13 +75,15 @@ app.MapGet("/", async (HttpContext ctx) =>
     var token = await ctx.GetTokenAsync("access_token");
     var expires = await ctx.GetTokenAsync("expires_at");
     var perms = user.FindAll("permissions").Select(c => c.Value).ToList();
+    var af = antiforgery.GetAndStoreTokens(ctx);
+    var afField = $"<input type='hidden' name='{E(af.FormFieldName)}' value='{E(af.RequestToken)}'>";
     return Html($"""
         <p>Вы вошли как <b>{E(user.Identity.Name)}</b>. Access-токен истекает: {E(expires)}</p>
         <p>Разрешения: {E(string.Join(", ", perms))}</p>
         <a class='btn' href='/dashboard'>Панель (нужно dashboard.view)</a>
         <a class='btn' href='/go-reports'>Вызвать Go API /api/reports</a>
-        <a class='btn' href='/refresh'>Обновить токен (refresh)</a>
-        <a class='btn' href='/logout'>Выйти</a>
+        <form method='post' action='/refresh' style='display:inline'>{afField}<button class='btn'>Обновить токен (refresh)</button></form>
+        <form method='post' action='/logout' style='display:inline'>{afField}<button class='btn'>Выйти</button></form>
         <h3>Claims access-токена</h3><pre>{E(JsonSerializer.Serialize(
             new JwtSecurityTokenHandler().ReadJwtToken(token).Payload, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))}</pre>
         """);
@@ -84,9 +91,11 @@ app.MapGet("/", async (HttpContext ctx) =>
 
 app.MapGet("/login", () => Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, [OpenIdConnectDefaults.AuthenticationScheme]));
 
-// Выход из обеих схем: удаляется локальная cookie и выполняется редирект на end_session_endpoint сервера.
-app.MapGet("/logout", () => Results.SignOut(new AuthenticationProperties { RedirectUri = "/" },
-    [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]));
+// Выход из обеих схем: удаляется локальная cookie и выполняется редирект на end_session_endpoint сервера
+// (middleware передаёт id_token_hint — сервер завершает сессию без страницы подтверждения).
+app.MapPost("/logout", () => Results.SignOut(new AuthenticationProperties { RedirectUri = "/" },
+        [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]))
+    .WithMetadata(new RequireAntiforgeryTokenAttribute());
 
 app.MapGet("/dashboard", (HttpContext ctx) => Html($"<p>✅ Доступ к панели разрешён матрицей доступа для {E(ctx.User.Identity!.Name)}.</p><a href='/'>← назад</a>"))
     .RequireAuthorization("dashboard");
@@ -101,7 +110,7 @@ app.MapGet("/go-reports", async (HttpContext ctx, IHttpClientFactory http) =>
 }).RequireAuthorization();
 
 // Продление сессии: refresh_token → новые токены, cookie перевыпускается.
-app.MapGet("/refresh", async (HttpContext ctx, IHttpClientFactory http, IConfiguration cfg) =>
+async Task<IResult> Refresh(HttpContext ctx, IHttpClientFactory http, IConfiguration cfg)
 {
     var result = await ctx.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     var response = await http.CreateClient().PostAsync($"{issuer.TrimEnd('/')}/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
@@ -121,7 +130,9 @@ app.MapGet("/refresh", async (HttpContext ctx, IHttpClientFactory http, IConfigu
     // Повторный SignIn перезаписывает cookie с новыми токенами (сервер ротирует refresh-токен — старый сохранять нельзя).
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, result.Principal!, result.Properties);
     return Html("<p>✅ Токен обновлён через refresh_token (ротация: старый refresh больше не действует).</p><a href='/'>← назад</a>");
-}).RequireAuthorization();
+}
+
+app.MapPost("/refresh", Refresh).RequireAuthorization().WithMetadata(new RequireAntiforgeryTokenAttribute());
 
 app.MapGet("/health", () => "ok");
 app.Run();

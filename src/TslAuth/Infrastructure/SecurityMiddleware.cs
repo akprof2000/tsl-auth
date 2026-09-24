@@ -71,15 +71,18 @@ public static class SecurityMiddleware
             h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()";
             // form-action не ограничиваем: после входа форма OIDC уходит на redirect_uri клиента.
             // Справочник API (Scalar) использует inline-конфигурацию — для него разрешён inline-скрипт; все ресурсы — локальные.
+            // Остальным страницам inline-стили не нужны: оформление — классы site.css, цвета брендинга входа —
+            // отдельный /branding.css, поэтому style-src без 'unsafe-inline' (внедрённая разметка не сможет
+            // перекрасить/спрятать элементы формы входа или вытащить данные CSS-селекторами).
             h["Content-Security-Policy"] = context.Request.Path.StartsWithSegments(ApiDocs.ReferencePath)
                 ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
                   "connect-src 'self'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'"
                 : context.Request.Path.StartsWithSegments("/connect")
                     // response_mode=form_post: OpenIddict отдаёт форму с фиксированным скриптом автоотправки —
                     // разрешён только он (по хешу), а не любые inline-скрипты.
-                    ? "default-src 'self'; script-src 'self' '" + FormPostScriptHash + "'; style-src 'self' 'unsafe-inline'; " +
+                    ? "default-src 'self'; script-src 'self' '" + FormPostScriptHash + "'; style-src 'self'; " +
                       "img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-                    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+                    : "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
                       "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
             // Ответы с токенами и данными API не должны оседать в кэшах браузера/прокси.
             if (context.Request.Path.StartsWithSegments("/connect") || context.Request.Path.StartsWithSegments("/api"))

@@ -27,7 +27,7 @@ public sealed class EditModel(UserService users, SessionService sessions, Accoun
 
     public bool IsNew => Id is null;
     public UserDto? Current { get; private set; }
-    public List<RoleRef> AllRoles { get; private set; } = [];
+    public List<RoleOption> AllRoles { get; private set; } = [];
     public List<SessionDto> Sessions { get; private set; } = [];
     public List<PatDto> Tokens { get; private set; } = [];
     public bool EmailConfigured => links.EmailConfigured;
@@ -161,7 +161,7 @@ public sealed class EditModel(UserService users, SessionService sessions, Accoun
     }
 
     private void LoadRoles() =>
-        AllRoles = db.AccessRoles.OrderBy(r => r.ClientId).ThenBy(r => r.Name).Select(r => new RoleRef(r.ClientId, r.Name)).ToList();
+        AllRoles = db.AccessRoles.OrderBy(r => r.ClientId).ThenBy(r => r.Name).Select(r => new RoleOption(r.ClientId, r.Name, r.DisplayName)).ToList();
 
     private static string PasswordGenerator() => Infrastructure.PasswordGenerator.Generate();
 }

@@ -28,16 +28,9 @@ public sealed class IndexModel(WebhookService webhooks, UserManager<AppUser> use
     /// <summary>Загружает подписки, 20 последних событий и, если выбрана подписка, её данные и журнал доставок.</summary>
     public async Task OnGetAsync(CancellationToken ct)
     {
-        Items = await webhooks.ListSubscriptionsAsync(ct);
-        // Лента событий читается «после id», поэтому берём окно из 20 последних и разворачиваем (новые сверху).
-        var latest = await webhooks.LatestEventIdAsync(ct);
-        RecentEvents = (await webhooks.ListEventsAsync(Math.Max(0, latest - 20), 20, ct: ct)).AsEnumerable().Reverse().ToList();
-
+        await LoadListsAsync(ct);
         if (Id is { } id && Items.FirstOrDefault(s => s.Id == id) is { } current)
-        {
             (Name, HookUrl, Events, IsEnabled) = (current.Name, current.Url, current.Events, current.IsEnabled);
-            Deliveries = await webhooks.ListDeliveriesAsync(id, 30, ct);
-        }
     }
 
     /// <summary>Создаёт новую подписку или обновляет выбранную (по Id).</summary>
@@ -47,9 +40,10 @@ public sealed class IndexModel(WebhookService webhooks, UserManager<AppUser> use
         SubscriptionDto? saved = null;
         if (!await TryAsync(async () => saved = Id is { } id
                 ? await webhooks.UpdateSubscriptionAsync(id, input, ct)
-                : await webhooks.CreateSubscriptionAsync(input, $"user:{users.GetUserName(User)}", ct)))
+                : await webhooks.CreateSubscriptionAsync(input, $"user:{users.GetUserId(User)}", ct)))
         {
-            await OnGetAsync(ct);
+            // Только списки: введённые в форму значения не перезатираются сохранёнными.
+            await LoadListsAsync(ct);
             return Page();
         }
 
@@ -57,10 +51,16 @@ public sealed class IndexModel(WebhookService webhooks, UserManager<AppUser> use
         return RedirectToPage(new { id = saved!.Id });
     }
 
-    /// <summary>Удаляет выбранную подписку.</summary>
+    /// <summary>Удаляет выбранную подписку; при ошибке остаёмся на странице с сообщением.</summary>
     public async Task<IActionResult> OnPostDeleteAsync(CancellationToken ct)
     {
-        await TryAsync(() => webhooks.DeleteSubscriptionAsync(Id!.Value, ct));
+        if (Id is null || !await TryAsync(() => webhooks.DeleteSubscriptionAsync(Id.Value, ct)))
+        {
+            if (Id is null) ModelState.AddModelError("", "Подписка не выбрана.");
+            await OnGetAsync(ct);
+            return Page();
+        }
+
         Flash("Подписка удалена.");
         return RedirectToPage(new { id = (Guid?)null });
     }
@@ -72,5 +72,16 @@ public sealed class IndexModel(WebhookService webhooks, UserManager<AppUser> use
             new { by = users.GetUserName(User) }, ct);
         Flash("Тестовое событие опубликовано — оно появится в ленте и будет доставлено подписчикам.");
         return RedirectToPage(new { id = Id });
+    }
+
+    /// <summary>Подписки, лента последних событий и журнал доставок выбранной подписки.</summary>
+    private async Task LoadListsAsync(CancellationToken ct)
+    {
+        Items = await webhooks.ListSubscriptionsAsync(ct);
+        // Лента событий читается «после id», поэтому берём окно из 20 последних и разворачиваем (новые сверху).
+        var latest = await webhooks.LatestEventIdAsync(ct);
+        RecentEvents = (await webhooks.ListEventsAsync(Math.Max(0, latest - 20), 20, ct: ct)).AsEnumerable().Reverse().ToList();
+        if (Id is { } id && Items.Any(s => s.Id == id))
+            Deliveries = await webhooks.ListDeliveriesAsync(id, 30, ct);
     }
 }

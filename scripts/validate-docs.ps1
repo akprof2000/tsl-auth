@@ -75,9 +75,13 @@ if (-not $SkipMermaid -and $mermaid.Count -gt 0) {
     for ($n = 0; $n -lt $mermaid.Count; $n++) { Set-Content (Join-Path $tmp "$n.mmd") $mermaid[$n].Text -Encoding utf8NoBOM }
     # Один контейнер на все диаграммы: браузер mermaid-cli поднимается один раз.
     $script = 'for f in /data/*.mmd; do mmdc -p /puppeteer-config.json -q -i "$f" -o "${f%.mmd}.svg" >/dev/null 2>"${f%.mmd}.err" || true; done'
-    # Контейнер работает под своим пользователем (там его Chrome) — в Linux открываем каталог на запись.
-    if (-not $IsWindows) { chmod 777 $tmp }
-    docker run --rm -v "${tmp}:/data" --entrypoint sh minlag/mermaid-cli -c $script | Out-Null
+    # В Linux контейнер запускается от UID/GID текущего пользователя — владельца временного каталога, поэтому
+    # каталог не нужно открывать на запись всем (chmod 777 позволил бы другим пользователям хоста подменить
+    # диаграммы или результаты). Chromium в образе системный, ему нужен только записываемый HOME.
+    $userArgs = if ($IsWindows) { @() } else { @("--user", "$(id -u):$(id -g)", "-e", "HOME=/tmp") }
+    # Образ закреплён по digest: проверка не меняется от того, что сегодня лежит под тегом (обновлять вручную).
+    $image = "minlag/mermaid-cli:11.17.1@sha256:d302a7cceeb01b6e4a94a377107056f85e2e488b8789e23fc80835a97960801d"
+    docker run --rm @userArgs -v "${tmp}:/data" --entrypoint sh $image -c $script | Out-Null
     for ($n = 0; $n -lt $mermaid.Count; $n++) {
         if (-not (Test-Path (Join-Path $tmp "$n.svg"))) {
             $err = (Get-Content (Join-Path $tmp "$n.err") -ErrorAction SilentlyContinue | Select-String 'Parse error|Expecting|Error' | Select-Object -First 2) -join ' '

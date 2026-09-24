@@ -81,7 +81,10 @@ public sealed class TokenPrincipalFactory(IOpenIddictScopeManager scopes, Access
         var audiences = new SortedSet<string>(StringComparer.Ordinal);
         if (explicitAudiences is not null)
         {
-            audiences.UnionWith(explicitAudiences);
+            // PAT: список приложений задан при выпуске, но в токен попадают только те, где у владельца есть роли
+            // сейчас — снятые с тех пор права не должны оставлять JWT адресованным этому приложению.
+            var current = await access.GetGrantsAsync(type, subjectId, explicitAudiences, ct);
+            audiences.UnionWith(current.Where(g => g.Value.Roles.Count > 0).Select(g => g.Key));
         }
         else
         {
@@ -130,9 +133,6 @@ public sealed class TokenPrincipalFactory(IOpenIddictScopeManager scopes, Access
 
             case CustomClaims.SubjectType:
                 yield return Destinations.AccessToken;
-                yield break;
-
-            case "AspNet.Identity.SecurityStamp":
                 yield break;
 
             default:

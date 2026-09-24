@@ -2,6 +2,7 @@
 #   docker compose up -d --build
 # Первый вход: http://localhost:8080  (пароль admin — в BOOTSTRAP_ADMIN_PASSWORD или в логе контейнера)
 # HTTPS прямо в контейнере:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
+# Секреты файлами (docker secrets): docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
 
 x-hardening: &hardening
   user: "1654:1654"                   # непривилегированный числовой UID (как в образе)
@@ -28,8 +29,12 @@ services:
     environment:
       Database__Provider: Sqlite
       Database__ConnectionString: "Data Source=/app/data/tsl-auth.db"
+      # Публичный адрес сервиса: iss в токенах и ссылки в письмах. Обязателен вне Development —
+      # без него сервис не стартует (адрес никогда не берётся из заголовка Host запроса).
       Auth__Issuer: "${AUTH_ISSUER:-http://localhost:8080/}"
       Auth__RequireHttps: "${AUTH_REQUIRE_HTTPS:-false}"
+      # Допустимые значения заголовка Host (стандартная фильтрация ASP.NET Core), например auth.corp;localhost.
+      AllowedHosts: "${AUTH_ALLOWED_HOSTS:-*}"
       Bootstrap__AdminUserName: "${BOOTSTRAP_ADMIN_USER:-admin}"
       Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
       Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-}"

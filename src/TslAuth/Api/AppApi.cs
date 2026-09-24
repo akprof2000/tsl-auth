@@ -35,7 +35,7 @@ public static class AppApi
     {
         var api = endpoints.MapGroup("/api/app")
             .RequireAuthorization(Policy)
-            .AddEndpointFilter(HandleErrors)
+            .AddEndpointFilter(ApiErrors.Handle)
             .AddEndpointFilter(new ApiAuditFilter(AuditTypes.AppApiChange))
             .WithTags("App (self-management)");
 
@@ -64,7 +64,9 @@ public static class AppApi
             return Results.NoContent();
         });
         api.MapPost("/roles", (ClaimsPrincipal me, RoleInput input, AccessService s, CancellationToken ct) =>
-            s.AddRoleAsync(Client(me), input.Name, input.Description, input.Permissions, ct, input.Requestable));
+            s.AddRoleAsync(Client(me), input.Name, input.Description, input.Permissions, ct, input.Requestable, input.DisplayName));
+        api.MapPut("/roles/{name}", (ClaimsPrincipal me, string name, RoleUpdateInput input, AccessService s, CancellationToken ct) =>
+            s.UpdateRoleAsync(Client(me), name, input.DisplayName, input.Description, ct));
         api.MapPut("/roles/{name}/requestable", async (ClaimsPrincipal me, string name, bool value, AccessService s, CancellationToken ct) =>
         {
             await s.SetRoleRequestableAsync(Client(me), name, value, ct);
@@ -96,7 +98,13 @@ public static class AppApi
         // для всей системы, поэтому менять профиль/пароль можно только у созданных этим приложением,
         // а у остальных — лишь свои роли. /link — выдать роли уже существующему пользователю по логину.
         var users = api.MapGroup("/users");
-        users.MapGet("/", (ClaimsPrincipal me, AppSelfService s, CancellationToken ct) => s.ListUsersAsync(Client(me), ct));
+        // Ответ — массив (как раньше), общее число — в заголовке X-Total-Count; skip/take — постраничная выборка.
+        users.MapGet("/", async (ClaimsPrincipal me, int? skip, int? take, HttpResponse response, AppSelfService s, CancellationToken ct) =>
+        {
+            var page = await s.ListUsersAsync(Client(me), skip ?? 0, take ?? 500, ct);
+            response.Headers["X-Total-Count"] = page.Total.ToString();
+            return page.Items;
+        });
         users.MapGet("/{id:guid}", (ClaimsPrincipal me, Guid id, AppSelfService s, CancellationToken ct) => s.GetUserAsync(Client(me), id, ct));
         users.MapPost("/", async (ClaimsPrincipal me, AppUserInput input, AppSelfService s, CancellationToken ct) =>
         {
@@ -119,17 +127,6 @@ public static class AppApi
 
     private static string Client(ClaimsPrincipal principal) => principal.GetClaim(Claims.Subject)!;
 
-    private static async ValueTask<object?> HandleErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        try
-        {
-            return await next(context);
-        }
-        catch (AdminException ex)
-        {
-            return Results.Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
 }
 
 /// <summary>Требование политики App API; проверяется <see cref="AppSelfHandler"/>.</summary>

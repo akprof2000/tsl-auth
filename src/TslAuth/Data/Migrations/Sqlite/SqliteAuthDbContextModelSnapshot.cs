@@ -437,6 +437,11 @@ namespace TslAuth.Data.Migrations.Sqlite
 
                     b.HasIndex("Status", "CreatedAt");
 
+                    b.HasIndex("UserId", "RoleId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AccessRequests_Pending")
+                        .HasFilter("\"Status\" = 0");
+
                     b.ToTable("AccessRequests", (string)null);
                 });
 
@@ -453,6 +458,10 @@ namespace TslAuth.Data.Migrations.Sqlite
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsRequestable")

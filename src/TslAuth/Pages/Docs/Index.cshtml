@@ -141,7 +141,8 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
     <h2 id="app-api">6. App API — приложение управляет своими пользователями</h2>
     <p>Включите «Самоуправление» в карточке приложения. Токен: <code>client_credentials</code> со scope <code>tsl-auth-app</code>.
         Приложение видит и меняет только свои роли, матрицу, заявки, журнал и пользователей своего среза.</p>
-<pre class="code">POST /api/app/roles            {"name":"support","permissions":["tickets.read"],"requestable":true}
+<pre class="code">POST /api/app/roles            {"name":"support","displayName":"Служба поддержки","permissions":["tickets.read"],"requestable":true}
+PUT  /api/app/roles/support    {"displayName":"Поддержка клиентов"}      // name — в токенах, displayName — пользователям
 POST /api/app/users            {"userName":"petr","email":"petr@corp","roles":["support"],"invite":true}
 POST /api/app/users/link       {"login":"ivan","roles":["support"]}      // выдать роль существующему пользователю
 PUT  /api/app/users/{id}/roles ["support"]

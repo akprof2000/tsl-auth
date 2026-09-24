@@ -1,0 +1,35 @@
+@*
+    Таблица персональных токенов: «Мои токены» (/Account/Tokens, на языке пользователя) и карточка пользователя
+    в админке (по-русски, как вся админка). Кнопка отзыва — только для активных токенов и при праве на отзыв.
+*@
+@model PatTableModel
+@{
+    string T(string key, string ru) => Model.Admin ? ru : L[key];
+}
+<table>
+    <thead><tr><th>@T("tokens.col.name", "Название")</th><th>@T("tokens.col.apps", "Приложения")</th>
+        <th>@T("tokens.col.expires", "Действует до")</th><th>@T("tokens.col.lastUsed", "Использован")</th><th></th></tr></thead>
+    @foreach (var t in Model.Items)
+    {
+        <tr>
+            <td>@t.Name<div class="small muted"><code>@t.Prefix</code></div></td>
+            <td>@foreach (var a in t.Audiences) { <span class="badge">@a</span> }</td>
+            <td class="small">@Ui.Date(t.ExpiresAt)</td>
+            <td class="small">@Ui.Time(t.LastUsedAt) @t.LastUsedIp</td>
+            <td>
+                @if (t.IsActive && Model.CanRevoke)
+                {
+                    <form method="post" asp-page-handler="@Model.Handler" asp-route-id="@Model.RouteId" class="inline"
+                          data-confirm="@T("tokens.revokeConfirm", "Отозвать токен?")">
+                        <input type="hidden" name="tokenId" value="@t.Id" />
+                        <button class="danger" type="submit">@T("tokens.revoke", "Отозвать")</button>
+                    </form>
+                }
+                else if (!t.IsActive)
+                {
+                    <span class="badge">@T("tokens.inactive", "неактивен")</span>
+                }
+            </td>
+        </tr>
+    }
+</table>

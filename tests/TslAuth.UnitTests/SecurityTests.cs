@@ -34,8 +34,10 @@ public sealed class FieldCryptoTests
         Assert.ThrowsAny<CryptographicException>(() => FieldCrypto.Decrypt("enc1:" + Convert.ToBase64String(bytes)));
     }
 
+    // L6: значение без префикса enc1: — подмена в БД в обход шифрования, а не «старые открытые данные».
     [Fact]
-    public void Decrypt_PlainLegacyValue_ReturnedAsIs() => Assert.Equal("legacy", FieldCrypto.Decrypt("legacy"));
+    public void Decrypt_UnencryptedValue_IsRejected() =>
+        Assert.Throws<CryptographicException>(() => FieldCrypto.Decrypt("attacker@evil.example"));
 
     [Fact]
     public void Null_IsPreserved()
@@ -89,6 +91,47 @@ public sealed class NamesTests
     public void TooLong() => Assert.Throws<AdminException>(() => Names.Validate(new string('a', 101), "x"));
 }
 
+/// <summary>
+/// Роль: техническое имя (строчные латинские, без пробелов, для токенов и администраторов)
+/// и название для пользователей (любой текст).
+/// </summary>
+public sealed class RoleNameTests
+{
+    [Theory]
+    [InlineData("reader")]
+    [InlineData("orders-manager")]
+    [InlineData("reset-bot")]
+    [InlineData("level_2")]
+    [InlineData("sales.head")]
+    [InlineData("  support  ")]
+    public void TechnicalName_Valid(string name) => Assert.Equal(name.Trim(), Names.ValidateRole(name));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Manager")]          // заглавные
+    [InlineData("orders manager")]   // пробел
+    [InlineData("менеджер")]         // не латиница
+    [InlineData("2nd-line")]         // начинается не с буквы
+    [InlineData("-dash")]
+    [InlineData("app:role")]         // «:» — разделитель в claims
+    [InlineData("a|b")]
+    public void TechnicalName_Invalid(string name) => Assert.Throws<AdminException>(() => Names.ValidateRole(name));
+
+    [Fact]
+    public void TechnicalName_TooLong() => Assert.Throws<AdminException>(() => Names.ValidateRole(new string('a', 101)));
+
+    [Theory]
+    [InlineData("Менеджер по заказам", "Менеджер по заказам")]
+    [InlineData("  Оператор склада  ", "Оператор склада")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void DisplayName_AnyTextOrNull(string? input, string? expected) => Assert.Equal(expected, Names.DisplayName(input));
+
+    [Fact]
+    public void DisplayName_TooLong() => Assert.Throws<AdminException>(() => Names.DisplayName(new string('я', 201)));
+}
+
 /// <summary>Генератор временных паролей: длина, все классы символов, уникальность.</summary>
 public sealed class PasswordGeneratorTests
 {
@@ -117,9 +160,9 @@ public sealed class WebhookSignatureTests
     [Fact]
     public void Sign_IsHmacSha256Hex()
     {
-        // Эталон: echo -n '{"a":1}' | openssl dgst -sha256 -hmac secret
-        Assert.Equal("sha256=4aa2d0fd8d2cc48ea9ad6ad2d8fbd1d7b25c3c61da5f37dfd236a0cd27ce4a3c".Length,
-            WebhookService.Sign("secret", "{\"a\":1}").Length);
+        // Эталон: echo -n '{"a":1}' | openssl dgst -sha256 -hmac secret (проверено независимо, Python hmac).
+        Assert.Equal("sha256=aa9e2e3575f5d7098b6caccd790888c36d5fdb63342a73bada2d6a51747a8494",
+            WebhookService.Sign("secret", "{\"a\":1}"));
         Assert.Equal(WebhookService.Sign("secret", "{\"a\":1}"), WebhookService.Sign("secret", "{\"a\":1}"));
         Assert.NotEqual(WebhookService.Sign("secret", "{\"a\":1}"), WebhookService.Sign("other", "{\"a\":1}"));
         Assert.StartsWith("sha256=", WebhookService.Sign("secret", "x"));

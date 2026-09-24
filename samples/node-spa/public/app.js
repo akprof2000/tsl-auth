@@ -46,6 +46,9 @@ async function token(params) {
 async function handleCallback() {
   const q = new URLSearchParams(location.search);
   const saved = JSON.parse(store.getItem("pkce") ?? "{}");
+  // verifier и state одноразовые: удаляем сразу, чтобы повторный заход на /callback с тем же state
+  // (из истории браузера, подсунутая ссылка) не прошёл проверку и не запустил обмен ещё раз.
+  store.removeItem("pkce");
   // Убираем code/state из адресной строки, чтобы код не остался в истории браузера.
   history.replaceState(null, "", "/");
   if (q.get("error")) return show(`Ошибка входа: ${q.get("error")} ${q.get("error_description") ?? ""}`);

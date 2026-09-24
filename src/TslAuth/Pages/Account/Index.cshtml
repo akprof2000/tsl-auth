@@ -1,0 +1,23 @@
+@page
+@model TslAuth.Pages.Account.IndexModel
+@* Личный кабинет: куда попадает после входа пользователь без прав администрирования (и без returnUrl). *@
+@{ ViewData["Title"] = L["account.title"]; }
+
+<div class="card">
+    <h2>@L["account.title"]</h2>
+    <p>@L.Get("account.signedInAs", Model.UserName)</p>
+    <ul class="account-links">
+        <li><a href="/Account/Tokens">@L["nav.tokens"]</a> <span class="muted small">— @L["account.hint.tokens"]</span></li>
+        <li><a href="/Account/Messenger">@L["nav.messenger"]</a> <span class="muted small">— @L["account.hint.messenger"]</span></li>
+        <li><a href="/Account/RequestAccess">@L["nav.request"]</a> <span class="muted small">— @L["account.hint.request"]</span></li>
+        <li><a href="/Account/ChangePassword">@L["nav.password"]</a> <span class="muted small">— @L["account.hint.password"]</span></li>
+        @if (Model.IsAdmin)
+        {
+            <li><a href="/Admin">@L["nav.admin"]</a> <span class="muted small">— @L["account.hint.admin"]</span></li>
+        }
+    </ul>
+    <form method="post" action="/Account/Logout">
+        @Html.AntiForgeryToken()
+        <button type="submit">@L["nav.logout"]</button>
+    </form>
+</div>

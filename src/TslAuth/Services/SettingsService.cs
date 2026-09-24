@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using TslAuth.Data;
 
@@ -25,11 +26,12 @@ public sealed record RuntimeSettings(
     BotResetPolicy? BotResetPolicy = null)
 {
     // Вложенные политики nullable, чтобы JSON, сохранённый старой версией (без этих секций), читался без ошибок;
-    // свойства ниже подставляют значения по умолчанию.
-    public BotResetPolicy BotReset => BotResetPolicy ?? new BotResetPolicy();
-    public PasswordPolicy Passwords => PasswordPolicy ?? new PasswordPolicy();
-    public PatPolicy Pats => PatPolicy ?? new PatPolicy();
-    public TokenPolicy Tokens => TokenPolicy ?? new TokenPolicy();
+    // свойства ниже подставляют значения по умолчанию. [JsonIgnore]: вычисляемые свойства не должны попадать
+    // ни в БД (иначе «значение по умолчанию» застыло бы при первом сохранении), ни в GET /settings.
+    [JsonIgnore] public BotResetPolicy BotReset => BotResetPolicy ?? new BotResetPolicy();
+    [JsonIgnore] public PasswordPolicy Passwords => PasswordPolicy ?? new PasswordPolicy();
+    [JsonIgnore] public PatPolicy Pats => PatPolicy ?? new PatPolicy();
+    [JsonIgnore] public TokenPolicy Tokens => TokenPolicy ?? new TokenPolicy();
 
     /// <summary>Разумные значения по умолчанию: частые события храним меньше, изменения и инциденты — дольше.</summary>
     public static readonly Dictionary<string, int> DefaultRetentionByType = new()
@@ -44,6 +46,7 @@ public sealed record RuntimeSettings(
     };
 
     /// <summary>Правила хранения по типам: заданные администратором или значения по умолчанию.</summary>
+    [JsonIgnore]
     public Dictionary<string, int> EffectiveRetentionByType => AuditRetentionByType ?? DefaultRetentionByType;
 
     /// <summary>Срок хранения для конкретного типа события (самый длинный подходящий префикс).</summary>
@@ -123,7 +126,8 @@ public sealed record TokenPolicy(
     int ExchangeTokenMinutes = 5,
     int PatAccessTokenMinutes = 15,
     int IdentityTokenMinutes = 15,
-    int AuthorizationCodeMinutes = 5)
+    int AuthorizationCodeMinutes = 5,
+    int MaxSessionDays = 90)
 {
     public void Validate()
     {
@@ -133,6 +137,7 @@ public sealed record TokenPolicy(
         if (PatAccessTokenMinutes is < 1 or > 1440) throw new AdminException("Токен по PAT: от 1 до 1440 минут.");
         if (IdentityTokenMinutes is < 1 or > 1440) throw new AdminException("id_token: от 1 до 1440 минут.");
         if (AuthorizationCodeMinutes is < 1 or > 30) throw new AdminException("Код авторизации: от 1 до 30 минут.");
+        if (MaxSessionDays is < 0 or > 3650) throw new AdminException("Максимальная длительность сессии: от 0 (без ограничения) до 3650 дней.");
     }
 }
 
@@ -175,16 +180,25 @@ public sealed record PatPolicy(bool Enabled = true, int MaxLifetimeDays = 365, i
 /// Читают AuthorizationController, TokenPruningService, страницы входа/токенов/настроек, валидаторы паролей, Admin API.
 /// </summary>
 public sealed class SettingsService(IServiceScopeFactory scopes,
-    Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Identity.IdentityOptions> identity)
+    Microsoft.Extensions.Options.IOptions<Options.AuthServerOptions> server)
 {
     /// <summary>
-    /// Блокировку проверяет Identity по своим (singleton) опциям — обновляем их при каждой загрузке настроек,
-    /// так все экземпляры кластера применяют новые значения в пределах TTL кэша.
+    /// Сроки жизни токенов из конфигурации (Auth__AccessTokenLifetimeMinutes и др.) — значения по умолчанию,
+    /// пока администратор не сохранил политику токенов в БД; после сохранения действует она.
+    /// Значения приводятся к допустимым диапазонам политики.
     /// </summary>
-    private void ApplyLockout(RuntimeSettings s)
+    private RuntimeSettings WithConfigDefaults(RuntimeSettings s)
     {
-        identity.Value.Lockout.MaxFailedAccessAttempts = s.Passwords.MaxFailedAttempts;
-        identity.Value.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(s.Passwords.LockoutMinutes);
+        if (s.TokenPolicy is not null) return s;
+        var o = server.Value;
+        return s with
+        {
+            TokenPolicy = new TokenPolicy(
+                AccessTokenMinutes: Math.Clamp(o.AccessTokenLifetimeMinutes, 1, 1440),
+                RefreshTokenDays: Math.Clamp(o.RefreshTokenLifetimeDays, 1, 365),
+                IdentityTokenMinutes: Math.Clamp(o.IdentityTokenLifetimeMinutes, 1, 1440),
+                AuthorizationCodeMinutes: Math.Clamp(o.AuthorizationCodeLifetimeMinutes, 1, 30))
+        };
     }
 
     private const string Key = "runtime";
@@ -202,9 +216,8 @@ public sealed class SettingsService(IServiceScopeFactory scopes,
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var row = await db.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == Key, ct);
-        _cached = row is null ? new RuntimeSettings() : JsonSerializer.Deserialize<RuntimeSettings>(row.Value) ?? new RuntimeSettings();
+        _cached = WithConfigDefaults(row is null ? new RuntimeSettings() : JsonSerializer.Deserialize<RuntimeSettings>(row.Value) ?? new RuntimeSettings());
         _cachedAt = DateTime.UtcNow;
-        ApplyLockout(_cached);
         return _cached;
     }
 
@@ -224,10 +237,9 @@ public sealed class SettingsService(IServiceScopeFactory scopes,
         row.UpdatedBy = updatedBy;
         await db.SaveChangesAsync(ct);
 
-        _cached = settings;
+        _cached = WithConfigDefaults(settings);
         _cachedAt = DateTime.UtcNow;
-        ApplyLockout(settings);
-        return settings;
+        return _cached;
     }
 
     /// <summary>Кто и когда последний раз менял настройки (без кэша).</summary>

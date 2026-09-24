@@ -85,9 +85,12 @@ public static class EventsApi
             await EnsureOwnerAsync(me, id, s, auth, ct);
             return await s.ListDeliveriesAsync(id, 100, ct);
         });
-        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, CancellationToken ct) =>
+        hooks.MapPost("/test", async (ClaimsPrincipal me, WebhookService s, IAuthorizationService auth, CancellationToken ct) =>
         {
-            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct);
+            // Бот проверяет свои подписки и не должен слать тестовые события в чужие; администратор — во все.
+            var admin = (await auth.AuthorizeAsync(me, AdminPolicies.ApiManage)).Succeeded;
+            await s.PublishAsync(WebhookEvents.Test, $"🔔 Тестовое событие TSL Auth от {Caller(me)}", new { by = Caller(me) }, ct,
+                onlyCreatedBy: admin ? null : Caller(me));
             return Results.Accepted();
         });
     }

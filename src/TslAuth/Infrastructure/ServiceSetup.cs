@@ -214,7 +214,17 @@ public static class ServiceSetup
         services.AddSingleton<SettingsService>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
         services.AddHostedService<WebhookDispatcher>();
-        services.AddHttpClient(WebhookDispatcher.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+        // Клиент вебхуков: без редиректов (Location мог бы увести на внутренний адрес), без системного прокси
+        // (иначе проверялся бы адрес прокси, а не получателя) и с проверкой адреса при каждом соединении (M6, SSRF).
+        var webhookTargets = WebhookTargetPolicy.FromConfig(config);
+        services.AddSingleton(webhookTargets);
+        services.AddHttpClient(WebhookDispatcher.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseProxy = false,
+                ConnectCallback = webhookTargets.ConnectAsync
+            });
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminPermissionHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Api.AppSelfHandler>();
         services.AddAuthorization(o =>

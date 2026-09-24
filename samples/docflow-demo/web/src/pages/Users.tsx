@@ -168,9 +168,9 @@ export default function UsersPage() {
                 {u.roles.map((r) => <span key={r} className="chip bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200"><ShieldCheck className="size-3" />{roleTitle(r)}</span>)}
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
-                {!u.isActive && <span className="chip bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">заблокирован</span>}
-                {u.mustChangePassword && <span className="chip bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">сменить пароль</span>}
-                {!u.hasPassword && <span className="chip bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">ждёт приглашения</span>}
+                {u.createdByThisApp && u.isActive === false && <span className="chip bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">заблокирован</span>}
+                {u.createdByThisApp && u.mustChangePassword && <span className="chip bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">сменить пароль</span>}
+                {u.createdByThisApp && u.hasPassword === false && <span className="chip bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">ждёт приглашения</span>}
                 {!u.createdByThisApp && <span className="chip bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400">общая учётка</span>}
               </div>
             </div>

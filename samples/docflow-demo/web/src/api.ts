@@ -46,8 +46,9 @@ export type DocFull = {
 export type Role = { name: string; title: string; description: string | null; permissions: string[] };
 export type DirUser = { id: string; userName: string; name: string; roles: string[] };
 export type AppUser = {
-  id: string; userName: string; email: string | null; displayName: string | null; isActive: boolean; hasPassword: boolean;
-  mustChangePassword: boolean; createdByThisApp: boolean; roles: string[];
+  // Для «чужих» (привязанных) пользователей TSL Auth скрывает email и состояние учётки: null/false.
+  id: string; userName: string; email: string | null; displayName: string | null; isActive: boolean | null; hasPassword: boolean | null;
+  mustChangePassword: boolean | null; createdByThisApp: boolean; roles: string[];
 };
 export type AccessRequest = {
   id: string; userId: string; userName: string | null; email: string | null; role: string; roleTitle: string; status: string;

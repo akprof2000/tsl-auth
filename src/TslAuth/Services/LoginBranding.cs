@@ -28,13 +28,18 @@ public sealed record LoginContext(string ClientId, string? DisplayName, LoginBra
 /// <summary>
 /// Хранение и валидация брендинга страниц входа. Данные лежат JSON-объектом в Properties клиента OpenIddict,
 /// поэтому отдельная таблица не нужна и настройки удаляются вместе с приложением.
-/// Используется страницами Account/Login, Register, RequestAccess, общим _Layout, Admin/Apps/Branding,
-/// а также Admin API и App API (приложение может само настроить своё оформление).
+/// Используется страницами Account/Login, Register, RequestAccess, общим _Layout, /branding.css (цвета),
+/// Admin/Apps/Branding, LanguageMiddleware (язык по умолчанию), а также Admin API и App API
+/// (приложение может само настроить своё оформление).
 /// </summary>
 public sealed partial class BrandingService(IOpenIddictApplicationManager applications)
 {
     private const string Property = "tsl_branding";
     public const int MaxLogoBytes = 256 * 1024;
+
+    // Сервис scoped (один экземпляр на запрос): страницу входа за один запрос разбирают LanguageMiddleware,
+    // модель страницы и _Layout — кэш не даёт трижды ходить в БД за одним и тем же клиентом.
+    private readonly Dictionary<string, LoginContext?> _resolved = new(StringComparer.Ordinal);
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
     private static partial Regex Color();
@@ -42,14 +47,30 @@ public sealed partial class BrandingService(IOpenIddictApplicationManager applic
     [GeneratedRegex("^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$")]
     private static partial Regex Logo();
 
+    [GeneratedRegex("^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$")]
+    private static partial Regex Language();
+
     /// <summary>Брендинг приложения; если не настроен — пустой объект.</summary>
     public async Task<LoginBranding> GetAsync(string clientId, CancellationToken ct = default)
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
+        return await ReadAsync(app, ct);
+    }
+
+    private async Task<LoginBranding> ReadAsync(object app, CancellationToken ct)
+    {
         var properties = await applications.GetPropertiesAsync(app, ct);
-        return properties.TryGetValue(Property, out var json) && json.ValueKind == JsonValueKind.Object
-            ? json.Deserialize<LoginBranding>() ?? new LoginBranding()
-            : new LoginBranding();
+        if (!properties.TryGetValue(Property, out var json) || json.ValueKind != JsonValueKind.Object) return new LoginBranding();
+        try
+        {
+            // Значения выводятся на публичной странице и в CSS — перепроверяем их и при чтении: свойство клиента
+            // могло быть записано в обход SetAsync (старая версия, ручная правка БД, импорт).
+            return Sanitize(json.Deserialize<LoginBranding>() ?? new LoginBranding());
+        }
+        catch (JsonException)
+        {
+            return new LoginBranding();
+        }
     }
 
     /// <summary>Валидирует и сохраняет брендинг; возвращает нормализованную версию.</summary>
@@ -57,6 +78,7 @@ public sealed partial class BrandingService(IOpenIddictApplicationManager applic
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
         branding = Validate(branding);
+        _resolved.Clear();
 
         var descriptor = new OpenIddictApplicationDescriptor();
         await applications.PopulateAsync(descriptor, app, ct);
@@ -70,17 +92,45 @@ public sealed partial class BrandingService(IOpenIddictApplicationManager applic
     public async Task<LoginContext?> ResolveFromReturnUrlAsync(string? returnUrl, CancellationToken ct = default)
     {
         // returnUrl приходит от пользователя: берём из него только client_id и проверяем, что такой клиент есть.
+        var clientId = ClientIdFromReturnUrl(returnUrl);
+        return clientId is null ? null : await ResolveAsync(clientId, ct);
+    }
+
+    /// <summary>Контекст входа для приложения; null — такого клиента нет (ошибкой не считается: страница входа общая).</summary>
+    public async Task<LoginContext?> ResolveAsync(string clientId, CancellationToken ct = default)
+    {
+        if (_resolved.TryGetValue(clientId, out var cached)) return cached;
+
+        var app = await applications.FindByClientIdAsync(clientId, ct);
+        var context = app is null ? null
+            : new LoginContext(clientId, await applications.GetDisplayNameAsync(app, ct), await ReadAsync(app, ct));
+        _resolved[clientId] = context;
+        return context;
+    }
+
+    /// <summary>client_id из query-строки returnUrl (/connect/authorize?client_id=...) без проверки существования клиента.</summary>
+    public static string? ClientIdFromReturnUrl(string? returnUrl)
+    {
         if (string.IsNullOrEmpty(returnUrl)) return null;
         var queryIndex = returnUrl.IndexOf('?');
         if (queryIndex < 0) return null;
-
         var query = QueryHelpers.ParseQuery(returnUrl[queryIndex..]);
-        if (!query.TryGetValue("client_id", out var values) || string.IsNullOrEmpty(values.ToString())) return null;
+        return query.TryGetValue("client_id", out var values) && !string.IsNullOrEmpty(values.ToString()) ? values.ToString() : null;
+    }
 
-        var clientId = values.ToString();
-        var app = await applications.FindByClientIdAsync(clientId, ct);
-        if (app is null) return null;
-        return new LoginContext(clientId, await applications.GetDisplayNameAsync(app, ct), await GetAsync(clientId, ct));
+    /// <summary>
+    /// Мягкая проверка при чтении: некорректные значения не ломают страницу входа, а отбрасываются
+    /// (цвет — только #RRGGBB, логотип — только data URI картинки, тексты обрезаются по лимитам).
+    /// </summary>
+    private static LoginBranding Sanitize(LoginBranding b)
+    {
+        static string? ColorOrNull(string? v) => v is not null && Color().IsMatch(v) ? v : null;
+        static string? Cut(string? v, int max) => string.IsNullOrWhiteSpace(v) ? null : v.Length > max ? v[..max] : v;
+        var logo = b.LogoDataUri is { } l && Logo().IsMatch(l) && l.Length <= MaxLogoBytes * 4 / 3 + 64 ? l : null;
+        var lang = b.DefaultLanguage is { } d && Language().IsMatch(d) ? d : null;
+        return new LoginBranding(Cut(b.Title, 100), Cut(b.WelcomeText, 500), logo,
+            ColorOrNull(b.AccentColor), ColorOrNull(b.BackgroundColor), ColorOrNull(b.CardColor), ColorOrNull(b.TextColor),
+            Cut(b.FooterText, 200), lang);
     }
 
     /// <summary>Превращает загруженный файл логотипа в data URI, проверяя размер и тип.</summary>
@@ -125,7 +175,7 @@ public sealed partial class BrandingService(IOpenIddictApplicationManager applic
             ColorValue(b.TextColor, "Цвет текста"),
             Text(b.FooterText, 200, "Подпись"),
             string.IsNullOrWhiteSpace(b.DefaultLanguage) ? null
-                : System.Text.RegularExpressions.Regex.IsMatch(b.DefaultLanguage.Trim(), "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$")
+                : Language().IsMatch(b.DefaultLanguage.Trim())
                     ? b.DefaultLanguage.Trim() : throw new AdminException("Язык по умолчанию: код вида ru, en, kk."));
     }
 }

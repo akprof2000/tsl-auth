@@ -4,7 +4,7 @@
 @{ ViewData["Title"] = L["invite.title"]; }
 
 <div class="card">
-    <h2 style="margin-top:0">@L["invite.title"]</h2>
+    <h2>@L["invite.title"]</h2>
     @if (Model.Done)
     {
         <div class="alert ok">@L.Get("invite.done", Model.UserName)</div>

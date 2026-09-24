@@ -24,9 +24,19 @@ public sealed class IndexModel(AuditService audit) : AdminPageModel
     public List<string> Types { get; private set; } = [];
     public const int PageSize = 100;
 
-    // Даты из формы приходят в локальном времени браузера/сервера, в БД хранится UTC.
-    private AuditQuery Query(int take) => new(From?.ToUniversalTime(), To?.ToUniversalTime(), Type, MinSeverity,
-        ClientId, UserId, Success, BeforeId, take);
+    /// <summary>Значения полей периода (datetime-local) — в UTC, как и фильтр.</summary>
+    public string? FromValue => Utc(From)?.ToString("yyyy-MM-ddTHH:mm");
+    public string? ToValue => Utc(To)?.ToString("yyyy-MM-ddTHH:mm");
+
+    private AuditQuery Query(int take) => new(Utc(From), Utc(To), Type, MinSeverity, ClientId, UserId, Success, BeforeId, take);
+
+    /// <summary>
+    /// Даты фильтра — в UTC (так подписаны поля, и так же выводится время в таблице и в CSV). Раньше значение
+    /// datetime-local считалось временем сервера, которое не совпадает ни с браузером администратора, ни с UTC в БД.
+    /// Значение с явной зоной (…Z, +03:00) переводится в UTC, без зоны — считается UTC.
+    /// </summary>
+    private static DateTime? Utc(DateTime? value) => value is not { } v ? null
+        : v.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : v.ToUniversalTime();
 
     public async Task OnGetAsync(CancellationToken ct)
     {

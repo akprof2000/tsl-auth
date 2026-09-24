@@ -3,6 +3,7 @@
     - /Admin/* — админка (русский интерфейс, меню разделов, счётчик ожидающих заявок, flash-сообщения);
     - остальные (страницы /Account) — узкая карточка входа с брендингом приложения из returnUrl,
       переключателем языка и меню личного кабинета для вошедшего пользователя.
+    Страница ошибки (/Error) этот макет не использует: он ходит в БД (брендинг, заявки, языки).
 *@
 @inject BrandingService BrandingService
 @inject AccessRequestService AccessRequests
@@ -21,6 +22,14 @@
         login = await BrandingService.ResolveFromReturnUrlAsync(returnUrl);
     }
     var brand = login?.Branding ?? new LoginBranding();
+
+    // «Запросить доступ» получает только то, что нужно странице заявки (returnUrl приложения и client_id),
+    // а не весь query string: на страницах сброса пароля и приглашения в нём одноразовые uid/token.
+    var requestQuery = new Dictionary<string, string?>();
+    var currentReturnUrl = ViewData["ReturnUrl"] as string ?? Context.Request.Query["ReturnUrl"].ToString();
+    if (Url.IsLocalUrl(currentReturnUrl)) requestQuery["ReturnUrl"] = currentReturnUrl;
+    if (Context.Request.Query["ClientId"].ToString() is { Length: > 0 } requestClientId) requestQuery["ClientId"] = requestClientId;
+    var requestAccessUrl = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/Account/RequestAccess", requestQuery);
 }
 <!DOCTYPE html>
 <html lang="@(isAdmin ? "ru" : L.Culture)">
@@ -30,20 +39,14 @@
     <title>@(ViewData["Title"] is { } t ? $"{t} — " : "")TSL Auth</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <script src="~/js/site.js" asp-append-version="true" defer></script>
-    @if (!brand.IsEmpty)
+    @if (login is not null && BrandingCssModel.HasColors(brand))
     {
-        @* Значения цветов провалидированы (#RRGGBB), поэтому безопасно подставлять в CSS. *@
-        <style>
-            :root {
-                @if (brand.AccentColor is not null) { <text>--accent: @brand.AccentColor; --accent-text: #fff;</text> }
-                @if (brand.BackgroundColor is not null) { <text>--bg: @brand.BackgroundColor;</text> }
-                @if (brand.CardColor is not null) { <text>--surface: @brand.CardColor;</text> }
-                @if (brand.TextColor is not null) { <text>--text: @brand.TextColor;</text> }
-            }
-        </style>
+        @* Цвета приложения — отдельной таблицей стилей: CSP запрещает inline-стили (style-src 'self'). *@
+        <link rel="stylesheet" href="@BrandingCssModel.Href(login.ClientId, brand)" />
     }
 </head>
-<body>
+@* Подписи для site.js (кнопка «показать пароль») — на языке страницы: в скрипте своих строк нет. *@
+<body data-password-show="@(isAdmin ? "Показать пароль" : L["password.show"])" data-password-hide="@(isAdmin ? "Скрыть пароль" : L["password.hide"])">
 @if (isAdmin)
 {
     <header class="top">
@@ -70,6 +73,7 @@
         </div>
     </header>
     <main>
+        @* TempData["Flash"] во всём приложении — готовый текст (админка — по-русски, /Account — на языке пользователя). *@
         @if (TempData["Flash"] is string flash)
         {
             <div class="alert ok">@flash</div>
@@ -97,15 +101,17 @@ else
         </div>
         @if (TempData["Flash"] is string accountFlash)
         {
-            <div class="alert ok">@L[accountFlash]</div>
+            <div class="alert ok">@accountFlash</div>
         }
         @RenderBody()
-        @if (User.Identity?.IsAuthenticated == true)
+        @* На самой странице личного кабинета те же ссылки уже есть в карточке. *@
+        @if (User.Identity?.IsAuthenticated == true && !path.Equals("/Account", StringComparison.OrdinalIgnoreCase))
         {
             <nav class="account-nav small">
+                <a href="/Account">@L["account.title"]</a>
                 <a href="/Account/Tokens">@L["nav.tokens"]</a>
                 <a href="/Account/Messenger">@L["nav.messenger"]</a>
-                <a href="/Account/RequestAccess@(Context.Request.QueryString)">@L["nav.request"]</a>
+                <a href="@requestAccessUrl">@L["nav.request"]</a>
                 <a href="/Account/ChangePassword">@L["nav.password"]</a>
                 <form method="post" action="/Account/Logout" class="inline">@Html.AntiForgeryToken()<button class="link" type="submit">@L["nav.logout"]</button></form>
             </nav>
@@ -120,7 +126,7 @@ else
                    class="@(lang.Culture.Equals(L.Culture, StringComparison.OrdinalIgnoreCase) ? "active" : "")" lang="@lang.Culture">@lang.Name</a>
             }
         </div>
-        <p class="small muted" style="text-align:center">@(brand.FooterText ?? L["footer.default"])</p>
+        <p class="small muted center">@(brand.FooterText ?? L["footer.default"])</p>
     </main>
 }
 </body>

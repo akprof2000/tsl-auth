@@ -19,7 +19,7 @@ public sealed class RegisterModel(
     AccessRequestService requests,
     UserManager<AppUser> users,
     SignInManager<AppUser> signIn,
-    AuditService audit) : PageModel
+    AuditService audit) : UserPageModel
 {
     [BindProperty(SupportsGet = true)] public string? ReturnUrl { get; set; }
 
@@ -58,7 +58,7 @@ public sealed class RegisterModel(
         }
         catch (AdminException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            AddError(ex);
         }
 
         return Page();

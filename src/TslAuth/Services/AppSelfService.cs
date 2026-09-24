@@ -52,14 +52,20 @@ public sealed class AppSelfService(
     SessionService sessions,
     AuditService audit)
 {
-    /// <summary>Пользователи, связанные с приложением (созданные им или имеющие его роли).</summary>
-    public async Task<List<AppUserDto>> ListUsersAsync(string clientId, CancellationToken ct = default)
+    /// <summary>
+    /// Пользователи, связанные с приложением (созданные им или имеющие его роли), постранично.
+    /// Роли всей страницы читаются одним запросом.
+    /// </summary>
+    public async Task<PagedResult<AppUserDto>> ListUsersAsync(string clientId, int skip = 0, int take = 500, CancellationToken ct = default)
     {
         var ids = (await RelatedUserIdsAsync(clientId, ct)).ToList();
-        var list = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).OrderBy(u => u.CreatedAt).ToListAsync(ct);
-        var result = new List<AppUserDto>(list.Count);
-        foreach (var user in list) result.Add(await ToDtoAsync(clientId, user, ct));
-        return result;
+        var query = db.Users.AsNoTracking().Where(u => ids.Contains(u.Id));
+        var total = await query.CountAsync(ct);
+        var page = await query.OrderBy(u => u.CreatedAt).Skip(Math.Max(skip, 0)).Take(Math.Clamp(take, 1, 1000)).ToListAsync(ct);
+        var roles = await access.GetAssignmentsAsync(SubjectType.User, page.Select(u => u.Id.ToString()).ToList(), clientId, ct);
+        return new PagedResult<AppUserDto>(
+            page.Select(u => ToDto(clientId, u, (roles.GetValueOrDefault(u.Id.ToString()) ?? []).Select(r => r.Role).ToList())).ToList(),
+            total);
     }
 
     public async Task<AppUserDto> GetUserAsync(string clientId, Guid id, CancellationToken ct = default) =>
@@ -218,12 +224,14 @@ public sealed class AppSelfService(
     // Профиль (email, состояние пароля, активность) видит только приложение-владелец учётной записи; для пользователей,
     // лишь получивших роль этого приложения, — логин, имя и роли. Иначе App API раскрывал бы данные любых учётных
     // записей системы (включая администраторов), привязанных через /users/link.
-    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct)
+    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct) =>
+        ToDto(clientId, user, (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
+            .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
+
+    private static AppUserDto ToDto(string clientId, AppUser user, List<string> roles)
     {
         var owned = user.CreatedByClientId == clientId;
         return new AppUserDto(user.Id, user.UserName!, owned ? user.Email : null, user.DisplayName, owned ? user.IsActive : true,
-            owned && user.PasswordHash is not null, owned && user.MustChangePassword, owned,
-            (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
-                .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
+            owned && user.PasswordHash is not null, owned && user.MustChangePassword, owned, roles);
     }
 }

@@ -65,16 +65,47 @@ public sealed class AppUserManager(
     : UserManager<AppUser>(store, optionsAccessor, passwordHasher, userValidators, passwordValidators, keyNormalizer,
         errors, services, logger)
 {
+    // Прежний хеш, ожидающий записи в историю: добавляется только вместе с успешным сохранением пользователя.
+    private PasswordHistoryEntry? _pendingHistory;
+
     protected override async Task<IdentityResult> UpdatePasswordHash(AppUser user, string newPassword, bool validatePassword)
     {
         var previousHash = user.PasswordHash;
-        // Запись истории добавляется в тот же DbContext и сохраняется вместе с пользователем, когда UserManager обновит его в хранилище.
         var result = await base.UpdatePasswordHash(user, newPassword, validatePassword);
         if (result.Succeeded && newPassword is not null)
         {
             if (previousHash is not null)
-                db.PasswordHistory.Add(new PasswordHistoryEntry { UserId = user.Id, PasswordHash = previousHash });
+                _pendingHistory = new PasswordHistoryEntry { UserId = user.Id, PasswordHash = previousHash };
             user.PasswordChangedAt = DateTime.UtcNow;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Сохранение пользователя вместе с записью истории паролей (одним SaveChanges). Если сохранение не удалось
+    /// (например, валидация логина), запись истории не остаётся в DbContext и не попадёт в БД со следующим SaveChanges.
+    /// После успеха история обрезается до числа паролей, которое требует политика (старые хеши не копятся бесконечно).
+    /// </summary>
+    protected override async Task<IdentityResult> UpdateUserAsync(AppUser user)
+    {
+        var pending = _pendingHistory;
+        _pendingHistory = null;
+        if (pending is not null) db.PasswordHistory.Add(pending);
+
+        var result = await base.UpdateUserAsync(user);
+        if (!result.Succeeded)
+        {
+            if (pending is not null) db.Entry(pending).State = EntityState.Detached;
+            return result;
+        }
+
+        if (pending is not null)
+        {
+            var keep = Math.Max((await settings.GetAsync(CancellationToken)).Passwords.HistoryCount, 0);
+            var stale = await db.PasswordHistory.Where(h => h.UserId == user.Id).OrderByDescending(h => h.CreatedAt)
+                .Skip(keep).Select(h => h.Id).ToListAsync(CancellationToken);
+            if (stale.Count > 0)
+                await db.PasswordHistory.Where(h => stale.Contains(h.Id)).ExecuteDeleteAsync(CancellationToken);
         }
         return result;
     }

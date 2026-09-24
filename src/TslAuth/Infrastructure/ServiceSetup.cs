@@ -116,7 +116,16 @@ public static class ServiceSetup
             o.AccessDeniedPath = "/Account/AccessDenied";
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.SlidingExpiration = true;
+            // При RequireHttps cookie сессии никогда не уходит по HTTP (иначе её можно перехватить при случайном
+            // http-запросе); без него (разработка, TLS на прокси без TrustForwardedHeaders) — по схеме запроса.
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+            o.Cookie.HttpOnly = true;
         });
+        // То же для служебных cookie (antiforgery, TempData с одноразовыми секретами).
+        services.AddAntiforgery(o =>
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest);
+        services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o =>
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest);
 
         // --- OAuth 2.0 / OpenID Connect ---
         services.AddSingleton<ServerKeyRing>();

@@ -71,10 +71,10 @@ public sealed class UserService(
         }
 
         var total = await db.Users.CountAsync(ct);
-        var page = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).Skip(skip).Take(Math.Clamp(take, 1, 500)).ToListAsync(ct);
-        var result = new List<UserDto>(page.Count);
-        foreach (var user in page) result.Add(await ToDtoAsync(user, ct));
-        return new PagedResult<UserDto>(result, total);
+        var page = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).Skip(Math.Max(skip, 0)).Take(Math.Clamp(take, 1, 500)).ToListAsync(ct);
+        // Роли всей страницы — одним запросом, а не по запросу на пользователя.
+        var roles = await access.GetAssignmentsAsync(SubjectType.User, page.Select(u => u.Id.ToString()).ToList(), ct: ct);
+        return new PagedResult<UserDto>(page.Select(u => ToDto(u, roles.GetValueOrDefault(u.Id.ToString()) ?? [])).ToList(), total);
     }
 
     /// <summary>
@@ -347,7 +347,10 @@ public sealed class UserService(
     private async Task<AppUser> Require(Guid id) =>
         await users.FindByIdAsync(id.ToString()) ?? throw AdminException.NotFound("Пользователь");
 
-    private async Task<UserDto> ToDtoAsync(AppUser user, CancellationToken ct) => new(
+    private async Task<UserDto> ToDtoAsync(AppUser user, CancellationToken ct) =>
+        ToDto(user, await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct));
+
+    private static UserDto ToDto(AppUser user, List<RoleRef> roles) => new(
         user.Id,
         user.UserName!,
         user.Email,
@@ -358,7 +361,7 @@ public sealed class UserService(
         user.MustChangePassword,
         user.CreatedAt,
         user.LastLoginAt,
-        await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct));
+        roles);
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

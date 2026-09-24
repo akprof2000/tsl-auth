@@ -56,12 +56,15 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
 
     // Информационные события (выдача токенов, успешные входы — самые частые) пишутся пачками:
     // под нагрузкой это одна транзакция на сотни событий вместо сотен транзакций.
-    // Очередь ограничена: при переполнении писатели ждут (backpressure), а не теряют события и не раздувают память.
+    // Очередь ограничена, чтобы не раздувать память. При переполнении (БД журнала недоступна или медленная)
+    // информационные события отбрасываются со счётчиком в логе: вход и выдача токенов не должны ждать журнала.
+    // Важные события (Warning и выше) идут мимо очереди и пишутся сразу.
     private readonly System.Threading.Channels.Channel<AuditEntry> _queue =
         System.Threading.Channels.Channel.CreateBounded<AuditEntry>(new System.Threading.Channels.BoundedChannelOptions(50_000)
         {
             FullMode = System.Threading.Channels.BoundedChannelFullMode.Wait, SingleReader = true
         });
+    private long _dropped;
     // FlushAsync вызывается и фоновым циклом, и перед чтением/очисткой журнала — не даём им пересекаться.
     private readonly SemaphoreSlim _flushLock = new(1, 1);
 
@@ -78,7 +81,8 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
         catch (OperationCanceledException) { }
         finally
         {
-            await FlushAsync(); // при остановке сервиса дописываем очередь
+            // При остановке дописываем очередь целиком (пачками по 1000), а не только первую пачку.
+            for (var i = 0; i < 100 && _queue.Reader.Count > 0; i++) await FlushAsync();
         }
     }
 
@@ -140,7 +144,9 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
 
         if (severity == AuditSeverity.Info)
         {
-            await _queue.Writer.WriteAsync(entry);
+            if (!_queue.Writer.TryWrite(entry) && Interlocked.Increment(ref _dropped) % 1000 == 1)
+                logger.LogWarning("Очередь журнала переполнена (БД журнала не успевает): отброшено информационных событий: {Dropped}.",
+                    Interlocked.Read(ref _dropped));
             return;
         }
 

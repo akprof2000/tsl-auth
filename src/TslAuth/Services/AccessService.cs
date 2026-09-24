@@ -165,6 +165,20 @@ public sealed class AccessService(AuthDbContext db)
         await tx.CommitAsync(ct);
     }
 
+    /// <summary>
+    /// Роли сразу нескольких субъектов одним запросом (для списков: без запроса на каждую строку).
+    /// <paramref name="clientId"/> — только роли этого приложения.
+    /// </summary>
+    public async Task<Dictionary<string, List<RoleRef>>> GetAssignmentsAsync(SubjectType type, IReadOnlyCollection<string> subjectIds,
+        string? clientId = null, CancellationToken ct = default)
+    {
+        var query = db.AccessRoleAssignments.AsNoTracking().Where(a => a.SubjectType == type && subjectIds.Contains(a.SubjectId));
+        if (clientId is not null) query = query.Where(a => a.Role.ClientId == clientId);
+        var rows = await query.OrderBy(a => a.Role.ClientId).ThenBy(a => a.Role.Name)
+            .Select(a => new { a.SubjectId, a.Role.ClientId, a.Role.Name }).ToListAsync(ct);
+        return rows.GroupBy(r => r.SubjectId).ToDictionary(g => g.Key, g => g.Select(r => new RoleRef(r.ClientId, r.Name)).ToList());
+    }
+
     /// <summary>Роли, назначенные субъекту (пользователю или клиенту-сервису) во всех приложениях.</summary>
     public async Task<List<RoleRef>> GetAssignmentsAsync(SubjectType type, string subjectId, CancellationToken ct = default) =>
         await db.AccessRoleAssignments.AsNoTracking()

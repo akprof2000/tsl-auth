@@ -47,8 +47,11 @@ public static class FieldCrypto
     public static string? Decrypt(string? stored)
     {
         if (stored is null) return null;
-        // Значения без префикса считаем незашифрованными (например, записанными до включения шифрования).
-        if (!stored.StartsWith(EncryptedPrefix, StringComparison.Ordinal)) return stored;
+        // Все версии сервиса шифруют эти поля с самого начала, незашифрованных значений быть не может.
+        // Значение без префикса — признак подмены данных в БД в обход шифрования (например, подставленный email
+        // для перехвата сброса пароля), поэтому не принимается как открытый текст.
+        if (!stored.StartsWith(EncryptedPrefix, StringComparison.Ordinal))
+            throw new CryptographicException("Поле в БД не зашифровано: значение изменено в обход сервиса.");
         return Encoding.UTF8.GetString(DecryptBytes(Convert.FromBase64String(stored[EncryptedPrefix.Length..])));
     }
 

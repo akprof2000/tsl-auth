@@ -67,8 +67,11 @@ public sealed class SessionService(AuthDbContext db)
             r.ClientId, r.Type, r.CreationDate, r.Last, r.Count)).ToList();
     }
 
+    // Авторизация и её токены отзываются одной транзакцией (если вызывающий код уже в транзакции — в её составе):
+    // иначе сбой между двумя UPDATE оставил бы «отозванную» сессию с действующими refresh-токенами.
+
     /// <summary>Отзывает одну сессию и все её токены (refresh-токены перестают работать сразу).</summary>
-    public async Task RevokeAsync(Guid authorizationId, CancellationToken ct = default)
+    public Task RevokeAsync(Guid authorizationId, CancellationToken ct = default) => db.InTransactionAsync(async () =>
     {
         var affected = await Authorizations.Where(a => a.Id == authorizationId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, Statuses.Revoked), ct);
@@ -76,10 +79,10 @@ public sealed class SessionService(AuthDbContext db)
 
         await Tokens.Where(t => t.Authorization!.Id == authorizationId && t.Status != Statuses.Revoked)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, Statuses.Revoked), ct);
-    }
+    }, ct);
 
     /// <summary>Отзывает все сессии и токены субъекта («выйти везде»); возвращает число отозванных сессий.</summary>
-    public async Task<int> RevokeBySubjectAsync(string subject, CancellationToken ct = default)
+    public Task<int> RevokeBySubjectAsync(string subject, CancellationToken ct = default) => db.InTransactionAsync(async () =>
     {
         // Токены отзываем по Subject, а не через авторизации: у части токенов (например, client_credentials) авторизации нет.
         var count = await Authorizations.Where(a => a.Subject == subject && a.Status == Statuses.Valid)
@@ -87,25 +90,25 @@ public sealed class SessionService(AuthDbContext db)
         await Tokens.Where(t => t.Subject == subject && t.Status != Statuses.Revoked)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, Statuses.Revoked), ct);
         return count;
-    }
+    }, ct);
 
     /// <summary>Отзывает сессии субъекта только в указанном приложении.</summary>
-    public async Task RevokeBySubjectAndClientAsync(string subject, string clientId, CancellationToken ct = default)
+    public Task RevokeBySubjectAndClientAsync(string subject, string clientId, CancellationToken ct = default) => db.InTransactionAsync(async () =>
     {
         await Authorizations.Where(a => a.Subject == subject && a.Application!.ClientId == clientId && a.Status == Statuses.Valid)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, Statuses.Revoked), ct);
         await Tokens.Where(t => t.Subject == subject && t.Application!.ClientId == clientId && t.Status != Statuses.Revoked)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, Statuses.Revoked), ct);
-    }
+    }, ct);
 
     /// <summary>Отзывает все сессии и токены приложения (перед его удалением).</summary>
-    public async Task RevokeByClientAsync(string clientId, CancellationToken ct = default)
+    public Task RevokeByClientAsync(string clientId, CancellationToken ct = default) => db.InTransactionAsync(async () =>
     {
         await Authorizations.Where(a => a.Application!.ClientId == clientId && a.Status == Statuses.Valid)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.Status, Statuses.Revoked), ct);
         await Tokens.Where(t => t.Application!.ClientId == clientId && t.Status != Statuses.Revoked)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.Status, Statuses.Revoked), ct);
-    }
+    }, ct);
 
     /// <summary>Число активных сессий (для дашборда админки).</summary>
     public Task<int> CountActiveAsync(CancellationToken ct = default)

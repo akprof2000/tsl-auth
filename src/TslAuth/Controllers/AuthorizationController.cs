@@ -247,8 +247,7 @@ public sealed class AuthorizationController(
 
             // Сохраняем привязку к той же авторизации (сессии), чтобы её отзыв продолжал действовать.
             identity.SetAuthorizationId(principal.GetAuthorizationId());
-            Guid? uid = Guid.TryParse(identity.GetClaim(Claims.Subject), out var g) && identity.GetClaim(CustomClaims.SubjectType) == "user" ? g : null;
-            return await IssueAsync(identity, request.GrantType!, request.ClientId!, uid, identity.GetClaim(Claims.PreferredUsername));
+            return await IssueAsync(identity, request.GrantType!, request.ClientId!, UserIdOf(identity), identity.GetClaim(Claims.PreferredUsername));
         }
 
         if (request.IsTokenExchangeGrantType())
@@ -282,8 +281,7 @@ public sealed class AuthorizationController(
             // Claim act (RFC 8693) фиксирует цепочку делегирования: кто действует от имени пользователя
             // (с учётом предыдущего актора при многошаговом обмене).
             TokenPrincipalFactory.AddActor(identity, request.ClientId!, subject.GetClaim(CustomClaims.Actor));
-            Guid? xid = Guid.TryParse(identity.GetClaim(Claims.Subject), out var xg) && identity.GetClaim(CustomClaims.SubjectType) == "user" ? xg : null;
-            return await IssueAsync(identity, GrantTypes.TokenExchange, request.ClientId!, xid, identity.GetClaim(Claims.PreferredUsername),
+            return await IssueAsync(identity, GrantTypes.TokenExchange, request.ClientId!, UserIdOf(identity), identity.GetClaim(Claims.PreferredUsername),
                 new { actor = request.ClientId, previousActor = subject.GetClaim(CustomClaims.Actor) });
         }
 
@@ -301,15 +299,25 @@ public sealed class AuthorizationController(
 
             var audiences = pat.Token.Audiences.Split(",", StringSplitOptions.RemoveEmptyEntries);
             var identity = await principals.CreateForUserAsync(pat.User, PatService.PatClientId, [.. audiences], audiences: audiences);
+            if (!identity.GetResources().Any())
+            {
+                await audit.WriteAsync("pat.rejected", false, AuditSeverity.Info, PatService.PatClientId, pat.User.Id,
+                    new { tokenId = pat.Token.Id, reason = "no_roles" });
+                return Error(Errors.InvalidGrant, "У владельца токена больше нет ролей ни в одном из его приложений.");
+            }
             identity.SetClaim("pat_id", pat.Token.Id.ToString());
-            // Только access token (без id/refresh): security stamp не должен утечь наружу ни в один токен.
-            identity.SetDestinations(c => c.Type == "AspNet.Identity.SecurityStamp" ? [] : [Destinations.AccessToken]);
+            // Только access token (без id/refresh-токена): PAT обменивается на короткоживущий JWT при каждом использовании.
+            identity.SetDestinations(_ => [Destinations.AccessToken]);
             return await IssueAsync(identity, PatGrantType, PatService.PatClientId, pat.User.Id, pat.User.UserName,
                 new { tokenId = pat.Token.Id, tokenName = pat.Token.Name });
         }
 
         return Error(Errors.UnsupportedGrantType, "Тип гранта не поддерживается.");
     }
+
+    /// <summary>Id пользователя-субъекта токена (для аудита); null, если субъект — клиент-сервис.</summary>
+    private static Guid? UserIdOf(ClaimsIdentity identity) =>
+        identity.GetClaim(CustomClaims.SubjectType) == "user" && Guid.TryParse(identity.GetClaim(Claims.Subject), out var id) ? id : null;
 
     /// <summary>Сессия (авторизация OpenIddict) старше maxDays дней с момента входа; 0 — без ограничения.</summary>
     private async Task<bool> SessionExpiredAsync(ClaimsPrincipal principal, int maxDays)

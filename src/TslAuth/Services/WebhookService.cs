@@ -63,8 +63,9 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
     /// Пишет в собственном scope БД: сбой публикации не оставляет «висящих» сущностей в DbContext вызывающего
     /// сервиса (иначе его следующий SaveChanges повторил бы неудачную вставку и упал уже в основной операции).
     /// </summary>
-    /// <param name="onlyCreatedBy">Доставить только подпискам этого автора (тестовое событие бота — только в его подписки).</param>
-    public async Task PublishAsync(string type, string text, object data, CancellationToken ct = default, string? onlyCreatedBy = null)
+    /// <param name="onlyCreatedBy">Доставить только подпискам этих владельцев (тестовое событие бота — только в его подписки).</param>
+    public async Task PublishAsync(string type, string text, object data, CancellationToken ct = default,
+        IReadOnlyCollection<string>? onlyCreatedBy = null)
     {
         try
         {
@@ -76,7 +77,7 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
             await own.SaveChangesAsync(ct);
 
             var subscriptions = await own.WebhookSubscriptions.AsNoTracking().Where(s => s.IsEnabled).ToListAsync(ct);
-            foreach (var s in subscriptions.Where(s => Matches(s.Events, type) && (onlyCreatedBy is null || s.CreatedBy == onlyCreatedBy)))
+            foreach (var s in subscriptions.Where(s => Matches(s.Events, type) && (onlyCreatedBy is null || (s.CreatedBy is { } by && onlyCreatedBy.Contains(by)))))
                 own.WebhookDeliveries.Add(new WebhookDelivery { SubscriptionId = s.Id, EventId = ev.Id });
             await own.SaveChangesAsync(ct);
         }

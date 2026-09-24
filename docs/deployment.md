@@ -63,8 +63,9 @@ docker compose -f docker-compose.ha.yml up -d --build
 docker logs tsl-auth-1 | grep -E "Схема|администратор"
 ```
 
-Без `ENCRYPTION_MASTER_KEY` и `POSTGRES_PASSWORD` (или `AUTH_SECRETS_DIR`, см. [секреты файлами](#секреты-файлами-docker-secrets))
-compose откажется запускать кластер.
+Значений по умолчанию для секретов нет: без `ENCRYPTION_MASTER_KEY` и `POSTGRES_PASSWORD` (или секретов файлами,
+см. [секреты файлами](#секреты-файлами-docker-secrets)) кластер не стартует — postgres сообщит, что не задан пароль,
+а узлы — что не задан `Encryption__MasterKey` (`docker compose -f docker-compose.ha.yml logs`).
 
 Точка входа — **только** nginx на `:8080`. Узлы наружу не публикуются: они работают с
 `Auth__TrustForwardedHeaders=true` и берут IP клиента и схему из `X-Forwarded-For/Proto`. Будь узел доступен напрямую,

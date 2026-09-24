@@ -8,12 +8,12 @@
 # (узлы на 127.0.0.1:8081–8083).
 # Вместо встроенного postgres можно указать внешний: DB_CONNECTION_STRING и удалить сервис postgres.
 
-# Проверка обязательных значений до запуска. Здесь, а не прямо в environment, потому что секреты можно передать
-# и файлами (docker-compose.ha-secrets.yml): тогда достаточно AUTH_SECRETS_DIR. compose подставляет переменные
-# в каждый файл отдельно, и оверлей не может снять проверку «:?» базового файла.
-x-required:
-  master-key: "${ENCRYPTION_MASTER_KEY:-${AUTH_SECRETS_DIR:?Задайте ENCRYPTION_MASTER_KEY (base64, 32 байта) в .env или AUTH_SECRETS_DIR для docker-compose.ha-secrets.yml}}"
-  db-password: "${POSTGRES_PASSWORD:-${DB_CONNECTION_STRING:-${AUTH_SECRETS_DIR:?Задайте POSTGRES_PASSWORD (или DB_CONNECTION_STRING для внешней БД) в .env или AUTH_SECRETS_DIR для docker-compose.ha-secrets.yml}}}"
+# Значений по умолчанию для секретов нет. Пропущенный секрет обнаруживается при старте с понятным сообщением:
+# postgres без POSTGRES_PASSWORD не инициализируется («superuser password is not specified»), узлы TSL Auth без
+# мастер-ключа не стартуют («Для PostgreSQL необходимо задать Encryption__MasterKey»). Проверку на уровне compose
+# («:?» с вложенными значениями) не используем: старые версии Docker Compose вычисляют её всегда, даже когда
+# переменная задана, и кластер не запускался бы вовсе; а секреты файлами (docker-compose.ha-secrets.yml) не должны
+# требовать переменных окружения.
 
 x-logging: &logging
   driver: json-file

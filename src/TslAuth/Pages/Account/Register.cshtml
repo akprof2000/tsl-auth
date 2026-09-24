@@ -38,7 +38,7 @@
                     {
                         <label class="inline" style="display:flex">
                             <input type="checkbox" name="Roles" value="@role.Key" checked="@Model.Roles.Contains(role.Key)" />
-                            <span><b>@role.Title</b> <span class="badge">@role.ClientId</span>
+                            <span><b>@role.Title</b> <span class="badge">@role.AppTitle</span>
                                 @if (role.Description is not null) { <span class="muted small">— @role.Description</span> }</span>
                         </label>
                     }

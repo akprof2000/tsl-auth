@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using OpenIddict.EntityFrameworkCore.Models;
 using TslAuth.Data;
 
 namespace TslAuth.Services;
@@ -34,10 +35,14 @@ public sealed record AccessRequestDto(
 /// Роль, которую можно запросить: <see cref="ClientId"/> — приложение, которому она принадлежит;
 /// пользователю показывается <see cref="Title"/> (название на языке установки), в форме передаётся <see cref="Key"/>.
 /// </summary>
-public sealed record RequestableRole(string ClientId, string Name, string? Description, string? DisplayName = null)
+public sealed record RequestableRole(string ClientId, string Name, string? Description, string? DisplayName = null,
+    string? AppDisplayName = null)
 {
     public string Key => $"{ClientId}|{Name}";
     public string Title => DisplayName ?? Name;
+
+    /// <summary>Название приложения для пользователя (как в карточке приложения), иначе client_id.</summary>
+    public string AppTitle => AppDisplayName ?? ClientId;
 }
 
 /// <summary>Данные формы самостоятельной регистрации (страница Account/Register): учётная запись + запрашиваемые роли.</summary>
@@ -83,9 +88,17 @@ public sealed class AccessRequestService(
     public async Task<List<RequestableRole>> ListRequestableRolesAsync(string clientId, CancellationToken ct = default)
     {
         var apps = await RelatedAppsAsync(clientId, ct);
-        return await db.AccessRoles.AsNoTracking().Where(r => apps.Contains(r.ClientId) && r.IsRequestable)
+        var roles = await db.AccessRoles.AsNoTracking().Where(r => apps.Contains(r.ClientId) && r.IsRequestable)
             .OrderBy(r => r.ClientId).ThenBy(r => r.Name)
-            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description, r.DisplayName)).ToListAsync(ct);
+            .Select(r => new RequestableRole(r.ClientId, r.Name, r.Description, r.DisplayName, null)).ToListAsync(ct);
+        // Пользователю показываем названия приложений, а не client_id.
+        var titles = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
+            .Where(a => apps.Contains(a.ClientId!)).Select(a => new { a.ClientId, a.DisplayName }).ToListAsync(ct);
+        var byClient = titles.Where(a => !string.IsNullOrWhiteSpace(a.DisplayName)).ToDictionary(a => a.ClientId!, a => a.DisplayName);
+        // Порядок — как видит пользователь: по названию приложения, затем по названию роли.
+        return roles.Select(r => r with { AppDisplayName = byClient.GetValueOrDefault(r.ClientId) })
+            .OrderBy(r => r.AppTitle, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(r => r.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>Самостоятельная регистрация пользователя в приложении и (опционально) создание заявок на роли.</summary>

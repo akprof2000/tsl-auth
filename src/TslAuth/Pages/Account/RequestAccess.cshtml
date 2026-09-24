@@ -26,7 +26,7 @@
                 var has = Model.Assigned.Contains(role.Key);
                 <label class="inline" style="display:flex">
                     <input type="checkbox" name="Roles" value="@role.Key" disabled="@has" checked="@has" />
-                    <span><b>@role.Title</b> <span class="badge">@role.ClientId</span> @(has ? L["request.already"] : "")
+                    <span><b>@role.Title</b> <span class="badge">@role.AppTitle</span> @(has ? L["request.already"] : "")
                         <span class="muted small">@role.Description</span></span>
                 </label>
             }

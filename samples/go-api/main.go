@@ -95,8 +95,14 @@ func (j *jwks) refresh() error {
 		if k.Kty != "RSA" {
 			continue
 		}
-		n, _ := base64.RawURLEncoding.DecodeString(k.N)
-		e, _ := base64.RawURLEncoding.DecodeString(k.E)
+		// Битый ключ пропускается, а не превращается в «пустой» (N=0, E=0): токены с его kid просто не пройдут
+		// проверку как с неизвестным ключом, а в журнале будет видна причина.
+		n, errN := base64.RawURLEncoding.DecodeString(k.N)
+		e, errE := base64.RawURLEncoding.DecodeString(k.E)
+		if errN != nil || errE != nil || len(n) == 0 || len(e) == 0 || len(e) > 4 {
+			log.Printf("JWKS: ключ %q пропущен — некорректные n/e", k.Kid)
+			continue
+		}
 		m[k.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(n), E: int(new(big.Int).SetBytes(e).Int64())}
 	}
 	j.mu.Lock()

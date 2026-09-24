@@ -187,7 +187,9 @@ public sealed class UiScenarios(UiFixture fx)
         await Expect(page.Locator("main")).ToContainTextAsync("Доступ к панели разрешён");
         await page.GotoAsync($"{UiFixture.Dotnet}/go-reports");
         await Expect(page.Locator("main")).ToContainTextAsync("200");
-        await page.GotoAsync($"{UiFixture.Dotnet}/refresh");
+        // Обновление токена — POST-форма с antiforgery на главной примера (GET /refresh больше не поддерживается).
+        await page.GotoAsync($"{UiFixture.Dotnet}/");
+        await page.ClickAsync("form[action='/refresh'] button");
         await Expect(page.Locator("main")).ToContainTextAsync("Токен обновлён");
         await UiFixture.ShotAsync(page, "51-dotnet-refresh");
     }

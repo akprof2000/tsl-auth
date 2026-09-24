@@ -104,7 +104,8 @@ else
             <div class="alert ok">@accountFlash</div>
         }
         @RenderBody()
-        @if (User.Identity?.IsAuthenticated == true)
+        @* На самой странице личного кабинета те же ссылки уже есть в карточке. *@
+        @if (User.Identity?.IsAuthenticated == true && !path.Equals("/Account", StringComparison.OrdinalIgnoreCase))
         {
             <nav class="account-nav small">
                 <a href="/Account">@L["account.title"]</a>

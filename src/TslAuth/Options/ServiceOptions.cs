@@ -13,6 +13,9 @@ public sealed class DatabaseOptions
 
     public string? ConnectionString { get; set; }
 
+    /// <summary>Файл со строкой подключения (docker secrets); если задан, имеет приоритет над <see cref="ConnectionString"/>.</summary>
+    public string? ConnectionStringFile { get; set; }
+
     public bool IsPostgres => Provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)
                               || Provider.Equals("PostgreSQL", StringComparison.OrdinalIgnoreCase);
 }
@@ -76,7 +79,13 @@ public sealed class BootstrapOptions
     /// <summary>Если не задан — будет сгенерирован и выведен в лог при первом запуске.</summary>
     public string? AdminPassword { get; set; }
 
+    /// <summary>Файл с паролем первого администратора (docker secrets); имеет приоритет над <see cref="AdminPassword"/>.</summary>
+    public string? AdminPasswordFile { get; set; }
+
     /// <summary>Опционально: клиент для внешнего Admin API (client_credentials).</summary>
     public string? AdminApiClientId { get; set; }
     public string? AdminApiClientSecret { get; set; }
+
+    /// <summary>Файл с секретом клиента Admin API (docker secrets); имеет приоритет над <see cref="AdminApiClientSecret"/>.</summary>
+    public string? AdminApiClientSecretFile { get; set; }
 }

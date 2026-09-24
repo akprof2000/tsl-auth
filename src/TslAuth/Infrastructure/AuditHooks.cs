@@ -135,3 +135,49 @@ public sealed class TokenErrorAuditHandler(AuditService audit) : IOpenIddictServ
         });
     }
 }
+
+/// <summary>
+/// Отказы introspection и revocation (прежде всего invalid_client — подбор секрета клиента): эти эндпоинты
+/// обрабатывает сам OpenIddict без нашего контроллера, поэтому ошибки перехватываются в его конвейере.
+/// </summary>
+public sealed class IntrospectionErrorAuditHandler(AuditService audit) : IOpenIddictServerHandler<ApplyIntrospectionResponseContext>
+{
+    public static OpenIddictServerHandlerDescriptor Descriptor { get; } =
+        OpenIddictServerHandlerDescriptor.CreateBuilder<ApplyIntrospectionResponseContext>()
+            .UseScopedHandler<IntrospectionErrorAuditHandler>()
+            .SetOrder(int.MinValue + 100_000)
+            .SetType(OpenIddictServerHandlerType.Custom)
+            .Build();
+
+    public ValueTask HandleAsync(ApplyIntrospectionResponseContext context) =>
+        EndpointErrorAudit.WriteAsync(audit, "introspect", context.Request?.ClientId, context.Response);
+}
+
+/// <summary>Отказы revocation — см. <see cref="IntrospectionErrorAuditHandler"/>.</summary>
+public sealed class RevocationErrorAuditHandler(AuditService audit) : IOpenIddictServerHandler<ApplyRevocationResponseContext>
+{
+    public static OpenIddictServerHandlerDescriptor Descriptor { get; } =
+        OpenIddictServerHandlerDescriptor.CreateBuilder<ApplyRevocationResponseContext>()
+            .UseScopedHandler<RevocationErrorAuditHandler>()
+            .SetOrder(int.MinValue + 100_000)
+            .SetType(OpenIddictServerHandlerType.Custom)
+            .Build();
+
+    public ValueTask HandleAsync(ApplyRevocationResponseContext context) =>
+        EndpointErrorAudit.WriteAsync(audit, "revoke", context.Request?.ClientId, context.Response);
+}
+
+internal static class EndpointErrorAudit
+{
+    public static async ValueTask WriteAsync(AuditService audit, string endpoint, string? clientId, OpenIddictResponse response)
+    {
+        if (string.IsNullOrEmpty(response.Error)) return;
+        var severity = response.Error is Errors.InvalidClient ? AuditSeverity.Warning : AuditSeverity.Info;
+        await audit.WriteAsync(AuditTypes.TokenRejected, false, severity, clientId, details: new
+        {
+            endpoint,
+            error = response.Error,
+            description = response.ErrorDescription
+        });
+    }
+}

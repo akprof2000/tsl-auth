@@ -31,6 +31,16 @@ public static class ServiceSetup
         services.Configure<BootstrapOptions>(config.GetSection(BootstrapOptions.Section));
 
         var database = config.GetSection(DatabaseOptions.Section).Get<DatabaseOptions>() ?? new DatabaseOptions();
+        // Секреты из файлов (docker secrets: /run/secrets/...) — вместо значений в переменных окружения,
+        // которые видны в docker inspect и списке процессов.
+        database.ConnectionString = SecretFile.Read(database.ConnectionStringFile, "Database:ConnectionStringFile") ?? database.ConnectionString;
+        services.PostConfigure<DatabaseOptions>(o =>
+            o.ConnectionString = SecretFile.Read(o.ConnectionStringFile, "Database:ConnectionStringFile") ?? o.ConnectionString);
+        services.PostConfigure<BootstrapOptions>(o =>
+        {
+            o.AdminPassword = SecretFile.Read(o.AdminPasswordFile, "Bootstrap:AdminPasswordFile") ?? o.AdminPassword;
+            o.AdminApiClientSecret = SecretFile.Read(o.AdminApiClientSecretFile, "Bootstrap:AdminApiClientSecretFile") ?? o.AdminApiClientSecret;
+        });
         if (database.IsPostgres && !string.IsNullOrWhiteSpace(database.ConnectionString))
             database.ConnectionString = PostgresConnectionString.Normalize(database.ConnectionString);
         // То же для IOptions<DatabaseOptions> (блокировка и создание БД в StartupInitializer).
@@ -157,6 +167,8 @@ public static class ServiceSetup
                 if (!server.RequireHttps) aspNetCore.DisableTransportSecurityRequirement();
 
                 o.AddEventHandler(TokenErrorAuditHandler.Descriptor);
+                o.AddEventHandler(IntrospectionErrorAuditHandler.Descriptor);
+                o.AddEventHandler(RevocationErrorAuditHandler.Descriptor);
             })
             .AddValidation(o =>
             {
@@ -214,6 +226,20 @@ public static class ServiceSetup
         services.AddHostedService<TokenPruningService>();
 
         services.AddTslSecurity(config);
+        // Introspection и revocation проверяют client_secret, но обрабатываются OpenIddict без контроллера —
+        // атрибут политики на них не повесить. Глобальный лимитер по IP (тот же лимит, что у /connect/token)
+        // не даёт перебирать секреты клиентов через эти эндпоинты.
+        var security = config.GetSection(SecurityOptions.Section).Get<SecurityOptions>() ?? new SecurityOptions();
+        services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(o =>
+            o.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                ctx.Request.Path.StartsWithSegments("/connect/introspect") || ctx.Request.Path.StartsWithSegments("/connect/revoke")
+                    ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                        "client-auth:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = security.TokenRequestsPerMinute, Window = TimeSpan.FromMinutes(1)
+                        })
+                    : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("none")));
         // Кириллица и другие алфавиты выводятся как есть, а не HTML-сущностями (&#x...;).
         services.Configure<Microsoft.Extensions.WebEncoders.WebEncoderOptions>(o =>
             o.TextEncoderSettings = new System.Text.Encodings.Web.TextEncoderSettings(System.Text.Unicode.UnicodeRanges.All));
@@ -233,6 +259,10 @@ public static class ServiceSetup
                 m.Filters.Add(new MustChangePasswordFilter());
                 m.Filters.Add(new AdminPageAuditFilter());
             });
+            // Личный кабинет тоже недоступен, пока временный пароль не сменён: иначе знающий временный пароль
+            // успел бы привязать мессенджер (альтернативный канал сброса пароля) или выпустить PAT.
+            foreach (var page in new[] { "/Account/Index", "/Account/Tokens", "/Account/Messenger", "/Account/RequestAccess" })
+                o.Conventions.AddPageApplicationModelConvention(page, m => m.Filters.Add(new MustChangePasswordFilter()));
         });
         services.AddTslApiDocs();
         services.AddHealthChecks().AddDbContextCheck<AuthDbContext>("database");

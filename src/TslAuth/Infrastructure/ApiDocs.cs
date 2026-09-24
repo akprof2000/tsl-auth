@@ -69,8 +69,11 @@ public static class ApiDocs
     /// <summary>Публикует /openapi/v1.json и справочник Scalar по <see cref="ReferencePath"/>.</summary>
     public static void MapTslApiDocs(this WebApplication app)
     {
-        app.MapOpenApi();
-        app.MapScalarApiReference(ReferencePath, o =>
+        // Docs:Public=false (внешний контур) — описание API видят только вошедшие пользователи с правом просмотра админки.
+        var isPublic = app.Configuration.GetValue("Docs:Public", true);
+        var openApi = app.MapOpenApi();
+        if (!isPublic) openApi.RequireAuthorization(AdminPolicies.UiView);
+        var reference = app.MapScalarApiReference(ReferencePath, o =>
         {
             // Примеры кода — для языков, которые используются у нас: shell (curl), Python, Java, C# (.NET), Node.js, Go.
             o.EnabledTargets = [ScalarTarget.Shell, ScalarTarget.Python, ScalarTarget.Java, ScalarTarget.CSharp, ScalarTarget.Node, ScalarTarget.Go];
@@ -88,5 +91,6 @@ public static class ApiDocs
             .AddPreferredSecuritySchemes(["oauth2"])
             .AddClientCredentialsFlow("oauth2", flow => flow.SelectedScopes = ["tsl-auth-admin"]);
         });
+        if (!isPublic) reference.RequireAuthorization(AdminPolicies.UiView);
     }
 }

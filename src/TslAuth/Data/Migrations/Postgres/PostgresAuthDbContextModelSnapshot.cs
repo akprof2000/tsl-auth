@@ -448,6 +448,11 @@ namespace TslAuth.Data.Migrations.Postgres
 
                     b.HasIndex("Status", "CreatedAt");
 
+                    b.HasIndex("UserId", "RoleId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AccessRequests_Pending")
+                        .HasFilter("\"Status\" = 0");
+
                     b.ToTable("AccessRequests", (string)null);
                 });
 

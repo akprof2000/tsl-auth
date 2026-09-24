@@ -16,7 +16,7 @@ var isCli = AdminCli.IsCliCommand(args);
 var builder = WebApplication.CreateBuilder(isCli ? [] : args);
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 // Вся регистрация сервисов — в Infrastructure/ServiceSetup.cs.
-builder.AddTslAuth();
+builder.AddTslAuth(cli: isCli);
 
 var app = builder.Build();
 

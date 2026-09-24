@@ -4,7 +4,18 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Воспроизводимая сборка: одинаковые исходники дают побайтно одинаковую сборку (проверяемость образа). -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- Версия сборки: CI передаёт её из git-тега (dotnet publish -p:Version=1.2.3); локально — 0.0.0-dev. -->
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Тесты проверяют внутренние помощники (разбор сетей, нормализация времени и т.п.) без расширения публичного API. -->
+    <InternalsVisibleTo Include="TslAuth.UnitTests" />
+    <InternalsVisibleTo Include="TslAuth.IntegrationTests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="MailKit" Version="4.18.0" />

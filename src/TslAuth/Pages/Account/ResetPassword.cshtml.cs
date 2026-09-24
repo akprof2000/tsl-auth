@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using TslAuth.Services;
@@ -10,7 +11,7 @@ namespace TslAuth.Pages.Account;
 /// Доступна анонимно: право на сброс подтверждается токеном из ссылки (Uid + Token в query).
 /// Использует UserService (проверка токена и смена пароля) и AuditService.
 /// </summary>
-public sealed class ResetPasswordModel(UserService users, AuditService audit) : PageModel
+public sealed class ResetPasswordModel(UserService users, AuditService audit) : UserPageModel
 {
     [BindProperty(SupportsGet = true)] public Guid Uid { get; set; }
     [BindProperty(SupportsGet = true)] public string Token { get; set; } = "";
@@ -30,16 +31,24 @@ public sealed class ResetPasswordModel(UserService users, AuditService audit) : 
     {
         if (!ModelState.IsValid) return Page();
 
-        var result = await users.CompletePasswordResetAsync(Uid, Token, Password, ct);
+        IdentityResult result;
+        try
+        {
+            result = await users.CompletePasswordResetAsync(Uid, Token, Password, ct);
+        }
+        catch (AdminException ex)
+        {
+            AddError(ex);
+            return Page();
+        }
         await audit.WriteAsync(AuditTypes.PasswordReset, result.Succeeded,
             result.Succeeded ? Data.AuditSeverity.Info : Data.AuditSeverity.Warning, null, Uid,
             new { via = "email_link", errors = result.Errors.Select(e => e.Code) });
         if (!result.Succeeded)
         {
             // Невалидный/просроченный/использованный токен показываем понятным сообщением «ссылка недействительна»,
-            // остальные ошибки (политика пароля) — как есть.
-            foreach (var error in result.Errors)
-                ModelState.AddModelError("", error.Code == "InvalidToken" ? "reset.invalidLink" : error.Description);
+            // нарушения политики пароля — как есть (уже переведены), прочее — общим текстом.
+            AddIdentityErrors(result.Errors, code => code == "InvalidToken" ? "reset.invalidLink" : null);
             return Page();
         }
 

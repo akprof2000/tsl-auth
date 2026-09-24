@@ -1,0 +1,22 @@
+@page
+@model TslAuth.Pages.Account.EndSessionModel
+@* Подтверждение выхода для OIDC end_session без id_token_hint (защита от logout-CSRF, см. AuthorizationController.Logout). *@
+@{
+    ViewData["Title"] = L["endsession.title"];
+}
+
+<div class="card">
+    <h2>@L["endsession.title"]</h2>
+    <p>@L["endsession.text"]</p>
+    <form method="post" action="/connect/logout">
+        @Html.AntiForgeryToken()
+        @foreach (var (name, value) in Model.Parameters)
+        {
+            <input type="hidden" name="@name" value="@value" />
+        }
+        <div class="actions">
+            <button class="primary" type="submit">@L["endsession.confirm"]</button>
+            <a href="/">@L["endsession.cancel"]</a>
+        </div>
+    </form>
+</div>

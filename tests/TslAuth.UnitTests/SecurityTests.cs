@@ -34,8 +34,10 @@ public sealed class FieldCryptoTests
         Assert.ThrowsAny<CryptographicException>(() => FieldCrypto.Decrypt("enc1:" + Convert.ToBase64String(bytes)));
     }
 
+    // L6: значение без префикса enc1: — подмена в БД в обход шифрования, а не «старые открытые данные».
     [Fact]
-    public void Decrypt_PlainLegacyValue_ReturnedAsIs() => Assert.Equal("legacy", FieldCrypto.Decrypt("legacy"));
+    public void Decrypt_UnencryptedValue_IsRejected() =>
+        Assert.Throws<CryptographicException>(() => FieldCrypto.Decrypt("attacker@evil.example"));
 
     [Fact]
     public void Null_IsPreserved()
@@ -158,9 +160,9 @@ public sealed class WebhookSignatureTests
     [Fact]
     public void Sign_IsHmacSha256Hex()
     {
-        // Эталон: echo -n '{"a":1}' | openssl dgst -sha256 -hmac secret
-        Assert.Equal("sha256=4aa2d0fd8d2cc48ea9ad6ad2d8fbd1d7b25c3c61da5f37dfd236a0cd27ce4a3c".Length,
-            WebhookService.Sign("secret", "{\"a\":1}").Length);
+        // Эталон: echo -n '{"a":1}' | openssl dgst -sha256 -hmac secret (проверено независимо, Python hmac).
+        Assert.Equal("sha256=aa9e2e3575f5d7098b6caccd790888c36d5fdb63342a73bada2d6a51747a8494",
+            WebhookService.Sign("secret", "{\"a\":1}"));
         Assert.Equal(WebhookService.Sign("secret", "{\"a\":1}"), WebhookService.Sign("secret", "{\"a\":1}"));
         Assert.NotEqual(WebhookService.Sign("secret", "{\"a\":1}"), WebhookService.Sign("other", "{\"a\":1}"));
         Assert.StartsWith("sha256=", WebhookService.Sign("secret", "x"));

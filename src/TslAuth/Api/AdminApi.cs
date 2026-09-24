@@ -38,7 +38,7 @@ public static class AdminApi
         // ApiAuditFilter пишет изменяющие вызовы в журнал безопасности.
         var api = endpoints.MapGroup("/api/admin")
             .RequireAuthorization(AdminPolicies.ApiView)
-            .AddEndpointFilter(HandleErrors)
+            .AddEndpointFilter(ApiErrors.Handle)
             .AddEndpointFilter(new ApiAuditFilter(AuditTypes.AdminChange))
             .WithTags("Admin");
 
@@ -274,7 +274,22 @@ public static class AdminApi
     public static AccessRequestStatus? ParseStatus(string? status) =>
         Enum.TryParse<AccessRequestStatus>(status, true, out var s) ? s : status is null or "all" ? null : AccessRequestStatus.Pending;
 
-    /// <summary>Строка «кто выполнил действие» для аудита: "client:{client_id}" или "user:{логин}".</summary>
+    /// <summary>
+    /// Идентификатор владельца (подписки вебхуков и т.п.): "client:{client_id}" или "user:{id}" — не меняется при
+    /// переименовании пользователя и совпадает с полем Actor журнала безопасности (AuditService.ResolveActor).
+    /// </summary>
+    public static string OwnerId(ClaimsPrincipal me) =>
+        me.GetClaim(CustomClaims.SubjectType) == "client"
+            ? $"client:{me.GetClaim(OpenIddictConstants.Claims.Subject)}"
+            : $"user:{me.GetClaim(OpenIddictConstants.Claims.Subject)}";
+
+    /// <summary>
+    /// Все метки, которыми может быть помечен владелец: текущая (<see cref="OwnerId"/>) и прежняя «user:{логин}»
+    /// (так подписки помечались в ранних версиях — они не должны «потеряться» после обновления).
+    /// </summary>
+    public static string[] OwnerIds(ClaimsPrincipal me) => [.. new[] { OwnerId(me), Caller(me) }.Distinct()];
+
+    /// <summary>Строка «кто выполнил действие» для отображения (решения по заявкам, изменения): "client:{client_id}" или "user:{логин}".</summary>
     public static string Caller(ClaimsPrincipal me) =>
         me.GetClaim(CustomClaims.SubjectType) == "client"
             ? $"client:{me.GetClaim(OpenIddictConstants.Claims.Subject)}"
@@ -286,15 +301,4 @@ public static class AdminApi
             throw AdminException.NotFound($"Приложение '{clientId}'");
     }
 
-    private static async ValueTask<object?> HandleErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
-    {
-        try
-        {
-            return await next(context);
-        }
-        catch (AdminException ex)
-        {
-            return Results.Problem(detail: ex.Message, statusCode: ex.StatusCode);
-        }
-    }
 }

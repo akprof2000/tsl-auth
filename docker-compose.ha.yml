@@ -1,8 +1,19 @@
 # Кластерный режим: PostgreSQL + 3 экземпляра сервиса за балансировщиком nginx.
-#   cp .env.example .env   (обязательно задать ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD)
+#   cp .env.example .env   (обязательно задать ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD — или AUTH_SECRETS_DIR,
+#                           см. docker-compose.ha-secrets.yml)
 #   docker compose -f docker-compose.ha.yml up -d --build
-# Точка входа: http://localhost:8080 ; экземпляры напрямую: 8081, 8082, 8083.
-# Вместо встроенного postgres можно указать внешний: DB_CONNECTION_STRING и убрать сервис postgres.
+# Точка входа — только nginx: http://localhost:8080. Узлы наружу не публикуются: они доверяют X-Forwarded-*
+# (Auth__TrustForwardedHeaders), и прямой запрос к узлу мог бы подделать IP клиента (обход rate limit, ложный IP
+# в журнале) и схему https. Для диагностики и тестов отказоустойчивости — docker-compose.ha-nodes.yml
+# (узлы на 127.0.0.1:8081–8083).
+# Вместо встроенного postgres можно указать внешний: DB_CONNECTION_STRING и удалить сервис postgres.
+
+# Значений по умолчанию для секретов нет. Пропущенный секрет обнаруживается при старте с понятным сообщением:
+# postgres без POSTGRES_PASSWORD не инициализируется («superuser password is not specified»), узлы TSL Auth без
+# мастер-ключа не стартуют («Для PostgreSQL необходимо задать Encryption__MasterKey»). Проверку на уровне compose
+# («:?» с вложенными значениями) не используем: старые версии Docker Compose вычисляют её всегда, даже когда
+# переменная задана, и кластер не запускался бы вовсе; а секреты файлами (docker-compose.ha-secrets.yml) не должны
+# требовать переменных окружения.
 
 x-logging: &logging
   driver: json-file
@@ -26,11 +37,17 @@ x-auth: &auth
       condition: service_healthy
   environment: &auth-env
     Database__Provider: Postgres
-    Database__ConnectionString: "${DB_CONNECTION_STRING:-Host=postgres;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=${POSTGRES_PASSWORD:-tsl_auth_dev}}"
-    Encryption__MasterKey: "${ENCRYPTION_MASTER_KEY:?Задайте ENCRYPTION_MASTER_KEY (base64, 32 байта) в .env}"
+    Database__ConnectionString: "${DB_CONNECTION_STRING:-Host=postgres;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=${POSTGRES_PASSWORD:-}}"
+    Encryption__MasterKey: "${ENCRYPTION_MASTER_KEY:-}"
+    # Публичный адрес (iss, ссылки в письмах) — обязателен вне Development; одинаков на всех узлах.
     Auth__Issuer: "${AUTH_ISSUER:-http://localhost:8080/}"
     Auth__RequireHttps: "${AUTH_REQUIRE_HTTPS:-false}"
+    # Узлы за nginx: X-Forwarded-* принимаются только от адресов из Auth__KnownNetworks (пусто — loopback и
+    # частные сети, куда входит docker-сеть compose). Внешний балансировщик — укажите его подсеть явно.
     Auth__TrustForwardedHeaders: "true"
+    Auth__KnownNetworks: "${AUTH_KNOWN_NETWORKS:-}"
+    # Допустимые значения заголовка Host (стандартная фильтрация ASP.NET Core), например auth.corp;localhost.
+    AllowedHosts: "${AUTH_ALLOWED_HOSTS:-*}"
     Bootstrap__AdminUserName: "${BOOTSTRAP_ADMIN_USER:-admin}"
     Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
     Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-}"
@@ -47,11 +64,21 @@ services:
     image: postgres:17-alpine
     container_name: tsl-auth-postgres
     restart: unless-stopped
+    # Те же меры, что для узлов сервиса. Capabilities — только те, что нужны entrypoint-скрипту образа:
+    # он запускается от root, выставляет владельца каталога данных и переключается на пользователя postgres.
+    read_only: true
+    tmpfs: ["/var/run/postgresql:size=1m", "/tmp:size=64m,mode=1777,noexec,nosuid,nodev"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    shm_size: 128m
+    cpus: 2
     logging: *logging
     environment:
       POSTGRES_USER: tsl_auth
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tsl_auth_dev}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-}"
       POSTGRES_DB: postgres
     volumes:
       - pg-data:/var/lib/postgresql/data
@@ -65,19 +92,16 @@ services:
     <<: *auth
     container_name: tsl-auth-1
     hostname: auth1
-    ports: ["8081:8080"]
 
   auth2:
     <<: *auth
     container_name: tsl-auth-2
     hostname: auth2
-    ports: ["8082:8080"]
 
   auth3:
     <<: *auth
     container_name: tsl-auth-3
     hostname: auth3
-    ports: ["8083:8080"]
 
   lb:
     image: nginx:1.29-alpine
@@ -88,6 +112,8 @@ services:
     cap_drop: [ALL]
     cap_add: [CHOWN, SETGID, SETUID]    # рабочие процессы nginx переключаются на пользователя nginx
     security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 256m
     logging: *logging
     depends_on: [auth1, auth2, auth3]
     ports:

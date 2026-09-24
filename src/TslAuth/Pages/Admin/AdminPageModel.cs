@@ -36,7 +36,10 @@ public abstract class AdminPageModel : PageModel
         await next();
     }
 
-    /// <summary>Однократное сообщение, которое покажет макет после редиректа (Post/Redirect/Get).</summary>
+    /// <summary>
+    /// Однократное сообщение, которое покажет макет после редиректа (Post/Redirect/Get). В TempData["Flash"]
+    /// всегда готовый текст (не ключ пакета) — так же пишут и пользовательские страницы (UserPageModel.Flash).
+    /// </summary>
     protected void Flash(string message) => TempData["Flash"] = message;
 
     /// <summary>Выполняет действие, превращая AdminException в ошибку формы.</summary>

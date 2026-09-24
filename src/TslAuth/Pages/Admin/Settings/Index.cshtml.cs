@@ -41,9 +41,17 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
             (s.AuditRetentionDays, s.AuditLogTokenRefresh, s.EventsRetentionDays, s.TokensRetentionHours);
         (Passwords, Tokens, Pats, Bot) = (s.Passwords, s.Tokens, s.Pats, s.BotReset);
         var rules = s.EffectiveRetentionByType;
-        // Строки таблицы сроков: все встречавшиеся в аудите типы плюс типы/префиксы, для которых уже заданы правила.
-        Types = (await audit.ListTypesAsync(ct)).Union(rules.Keys).Order().ToList();
+        await LoadTypesAsync(rules.Keys, ct);
         Retention = Types.ToDictionary(t => t, t => rules.TryGetValue(t, out var d) ? d : (int?)null);
+    }
+
+    /// <summary>
+    /// Строки таблицы сроков: все встречавшиеся в аудите типы плюс типы/префиксы, для которых заданы правила;
+    /// заодно — кто и когда менял настройки. Значения полей формы не трогает.
+    /// </summary>
+    private async Task LoadTypesAsync(IEnumerable<string> ruleTypes, CancellationToken ct)
+    {
+        Types = (await audit.ListTypesAsync(ct)).Union(ruleTypes).Order().ToList();
         (UpdatedAt, UpdatedBy) = await settings.GetMetadataAsync(ct);
     }
 
@@ -60,10 +68,8 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
             $"user:{users.GetUserName(User)}", ct));
         if (!ok)
         {
-            // OnGetAsync перезагрузит значения из БД — возвращаем введённые политики, чтобы не потерять правки администратора.
-            var submitted = (Passwords, Tokens, Pats, Bot);
-            await OnGetAsync(ct);
-            (Passwords, Tokens, Pats, Bot) = submitted;
+            // Все введённые значения (политики, сроки, новое правило) остаются в форме — из БД только справочные данные.
+            await LoadTypesAsync(Retention.Keys, ct);
             return Page();
         }
 

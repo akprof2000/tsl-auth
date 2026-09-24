@@ -1,5 +1,6 @@
 # Автоматические обновления зависимостей: пакеты NuGet, базовые образы Docker (закреплены по digest),
-# GitHub Actions и зависимости демо-приложений. Каждое обновление проходит CI (тесты + Trivy + Dockle).
+# образы в compose, GitHub Actions (закреплены по SHA) и зависимости демо-приложений.
+# Каждое обновление проходит CI (тесты + Trivy + Dockle).
 version: 2
 updates:
   - package-ecosystem: nuget
@@ -9,9 +10,23 @@ updates:
       dotnet: { patterns: ["Microsoft.*", "System.*"] }
       openiddict: { patterns: ["OpenIddict.*"] }
 
+  # Демо .NET не входит в TslAuth.sln — отдельная запись, иначе Dependabot его не видит.
+  - package-ecosystem: nuget
+    directory: /samples/dotnet-mvc
+    schedule: { interval: monthly }
+
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+
+  # postgres и nginx в docker-compose*.yml. Мажорная версия PostgreSQL не обновляется автоматически:
+  # новый мажор не читает каталог данных старого без pg_upgrade / dump-restore.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

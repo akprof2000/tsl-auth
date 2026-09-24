@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
@@ -36,12 +37,15 @@ public abstract class AuthFixture : IAsyncLifetime
         await Factory.CreateClient().GetAsync("/health/ready");
     }
 
-    /// <summary>Новый экземпляр сервиса на той же БД — эмуляция перезапуска/второго узла кластера.</summary>
+    /// <summary>
+    /// Новый экземпляр сервиса на той же БД — эмуляция перезапуска/второго узла кластера.
+    /// Настройки передаются этому экземпляру (UseSetting), а не через переменные окружения процесса:
+    /// фикстуры и тесты с особыми настройками не влияют друг на друга.
+    /// </summary>
     public WebApplicationFactory<Program> Start()
     {
         var settings = new Dictionary<string, string>
         {
-            ["ASPNETCORE_ENVIRONMENT"] = "Testing",
             ["Encryption__MasterKey"] = MasterKey,
             ["Auth__Issuer"] = "http://localhost/",
             ["Auth__RequireHttps"] = "false",
@@ -54,8 +58,11 @@ public abstract class AuthFixture : IAsyncLifetime
             ["Security__LoginAttemptsPerMinute"] = "100000",
             ["Logging__LogLevel__Default"] = "Warning"
         };
-        foreach (var (k, v) in settings.Concat(_database)) Environment.SetEnvironmentVariable(k, v);
-        return new WebApplicationFactory<Program>();
+        return new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Testing");
+            foreach (var (k, v) in settings.Concat(_database)) b.UseSetting(k.Replace("__", ":"), v);
+        });
     }
 
     /// <summary>
@@ -192,4 +199,10 @@ public static class TestApi
         : [v.GetString()!];
 
     public static string Unique(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..8]}";
+
+    /// <summary>
+    /// Пароль тестового пользователя, новый при каждом запуске: литералов-паролей в коде нет (сканеры секретов
+    /// не должны принимать тестовые данные за утечку), а политика паролей выполняется — есть все классы символов.
+    /// </summary>
+    public static string NewPassword() => $"Tst-{Guid.NewGuid():N}-9aZ!";
 }

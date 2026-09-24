@@ -22,7 +22,7 @@ namespace TslAuth.Infrastructure;
 ///    всё в одной транзакции PostgreSQL. Значения переносятся «как хранятся»: зашифрованные поля не
 ///    расшифровываются, HMAC-индексы не пересчитываются — поэтому узлы PostgreSQL должны использовать
 ///    ТОТ ЖЕ мастер-ключ (содержимое master.key одиночного режима).
-/// 4. До фиксации транзакции для каждой таблицы сверяются число записей и SHA-256 содержимого; при любом
+/// 4. До фиксации транзакции для каждой таблицы сверяются число записей и хеш содержимого (сумма SHA-256 строк); при любом
 ///    расхождении транзакция откатывается и в PostgreSQL ничего не остаётся.
 /// 5. После фиксации пользователи читаются из PostgreSQL через EF (с расшифровкой) и сверяются с исходными.
 /// </summary>
@@ -103,15 +103,26 @@ public static class PostgresMigration
         var results = new List<TableResult>();
         foreach (var t in tables)
         {
-            var rows = await ReadSourceAsync(src, srcTx, t, ct);
-            await InsertAsync(dst, dstTx, t, rows, ct);
+            // Потоково, пачками по BatchRows: таблица (например, большой журнал аудита) не читается в память целиком.
+            var sourceHash = new RowSetHash();
+            var batch = new List<object?[]>(BatchRows);
+            await foreach (var row in ReadSourceAsync(src, srcTx, t, ct))
+            {
+                sourceHash.Add(row);
+                batch.Add(row);
+                if (batch.Count < BatchRows) continue;
+                await InsertAsync(dst, dstTx, t, batch, ct);
+                batch.Clear();
+            }
+            if (batch.Count > 0) await InsertAsync(dst, dstTx, t, batch, ct);
             await ResetIdentityAsync(dst, dstTx, t, ct);
 
-            // Сверка до фиксации: число записей и хеш содержимого (строки упорядочены, значения нормализованы).
-            var targetRows = await ReadTargetAsync(dst, dstTx, t, ct);
-            var result = new TableResult(t.Name, rows.Count, targetRows.Count, Hash(rows), Hash(targetRows));
+            // Сверка до фиксации: число записей и хеш содержимого (значения нормализованы, порядок строк не важен).
+            var targetHash = new RowSetHash();
+            await foreach (var row in ReadTargetAsync(dst, dstTx, t, ct)) targetHash.Add(row);
+            var result = new TableResult(t.Name, sourceHash.Count, targetHash.Count, sourceHash.Value, targetHash.Value);
             results.Add(result);
-            logger.LogInformation("{Table}: {Rows} записей{Status}", t.Name, rows.Count, result.Ok ? "" : " — РАСХОЖДЕНИЕ");
+            logger.LogInformation("{Table}: {Rows} записей{Status}", t.Name, sourceHash.Count, result.Ok ? "" : " — РАСХОЖДЕНИЕ");
         }
 
         var failed = results.Where(r => !r.Ok).ToList();
@@ -172,36 +183,34 @@ public static class PostgresMigration
 
     // ---------- Чтение / запись ----------
 
-    private static async Task<List<object?[]>> ReadSourceAsync(DbConnection src, DbTransaction tx, Table t, CancellationToken ct)
+    private static async IAsyncEnumerable<object?[]> ReadSourceAsync(DbConnection src, DbTransaction tx, Table t,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         await using var command = src.CreateCommand();
         command.Transaction = tx;
         command.CommandText = $"SELECT {string.Join(", ", t.Columns.Select(c => Q(c.Name)))} FROM {Q(t.Name)}";
         await using var reader = await command.ExecuteReaderAsync(ct);
-        var rows = new List<object?[]>();
         while (await reader.ReadAsync(ct))
         {
             var row = new object?[t.Columns.Count];
             for (var i = 0; i < row.Length; i++)
                 row[i] = reader.IsDBNull(i) ? null : ConvertSqliteValue(reader.GetValue(i), t.Columns[i]);
-            rows.Add(row);
+            yield return row;
         }
-        return rows;
     }
 
-    private static async Task<List<object?[]>> ReadTargetAsync(NpgsqlConnection dst, NpgsqlTransaction tx, Table t, CancellationToken ct)
+    private static async IAsyncEnumerable<object?[]> ReadTargetAsync(NpgsqlConnection dst, NpgsqlTransaction tx, Table t,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         await using var command = new NpgsqlCommand(
             $"SELECT {string.Join(", ", t.Columns.Select(c => Q(c.Name)))} FROM {Q(t.Name)}", dst, tx);
         await using var reader = await command.ExecuteReaderAsync(ct);
-        var rows = new List<object?[]>();
         while (await reader.ReadAsync(ct))
         {
             var row = new object?[t.Columns.Count];
             for (var i = 0; i < row.Length; i++) row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-            rows.Add(row);
+            yield return row;
         }
-        return rows;
     }
 
     /// <summary>Вставка пачками (многострочный INSERT с параметрами).</summary>
@@ -274,12 +283,25 @@ public static class PostgresMigration
     }
 
     /// <summary>SHA-256 содержимого таблицы: строки нормализуются и сортируются, порядок чтения не важен.</summary>
-    private static string Hash(List<object?[]> rows)
+    /// <summary>
+    /// Хеш набора строк без учёта порядка и без хранения строк: сумма SHA-256 нормализованных строк по модулю 2^256
+    /// (мультимножественный хеш). Считается потоково — память не зависит от размера таблицы.
+    /// </summary>
+    private sealed class RowSetHash
     {
-        var lines = rows.Select(r => string.Join('\u001F', r.Select(Normalize))).Order(StringComparer.Ordinal);
-        using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach (var line in lines) sha.AppendData(Encoding.UTF8.GetBytes(line + "\u001E"));
-        return Convert.ToHexString(sha.GetHashAndReset());
+        private static readonly System.Numerics.BigInteger Modulus = System.Numerics.BigInteger.One << 256;
+        private System.Numerics.BigInteger _sum;
+        public long Count { get; private set; }
+
+        public void Add(object?[] row)
+        {
+            var line = string.Join('\u001F', row.Select(Normalize));
+            var digest = SHA256.HashData(Encoding.UTF8.GetBytes(line));
+            _sum = (_sum + new System.Numerics.BigInteger(digest, isUnsigned: true, isBigEndian: true)) % Modulus;
+            Count++;
+        }
+
+        public string Value => _sum.ToString("X64");
     }
 
     private static string Normalize(object? value) => value switch

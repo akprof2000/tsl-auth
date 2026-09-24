@@ -4,5 +4,5 @@
 }
 @if (errors.Count > 0)
 {
-    <div class="alert error"><ul style="margin:0;padding-left:18px">@foreach (var e in errors) { <li>@L[e]</li> }</ul></div>
+    <div class="alert error"><ul class="errors-list">@foreach (var e in errors) { <li>@L[e]</li> }</ul></div>
 }

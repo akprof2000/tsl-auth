@@ -94,7 +94,9 @@ public static class StartupInitializer
         // БД может стартовать позже сервиса (docker compose) — ждём её доступности.
         for (var attempt = 1; ; attempt++)
         {
-            var connection = new NpgsqlConnection(connectionString);
+            // Без пула: сессионная блокировка снимается при закрытии соединения. Соединение из пула при «закрытии»
+            // лишь возвращается в пул, и блокировка висела бы до его повторного использования — остальные узлы ждали бы.
+            var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
             try
             {
                 await EnsurePostgresDatabaseAsync(connectionString, logger, ct);
@@ -239,7 +241,7 @@ public static class StartupInitializer
             if (permissions.Except(existing.Permissions).Any())
                 await access.SetRolePermissionsAsync(SystemApp.ClientId, role, existing.Permissions.Union(permissions), ct);
             if (existing.DisplayName is null)
-                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct);
+                await access.UpdateRoleAsync(SystemApp.ClientId, role, displayName, existing.Description, ct, system: true);
         }
 
         // 2. Первый администратор — только если в системе ещё нет ни одного.

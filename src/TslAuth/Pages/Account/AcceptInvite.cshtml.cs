@@ -12,7 +12,7 @@ namespace TslAuth.Pages.Account;
 /// Доступна анонимно: доступ подтверждается invite-токеном из ссылки (Uid + Token).
 /// Использует AccountLinks (проверка токена), UserService (активация), UserManager и AuditService.
 /// </summary>
-public sealed class AcceptInviteModel(UserService userService, UserManager<AppUser> users, AccountLinks links, AuditService audit) : PageModel
+public sealed class AcceptInviteModel(UserService userService, UserManager<AppUser> users, AccountLinks links, AuditService audit) : UserPageModel
 {
     [BindProperty(SupportsGet = true)] public Guid Uid { get; set; }
     [BindProperty(SupportsGet = true)] public string Token { get; set; } = "";
@@ -45,7 +45,7 @@ public sealed class AcceptInviteModel(UserService userService, UserManager<AppUs
         }
         catch (AdminException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            AddError(ex);
         }
 
         return Page();

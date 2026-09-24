@@ -39,11 +39,7 @@ public static class BotApi
     public static void MapBotApi(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/bot").WithTags("Bot")
-            .AddEndpointFilter(async (ctx, next) =>
-            {
-                try { return await next(ctx); }
-                catch (AdminException ex) { return Results.Problem(detail: ex.Message, statusCode: ex.StatusCode); }
-            });
+            .AddEndpointFilter(ApiErrors.Handle);
         var bot = group.MapGroup("").RequireAuthorization(Policy);
 
         // Пользователь прислал боту "/link КОД" (код получен в личном кабинете /Account/Messenger).

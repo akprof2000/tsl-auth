@@ -10,7 +10,7 @@ namespace TslAuth.Pages.Account;
 /// Работает только при настроенной отправке почты (<see cref="IEmailSender"/>).
 /// Использует UserService (генерация и отправка ссылки) и AuditService.
 /// </summary>
-public sealed class ForgotPasswordModel(UserService users, IEmailSender email, AuditService audit) : PageModel
+public sealed class ForgotPasswordModel(UserService users, IEmailSender email, AuditService audit) : UserPageModel
 {
     [BindProperty, Required(ErrorMessage = "validation.required")]
     public string Login { get; set; } = "";
@@ -27,7 +27,15 @@ public sealed class ForgotPasswordModel(UserService users, IEmailSender email, A
     {
         if (!ModelState.IsValid || !EmailAvailable) return Page();
 
-        await users.RequestPasswordResetAsync(Login, ct);
+        try
+        {
+            await users.RequestPasswordResetAsync(Login, ct);
+        }
+        catch (AdminException ex)
+        {
+            AddError(ex);
+            return Page();
+        }
         await audit.WriteAsync(AuditTypes.PasswordResetRequested, true, Data.AuditSeverity.Info, details: new { login = Login });
         // Одинаковый ответ независимо от того, существует ли пользователь (защита от перечисления логинов).
         Sent = true;

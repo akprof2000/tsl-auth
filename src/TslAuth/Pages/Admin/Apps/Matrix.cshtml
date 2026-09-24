@@ -28,23 +28,24 @@
 {
     <div class="grid2">
         <form method="post" asp-page-handler="AddPermission" asp-route-clientId="@Model.ClientId" class="card">
-            <h2 style="margin-top:0">Новое разрешение</h2>
-            <input name="Name" placeholder="orders.read" required />
-            <label>Описание</label>
-            <input name="Description" placeholder="Просмотр заказов" />
+            <h2>Новое разрешение</h2>
+            <label for="perm-name">Техническое имя</label>
+            <input id="perm-name" name="Name" placeholder="orders.read" required />
+            <label for="perm-description">Описание</label>
+            <input id="perm-description" name="Description" placeholder="Просмотр заказов" />
             <div class="actions"><button type="submit">Добавить разрешение</button></div>
         </form>
         <form method="post" asp-page-handler="AddRole" asp-route-clientId="@Model.ClientId" class="card">
-            <h2 style="margin-top:0">Новая роль</h2>
-            <label>Техническое имя</label>
-            <input name="Name" placeholder="orders-manager" required pattern="[a-z][a-z0-9._\-]{0,99}" autocapitalize="off" spellcheck="false"
+            <h2>Новая роль</h2>
+            <label for="role-name">Техническое имя</label>
+            <input id="role-name" name="Name" placeholder="orders-manager" required pattern="[a-z][a-z0-9._\-]{0,99}" autocapitalize="off" spellcheck="false"
                    title="Строчные латинские буквы, цифры и . _ - без пробелов, начинается с буквы" />
             <div class="small muted">Для администраторов и токенов (<code>@Model.ClientId:orders-manager</code>): строчные латинские, без пробелов, уникально в приложении.</div>
-            <label>Название для пользователей</label>
-            <input name="DisplayName" placeholder="Менеджер по заказам" maxlength="200" />
+            <label for="role-display-name">Название для пользователей</label>
+            <input id="role-display-name" name="DisplayName" placeholder="Менеджер по заказам" maxlength="200" />
             <div class="small muted">Видно при регистрации и в заявках; может содержать пробелы и повторяться.</div>
-            <label>Описание</label>
-            <input name="Description" placeholder="Ведёт заказы клиентов" />
+            <label for="role-description">Описание</label>
+            <input id="role-description" name="Description" placeholder="Ведёт заказы клиентов" />
             <div class="actions"><button type="submit">Добавить роль</button></div>
         </form>
     </div>
@@ -88,8 +89,9 @@ else
                                 <summary>изменить название</summary>
                                 <form method="post" asp-page-handler="UpdateRole" asp-route-clientId="@Model.ClientId">
                                     <input type="hidden" name="Name" value="@r.Name" />
-                                    <input name="DisplayName" value="@r.DisplayName" placeholder="Название для пользователей" maxlength="200" />
-                                    <input name="Description" value="@r.Description" placeholder="Описание" />
+                                    <input name="DisplayName" value="@r.DisplayName" placeholder="Название для пользователей" maxlength="200"
+                                           aria-label="Название роли @r.Name для пользователей" />
+                                    <input name="Description" value="@r.Description" placeholder="Описание" aria-label="Описание роли @r.Name" />
                                     <button type="submit">Сохранить</button>
                                 </form>
                             </details>
@@ -99,7 +101,8 @@ else
                     {
                         <td class="cell">
                             <input type="checkbox" form="matrix" name="Cells" value="@($"{r.Name}|{p.Name}")"
-                                   checked="@r.Permissions.Contains(p.Name)" disabled="@disabled" title="@r.Name → @p.Name" />
+                                   checked="@r.Permissions.Contains(p.Name)" disabled="@disabled" title="@r.Name → @p.Name"
+                                   aria-label="@r.Name → @p.Name" />
                         </td>
                     }
                 </tr>

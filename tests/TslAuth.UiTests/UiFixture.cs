@@ -27,6 +27,14 @@ public sealed class UiFixture : IAsyncLifetime
     public IBrowser Browser { get; private set; } = null!;
     public HttpClient Admin { get; private set; } = null!;
 
+    // Тексты пользовательских страниц берутся из встроенного русского пакета (браузер тестов — ru-RU):
+    // проверки не ломаются при правке формулировок, а только при смене ключа.
+    private static readonly Lazy<Dictionary<string, string>> RuPack = new(() => JsonSerializer.Deserialize<Dictionary<string, string>>(
+        File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/TslAuth/Localization/Packs/ru.json"))))!);
+
+    /// <summary>Строка русского языкового пакета по ключу; для текстов с параметрами — часть до первого «{».</summary>
+    public static string Ru(string key) => RuPack.Value[key].Split('{')[0].Trim();
+
     private static string Env(string name, string fallback) => Environment.GetEnvironmentVariable(name) ?? fallback;
 
     public async Task InitializeAsync()

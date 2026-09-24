@@ -60,22 +60,89 @@ public sealed class AppUserManager(
     IdentityErrorDescriber errors,
     IServiceProvider services,
     ILogger<UserManager<AppUser>> logger,
-    AuthDbContext db)
+    AuthDbContext db,
+    SettingsService settings)
     : UserManager<AppUser>(store, optionsAccessor, passwordHasher, userValidators, passwordValidators, keyNormalizer,
         errors, services, logger)
 {
+    // Прежний хеш, ожидающий записи в историю: добавляется только вместе с успешным сохранением пользователя.
+    private PasswordHistoryEntry? _pendingHistory;
+
     protected override async Task<IdentityResult> UpdatePasswordHash(AppUser user, string newPassword, bool validatePassword)
     {
         var previousHash = user.PasswordHash;
-        // Запись истории добавляется в тот же DbContext и сохраняется вместе с пользователем, когда UserManager обновит его в хранилище.
         var result = await base.UpdatePasswordHash(user, newPassword, validatePassword);
         if (result.Succeeded && newPassword is not null)
         {
             if (previousHash is not null)
-                db.PasswordHistory.Add(new PasswordHistoryEntry { UserId = user.Id, PasswordHash = previousHash });
+                _pendingHistory = new PasswordHistoryEntry { UserId = user.Id, PasswordHash = previousHash };
             user.PasswordChangedAt = DateTime.UtcNow;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Сохранение пользователя вместе с записью истории паролей (одним SaveChanges). Если сохранение не удалось
+    /// (например, валидация логина), запись истории не остаётся в DbContext и не попадёт в БД со следующим SaveChanges.
+    /// После успеха история обрезается до числа паролей, которое требует политика (старые хеши не копятся бесконечно).
+    /// </summary>
+    protected override async Task<IdentityResult> UpdateUserAsync(AppUser user)
+    {
+        var pending = _pendingHistory;
+        _pendingHistory = null;
+        if (pending is not null) db.PasswordHistory.Add(pending);
+
+        var result = await base.UpdateUserAsync(user);
+        if (!result.Succeeded)
+        {
+            if (pending is not null) db.Entry(pending).State = EntityState.Detached;
+            return result;
+        }
+
+        if (pending is not null)
+        {
+            var keep = Math.Max((await settings.GetAsync(CancellationToken)).Passwords.HistoryCount, 0);
+            var stale = await db.PasswordHistory.Where(h => h.UserId == user.Id).OrderByDescending(h => h.CreatedAt)
+                .Skip(keep).Select(h => h.Id).ToListAsync(CancellationToken);
+            if (stale.Count > 0)
+                await db.PasswordHistory.Where(h => stale.Contains(h.Id)).ExecuteDeleteAsync(CancellationToken);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Учёт неудачной попытки входа по политике из БД (число попыток и длительность блокировки). Раньше значения
+    /// копировались в общий singleton IdentityOptions при каждой загрузке настроек — изменяемое разделяемое состояние;
+    /// теперь политика читается здесь, в месте применения.
+    /// </summary>
+    public override async Task<IdentityResult> AccessFailedAsync(AppUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        var store = (IUserLockoutStore<AppUser>)Store;
+        var policy = (await settings.GetAsync(CancellationToken)).Passwords;
+        var count = await store.IncrementAccessFailedCountAsync(user, CancellationToken);
+        if (count >= policy.MaxFailedAttempts)
+        {
+            Logger.LogDebug("Учётная запись заблокирована после {Count} неудачных попыток.", count);
+            await store.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(policy.LockoutMinutes), CancellationToken);
+            await store.ResetAccessFailedCountAsync(user, CancellationToken);
+        }
+        return await UpdateUserAsync(user);
+    }
+
+    /// <summary>
+    /// Поиск по email без исключения при дубликатах: стандартный UserStore делает SingleOrDefault и падает (500),
+    /// если адрес встречается дважды — такое возможно в БД старых версий, где уникальность email не проверялась.
+    /// Неоднозначный адрес трактуется как «не найден»: вход по логину и администрирование продолжают работать.
+    /// </summary>
+    public override async Task<AppUser?> FindByEmailAsync(string email)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+        var normalized = NormalizeEmail(email);
+        var matches = await Users.Where(u => u.NormalizedEmail == normalized).Take(2).ToListAsync();
+        if (matches.Count > 1)
+            Logger.LogWarning("Email встречается у нескольких учётных записей — поиск по нему отключён до устранения дубликатов.");
+        return matches.Count == 1 ? matches[0] : null;
     }
 
     /// <summary>Истёк ли срок действия пароля по политике (0 — бессрочно).</summary>

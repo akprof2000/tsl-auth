@@ -20,7 +20,8 @@ namespace TslAuth.Infrastructure;
 public static class ServiceSetup
 {
     /// <summary>Регистрирует все сервисы TSL Auth в контейнере.</summary>
-    public static void AddTslAuth(this WebApplicationBuilder builder)
+    /// <param name="cli">Запуск служебной команды (admin ...): веб-сервер не поднимается, Issuer не обязателен.</param>
+    public static void AddTslAuth(this WebApplicationBuilder builder, bool cli = false)
     {
         var services = builder.Services;
         var config = builder.Configuration;
@@ -30,6 +31,16 @@ public static class ServiceSetup
         services.Configure<BootstrapOptions>(config.GetSection(BootstrapOptions.Section));
 
         var database = config.GetSection(DatabaseOptions.Section).Get<DatabaseOptions>() ?? new DatabaseOptions();
+        // Секреты из файлов (docker secrets: /run/secrets/...) — вместо значений в переменных окружения,
+        // которые видны в docker inspect и списке процессов.
+        database.ConnectionString = SecretFile.Read(database.ConnectionStringFile, "Database:ConnectionStringFile") ?? database.ConnectionString;
+        services.PostConfigure<DatabaseOptions>(o =>
+            o.ConnectionString = SecretFile.Read(o.ConnectionStringFile, "Database:ConnectionStringFile") ?? o.ConnectionString);
+        services.PostConfigure<BootstrapOptions>(o =>
+        {
+            o.AdminPassword = SecretFile.Read(o.AdminPasswordFile, "Bootstrap:AdminPasswordFile") ?? o.AdminPassword;
+            o.AdminApiClientSecret = SecretFile.Read(o.AdminApiClientSecretFile, "Bootstrap:AdminApiClientSecretFile") ?? o.AdminApiClientSecret;
+        });
         if (database.IsPostgres && !string.IsNullOrWhiteSpace(database.ConnectionString))
             database.ConnectionString = PostgresConnectionString.Normalize(database.ConnectionString);
         // То же для IOptions<DatabaseOptions> (блокировка и создание БД в StartupInitializer).
@@ -40,6 +51,7 @@ public static class ServiceSetup
         });
         var encryption = config.GetSection(EncryptionOptions.Section).Get<EncryptionOptions>() ?? new EncryptionOptions();
         var server = config.GetSection(AuthServerOptions.Section).Get<AuthServerOptions>() ?? new AuthServerOptions();
+        ValidateIssuer(server.Issuer, builder.Environment, cli);
 
         // Ключ шифрования полей нужен до первого обращения к БД.
         // FieldCrypto статический (его используют value converter'ы EF), поэтому инициализируется здесь, вне DI;
@@ -88,6 +100,7 @@ public static class ServiceSetup
             .AddEntityFrameworkStores<AuthDbContext>()
             .AddUserManager<AppUserManager>()
             .AddPasswordValidator<PolicyPasswordValidator>()
+            .AddUserValidator<UserIdentityValidator>()
             .AddDefaultTokenProviders()
             .AddTokenProvider<InviteTokenProvider>(InviteTokenProvider.ProviderName);
 
@@ -103,7 +116,16 @@ public static class ServiceSetup
             o.AccessDeniedPath = "/Account/AccessDenied";
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.SlidingExpiration = true;
+            // При RequireHttps cookie сессии никогда не уходит по HTTP (иначе её можно перехватить при случайном
+            // http-запросе); без него (разработка, TLS на прокси без TrustForwardedHeaders) — по схеме запроса.
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+            o.Cookie.HttpOnly = true;
         });
+        // То же для служебных cookie (antiforgery, TempData с одноразовыми секретами).
+        services.AddAntiforgery(o =>
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest);
+        services.Configure<Microsoft.AspNetCore.Mvc.CookieTempDataProviderOptions>(o =>
+            o.Cookie.SecurePolicy = server.RequireHttps ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest);
 
         // --- OAuth 2.0 / OpenID Connect ---
         services.AddSingleton<ServerKeyRing>();
@@ -154,6 +176,8 @@ public static class ServiceSetup
                 if (!server.RequireHttps) aspNetCore.DisableTransportSecurityRequirement();
 
                 o.AddEventHandler(TokenErrorAuditHandler.Descriptor);
+                o.AddEventHandler(IntrospectionErrorAuditHandler.Descriptor);
+                o.AddEventHandler(RevocationErrorAuditHandler.Descriptor);
             })
             .AddValidation(o =>
             {
@@ -199,7 +223,17 @@ public static class ServiceSetup
         services.AddSingleton<SettingsService>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationMiddlewareResultHandler, AuditingAuthorizationResultHandler>();
         services.AddHostedService<WebhookDispatcher>();
-        services.AddHttpClient(WebhookDispatcher.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+        // Клиент вебхуков: без редиректов (Location мог бы увести на внутренний адрес), без системного прокси
+        // (иначе проверялся бы адрес прокси, а не получателя) и с проверкой адреса при каждом соединении (M6, SSRF).
+        var webhookTargets = WebhookTargetPolicy.FromConfig(config);
+        services.AddSingleton(webhookTargets);
+        services.AddHttpClient(WebhookDispatcher.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                UseProxy = false,
+                ConnectCallback = webhookTargets.ConnectAsync
+            });
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminPermissionHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Api.AppSelfHandler>();
         services.AddAuthorization(o =>
@@ -211,6 +245,20 @@ public static class ServiceSetup
         services.AddHostedService<TokenPruningService>();
 
         services.AddTslSecurity(config);
+        // Introspection и revocation проверяют client_secret, но обрабатываются OpenIddict без контроллера —
+        // атрибут политики на них не повесить. Глобальный лимитер по IP (тот же лимит, что у /connect/token)
+        // не даёт перебирать секреты клиентов через эти эндпоинты.
+        var security = config.GetSection(SecurityOptions.Section).Get<SecurityOptions>() ?? new SecurityOptions();
+        services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(o =>
+            o.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                ctx.Request.Path.StartsWithSegments("/connect/introspect") || ctx.Request.Path.StartsWithSegments("/connect/revoke")
+                    ? System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+                        "client-auth:" + (ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = security.TokenRequestsPerMinute, Window = TimeSpan.FromMinutes(1)
+                        })
+                    : System.Threading.RateLimiting.RateLimitPartition.GetNoLimiter("none")));
         // Кириллица и другие алфавиты выводятся как есть, а не HTML-сущностями (&#x...;).
         services.Configure<Microsoft.Extensions.WebEncoders.WebEncoderOptions>(o =>
             o.TextEncoderSettings = new System.Text.Encodings.Web.TextEncoderSettings(System.Text.Unicode.UnicodeRanges.All));
@@ -218,6 +266,8 @@ public static class ServiceSetup
         services.AddRazorPages(o =>
         {
             o.Conventions.AuthorizeFolder("/Admin", AdminPolicies.UiView);
+            // Руководство /docs публично по умолчанию (удобно во внутренней сети); Docs:Public=false закрывает его.
+            if (!config.GetValue("Docs:Public", true)) o.Conventions.AuthorizeFolder("/Docs", AdminPolicies.UiView);
             o.Conventions.AuthorizePage("/Account/ChangePassword");
             o.Conventions.AuthorizePage("/Account/Tokens");
             o.Conventions.AuthorizePage("/Account/Messenger");
@@ -230,20 +280,62 @@ public static class ServiceSetup
                 m.Filters.Add(new MustChangePasswordFilter());
                 m.Filters.Add(new AdminPageAuditFilter());
             });
+            // Личный кабинет тоже недоступен, пока временный пароль не сменён: иначе знающий временный пароль
+            // успел бы привязать мессенджер (альтернативный канал сброса пароля) или выпустить PAT.
+            foreach (var page in new[] { "/Account/Index", "/Account/Tokens", "/Account/Messenger", "/Account/RequestAccess" })
+                o.Conventions.AddPageApplicationModelConvention(page, m => m.Filters.Add(new MustChangePasswordFilter()));
         });
         services.AddTslApiDocs();
         services.AddHealthChecks().AddDbContextCheck<AuthDbContext>("database");
 
         if (server.TrustForwardedHeaders)
         {
+            var networks = ParseKnownNetworks(server.KnownNetworks);
             services.Configure<ForwardedHeadersOptions>(o =>
             {
-                // Доверяем любому прокси: включать, только если сервис недоступен напрямую, в обход балансировщика
-                // (иначе клиент подделает X-Forwarded-For и обойдёт лимиты по IP).
-                o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+                // X-Forwarded-For/Proto принимаются только от прокси из известных сетей: иначе запрос напрямую на узел
+                // подделал бы IP клиента (обход лимитов по IP, ложный IP в журнале) и схему (обход RequireHttps).
+                // X-Forwarded-Host не принимается: публичный адрес задан Issuer, подмена хоста только расширяла бы атаки.
+                o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
                 o.KnownIPNetworks.Clear();
                 o.KnownProxies.Clear();
+                foreach (var network in networks) o.KnownIPNetworks.Add(network);
             });
         }
+    }
+
+    /// <summary>
+    /// Issuer — публичный адрес сервиса: из него строятся <c>iss</c> токенов, адреса discovery и ссылки в письмах
+    /// (приглашения, сброс пароля). Без него всё это бралось бы из заголовка Host запроса, который подделывается
+    /// (Host-header poisoning: письмо сброса пароля жертве со ссылкой на чужой домен). Поэтому вне Development
+    /// сервис без Issuer не стартует. Служебные CLI-команды ссылок и токенов не выдают — им Issuer не нужен.
+    /// </summary>
+    private static void ValidateIssuer(string? issuer, IHostEnvironment environment, bool cli)
+    {
+        if (string.IsNullOrWhiteSpace(issuer))
+        {
+            if (cli || environment.IsDevelopment()) return;
+            throw new InvalidOperationException(
+                "Не задан Auth:Issuer (переменная Auth__Issuer / AUTH_ISSUER) — публичный адрес сервиса, например https://auth.corp/. " +
+                "Без него ссылки в письмах и iss токенов строились бы из заголовка Host запроса, который может подделать атакующий.");
+        }
+        if (!Uri.TryCreate(issuer, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+            throw new InvalidOperationException($"Auth:Issuer должен быть абсолютным http(s)-адресом без query и фрагмента, получено: '{issuer}'.");
+    }
+
+    // Сети по умолчанию для доверенных прокси: loopback и частные диапазоны (Docker, внутренняя сеть балансировщика).
+    private static readonly string[] DefaultProxyNetworks =
+        ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"];
+
+    /// <summary>Разбирает Auth:KnownNetworks (CIDR через запятую/точку с запятой); ошибка формата — отказ старта.</summary>
+    internal static List<System.Net.IPNetwork> ParseKnownNetworks(string? value)
+    {
+        var items = string.IsNullOrWhiteSpace(value)
+            ? DefaultProxyNetworks
+            : value.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return items.Select(item => System.Net.IPNetwork.TryParse(item, out var network)
+            ? network
+            : throw new InvalidOperationException($"Auth:KnownNetworks: '{item}' — не CIDR (пример: 10.0.0.0/8, 172.18.0.0/16).")).ToList();
     }
 }

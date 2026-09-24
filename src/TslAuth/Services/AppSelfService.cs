@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TslAuth.Data;
+using TslAuth.Security;
 
 namespace TslAuth.Services;
 
@@ -48,16 +49,23 @@ public sealed class AppSelfService(
     AccessService access,
     UserService users,
     UserManager<AppUser> userManager,
-    SessionService sessions)
+    SessionService sessions,
+    AuditService audit)
 {
-    /// <summary>Пользователи, связанные с приложением (созданные им или имеющие его роли).</summary>
-    public async Task<List<AppUserDto>> ListUsersAsync(string clientId, CancellationToken ct = default)
+    /// <summary>
+    /// Пользователи, связанные с приложением (созданные им или имеющие его роли), постранично.
+    /// Роли всей страницы читаются одним запросом.
+    /// </summary>
+    public async Task<PagedResult<AppUserDto>> ListUsersAsync(string clientId, int skip = 0, int take = 500, CancellationToken ct = default)
     {
         var ids = (await RelatedUserIdsAsync(clientId, ct)).ToList();
-        var list = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).OrderBy(u => u.CreatedAt).ToListAsync(ct);
-        var result = new List<AppUserDto>(list.Count);
-        foreach (var user in list) result.Add(await ToDtoAsync(clientId, user, ct));
-        return result;
+        var query = db.Users.AsNoTracking().Where(u => ids.Contains(u.Id));
+        var total = await query.CountAsync(ct);
+        var page = await query.OrderBy(u => u.CreatedAt).Skip(Math.Max(skip, 0)).Take(Math.Clamp(take, 1, 1000)).ToListAsync(ct);
+        var roles = await access.GetAssignmentsAsync(SubjectType.User, page.Select(u => u.Id.ToString()).ToList(), clientId, ct);
+        return new PagedResult<AppUserDto>(
+            page.Select(u => ToDto(clientId, u, (roles.GetValueOrDefault(u.Id.ToString()) ?? []).Select(r => r.Role).ToList())).ToList(),
+            total);
     }
 
     public async Task<AppUserDto> GetUserAsync(string clientId, Guid id, CancellationToken ct = default) =>
@@ -99,6 +107,9 @@ public sealed class AppSelfService(
 
         var user = await users.FindByLoginAsync(input.Login.Trim()) ?? throw AdminException.NotFound("Пользователь");
         await SetUserRolesAsync(clientId, user.Id, roles, ct);
+        // Привязка чужой (не созданной приложением) учётной записи — заметное событие: приложение по логину
+        // «подключает» к себе существующего пользователя. Warning → попадает в ленту для ботов/SIEM.
+        await audit.WriteAsync("app.user_linked", true, AuditSeverity.Warning, clientId, user.Id, new { roles });
         return await GetUserAsync(clientId, user.Id, ct);
     }
 
@@ -106,11 +117,20 @@ public sealed class AppSelfService(
     public async Task<AppUserDto> UpdateUserAsync(string clientId, Guid id, AppUserInput input, CancellationToken ct = default)
     {
         var user = await RequireOwnedAsync(clientId, id, ct);
+        if (string.IsNullOrWhiteSpace(input.UserName)) throw new AdminException("Укажите логин.");
+        var email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
+        // Новый адрес не подтверждён: иначе в токене был бы email_verified=true для непроверенного адреса.
+        if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)) user.EmailConfirmed = false;
         user.UserName = input.UserName.Trim();
-        user.Email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
+        user.Email = email;
         user.DisplayName = string.IsNullOrWhiteSpace(input.DisplayName) ? null : input.DisplayName.Trim();
         var result = await userManager.UpdateAsync(user);
-        if (!result.Succeeded) throw new AdminException(string.Join(" ", result.Errors.Select(e => e.Description)));
+        IdentityErrors.ThrowIfFailed(result);
+
+        // Пароль, переданный в изменении, применяется (раньше молча игнорировался) — с политикой паролей,
+        // признаком «сменить при входе» и отзывом сессий, как при установке пароля администратором.
+        if (!string.IsNullOrWhiteSpace(input.Password))
+            await users.SetPasswordAsync(id, input.Password, input.MustChangePassword, ct);
 
         if (input.Roles is not null)
             await SetUserRolesAsync(clientId, id, await ValidateRolesAsync(clientId, input.Roles, ct), ct);
@@ -201,9 +221,17 @@ public sealed class AppSelfService(
         return wanted;
     }
 
-    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct) => new(
-        user.Id, user.UserName!, user.Email, user.DisplayName, user.IsActive, user.PasswordHash is not null,
-        user.MustChangePassword, user.CreatedByClientId == clientId,
-        (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
+    // Профиль (email, состояние пароля, активность) видит только приложение-владелец учётной записи; для пользователей,
+    // лишь получивших роль этого приложения, — логин, имя и роли. Иначе App API раскрывал бы данные любых учётных
+    // записей системы (включая администраторов), привязанных через /users/link.
+    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct) =>
+        ToDto(clientId, user, (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
             .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
+
+    private static AppUserDto ToDto(string clientId, AppUser user, List<string> roles)
+    {
+        var owned = user.CreatedByClientId == clientId;
+        return new AppUserDto(user.Id, user.UserName!, owned ? user.Email : null, user.DisplayName, owned ? user.IsActive : true,
+            owned && user.PasswordHash is not null, owned && user.MustChangePassword, owned, roles);
+    }
 }

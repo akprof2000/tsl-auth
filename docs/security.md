@@ -112,6 +112,7 @@ docker buildx imagetools inspect ghcr.io/akprof2000/tsl-auth:latest --format '{{
   (`docker-compose.secrets.yml`, `docker-compose.ha-secrets.yml` — [docker secrets](deployment.md#секреты-файлами-docker-secrets)),
   а не переменными окружения.
 * Ограничьте получателей вебхуков (`Webhooks__AllowedNetworks`) сетями, где действительно работают боты.
+* Если сервис опубликован во внешнюю сеть, закройте описание API: `Docs__Public=false`.
 * Держите access-токены короткими (5–15 мин); для чувствительных API используйте introspection.
 * Выдавайте администраторам минимальные роли (`auditor` для просмотра), ботам — только `notifier` / `reset-bot`.
 * Настройте вебхук или бота на `security.alert` — блокировки, сбросы через бота, отказы в доступе.

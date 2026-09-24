@@ -5,15 +5,15 @@ flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
     L["Нагрузка — k6<br/>tests/load"]
     UI["UI-автотесты — Playwright, 11 сценариев<br/>tests/TslAuth.UiTests"]
-    I["Интеграционные — 45: 22 сценария × SQLite и PostgreSQL + перенос SQLite → PostgreSQL<br/>tests/TslAuth.IntegrationTests"]
-    U["Unit — 58<br/>tests/TslAuth.UnitTests"]
+    I["Интеграционные — 118: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, регрессии ревизии<br/>tests/TslAuth.IntegrationTests"]
+    U["Unit — 86<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
 ```
 
 | Уровень | Что проверяет | Окружение | Запуск |
 |---|---|---|---|
-| Unit | шифрование и слепые индексы, валидация имён и политик, генератор паролей, сроки хранения, подпись вебхуков, CSV-экранирование, согласованность языковых пакетов | нет | `dotnet test tests/TslAuth.UnitTests` |
-| Интеграционные | сервис целиком в памяти на **SQLite и реальном PostgreSQL** (Testcontainers): OIDC, подпись JWT, RBAC-claims, ротация refresh, отзыв, блокировка, временный пароль, token exchange, сроки жизни, App API (изоляция), политика паролей, PAT, бот, события, заявки, шифрование в БД, перезапуск, **обновление схемы на живых данных**, перенос SQLite → PostgreSQL (`admin migrate-to-postgres`) | Docker | `dotnet test tests/TslAuth.IntegrationTests` |
+| Unit | шифрование и слепые индексы, валидация имён и политик, генератор паролей, сроки хранения, подпись вебхуков (точное значение HMAC), CSV-экранирование, согласованность языковых пакетов, политика адресов вебхуков (SSRF), доверенные прокси, канонизация кодов языков | нет | `dotnet test tests/TslAuth.UnitTests` |
+| Интеграционные | сервис целиком в памяти на **SQLite и реальном PostgreSQL** (Testcontainers): OIDC, подпись JWT, RBAC-claims, ротация refresh, отзыв, блокировка, временный пароль, token exchange, сроки жизни, App API (изоляция), политика паролей, PAT, бот, события, заявки, шифрование в БД, перезапуск, **обновление схемы на живых данных**, перенос SQLite → PostgreSQL (`admin migrate-to-postgres`), **authorization code + PKCE через страницу входа** (отказы, introspection, revocation, выход, form_post), лимиты частоты, CORS, заголовки безопасности, права ролей администрирования, подпись вебхуков, приглашения, регрессии ревизии кода | Docker | `dotnet test tests/TslAuth.IntegrationTests` |
 | UI (E2E) | реальный браузер против стенда: вход, «глазок», языки, вся админка, регистрация приложения и матрица, временный пароль, **SPA (Node) с брендингом, PKCE, token exchange Go→Node**, .NET MVC (OIDC), Python (password grant, App API), регистрация + одобрение, PAT | стенд | см. ниже |
 | Нагрузка | выдача токенов по всем потокам, JWKS, Admin API под параллельной нагрузкой; входы по паролю — от пула пользователей `load-01…` (создаётся скриптом), а не от одного | стенд | `tests/load/run-load.ps1` |
 | Отказоустойчивость | рестарты, `kill -9`, отказы узлов, БД и балансировщика под непрерывным трафиком (кластер — с `docker-compose.ha-nodes.yml`: сценарии обращаются к отдельным узлам) | Docker | `tests/resilience/run-resilience.ps1` |
@@ -44,8 +44,8 @@ dotnet test tests/TslAuth.UiTests                        # скриншоты ш
 
 | Набор | Результат |
 |---|---|
-| Unit | 58 / 58 |
-| Интеграционные (SQLite + PostgreSQL) | 45 / 45 |
+| Unit | 86 / 86 |
+| Интеграционные (SQLite + PostgreSQL) | 118 / 118 |
 | UI (Playwright) | 11 / 11 |
 
 ### Нагрузка

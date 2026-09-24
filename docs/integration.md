@@ -183,6 +183,7 @@ flowchart LR
 
 | Действие | Запрос |
 |---|---|
+| Список своих пользователей | `GET /api/app/users?skip=0&take=500` — массив, общее число в заголовке `X-Total-Count` (take ≤ 1000) |
 | Создать пользователя (временный пароль или приглашение) | `POST /api/app/users` `{"userName","email","roles":["support"],"invite":true}` |
 | Изменить созданного им пользователя | `PUT /api/app/users/{id}` — в т.ч. `password` и `mustChangePassword` |
 | Выдать свою роль существующему | `POST /api/app/users/link` `{"login":"ivan","roles":["support"]}` |

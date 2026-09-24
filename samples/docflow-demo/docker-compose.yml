@@ -2,9 +2,8 @@
 #   1) docker compose up -d tsl-auth                 — сервис авторизации (http://localhost:8080)
 #   2) ./seed.ps1                                     — приложения, роли, сотрудники; секреты → .env
 #   3) docker compose up -d --build                   — API + PWA (http://localhost:5200) и бот
-# Команды бота /lock, /unlock, /forcepwd требуют образ TSL Auth с расширенным Bot API
-# (версия после af96071). До выхода релиза соберите образ локально: TSL_AUTH_IMAGE=tsl-auth:latest
-# и в корне репозитория `docker compose build`.
+# Команды бота /lock, /unlock, /forcepwd есть в akprof2000/tsl-auth:latest с 24.09.2026.
+# Свой образ: TSL_AUTH_IMAGE=tsl-auth:local (docker build -t tsl-auth:local в корне репозитория).
 name: docflow-demo
 
 services:

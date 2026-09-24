@@ -64,8 +64,9 @@ docker compose up -d tsl-auth
 docker compose up -d --build     # http://localhost:5200
 ```
 
-Команды `/lock`, `/unlock`, `/forcepwd` появились в Bot API после версии образа с этим демо.
-Пока релиз не опубликован, соберите образ из репозитория и укажите его в `TSL_AUTH_IMAGE`:
+Команды `/lock`, `/unlock`, `/forcepwd` есть в образе `akprof2000/tsl-auth:latest` начиная с 24.09.2026.
+На старом образе `seed.ps1` предупредит об этом, а бот сможет только привязку и сброс пароля.
+Чтобы проверить локальные изменения ядра, соберите образ из репозитория и укажите его в `TSL_AUTH_IMAGE`:
 
 ```powershell
 docker build -t tsl-auth:local ../..

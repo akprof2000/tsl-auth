@@ -6,7 +6,7 @@ param(
     [string]$Duration = "60s",
     [string]$ClientId = "admin-cli",
     [string]$ClientSecret = "demo-admin-cli-secret-2026",
-    [string]$User = "alice",
+    [int]$Users = 10,                       # размер пула пользователей load-01..load-NN (создаются при первом запуске)
     [string]$Password = "Demo-Passw0rd!",
     [string]$PublicClient = "load-test-client"
 )
@@ -32,8 +32,20 @@ catch {
         clientId = $PublicClient; clientType = "public"; grantTypes = @("password", "refresh_token") } | ConvertTo-Json) | Out-Null
 }
 
+# Пул пользователей для входов по паролю: у каждого VU своя учётная запись (см. auth-load.js).
+$pool = 1..$Users | ForEach-Object { "load-{0:d2}" -f $_ }
+foreach ($name in $pool) {
+    $found = Invoke-RestMethod "$api/api/admin/users?search=$name" -Headers $H
+    if (-not ($found.items | Where-Object userName -eq $name)) {
+        Invoke-RestMethod "$api/api/admin/users" -Method Post -Headers $H -ContentType "application/json" -Body (@{
+            userName = $name; email = "$name@load.local"; displayName = "Нагрузочный тест"; password = $Password } | ConvertTo-Json) | Out-Null
+    }
+}
+
+# Образ k6 закреплён по digest: версия инструмента не меняется незаметно между прогонами, результаты сравнимы.
+$usersArg = $pool -join ","
 docker run --rm --user root --add-host=host.docker.internal:host-gateway -v "${PSScriptRoot}:/scripts" -v "${artifacts}:/out" `
     -e BASE_URL=$BaseUrl -e VUS=$Vus -e DURATION=$Duration -e CLIENT_ID=$ClientId -e CLIENT_SECRET=$ClientSecret `
-    -e USER=$User -e PASSWORD=$Password -e PUBLIC_CLIENT=$PublicClient `
-    grafana/k6:latest run --summary-export "/out/$Name.json" /scripts/auth-load.js
+    -e "USERS=$usersArg" -e PASSWORD=$Password -e PUBLIC_CLIENT=$PublicClient `
+    grafana/k6:2.3.0@sha256:9c2dee7f8ed74d317e4027c06a10f169b625638189de8d4555d0b3486a5aeb34 run --summary-export "/out/$Name.json" /scripts/auth-load.js
 exit $LASTEXITCODE

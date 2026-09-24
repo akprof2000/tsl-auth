@@ -1,0 +1,4 @@
+# Сборка PWA кладётся в api/wwwroot (раздаёт API) — в репозиторий не попадает.
+api/wwwroot/
+web/dist/
+*.tsbuildinfo

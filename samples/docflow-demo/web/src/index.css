@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+}
+
+html, body, #root { height: 100%; }
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-[#0b1020] dark:text-slate-100;
+}
+
+@utility card {
+  @apply rounded-2xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.04];
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer;
+}
+@utility btn-primary {
+  @apply btn bg-gradient-to-br from-brand-500 to-violet-600 text-white shadow-md shadow-brand-500/25 hover:brightness-110;
+}
+@utility btn-ghost {
+  @apply btn text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10;
+}
+@utility btn-outline {
+  @apply btn border border-slate-200 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10;
+}
+@utility btn-danger {
+  @apply btn bg-rose-600 text-white hover:bg-rose-500;
+}
+@utility btn-success {
+  @apply btn bg-emerald-600 text-white hover:bg-emerald-500;
+}
+@utility input {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-500/15 dark:border-white/10 dark:bg-white/5;
+}
+@utility label {
+  @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+}
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgb(148 163 184 / .35); border-radius: 8px; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise .25s ease-out both; }

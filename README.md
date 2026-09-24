@@ -125,6 +125,7 @@ docker compose -f docker-compose.ha.yml up -d --build
 src/TslAuth/            сервис (ASP.NET Core, OpenIddict, EF Core)
 tests/                  unit, интеграционные, UI (Playwright), нагрузка (k6), отказоустойчивость
 samples/                демо-приложения: .NET MVC, Node.js SPA+API, Go API, Python
+                        docflow-demo — документооборот: PWA (React) + C# API + бот безопасности
 deploy/                 конфигурации nginx (HTTP и TLS)
 docker-compose*.yml     одиночный режим, кластер и оверлеи: HTTPS (PEM/PFX), docker secrets, доступ к узлам для диагностики
 scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации

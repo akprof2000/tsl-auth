@@ -239,13 +239,16 @@ public static class ServiceSetup
 
         if (server.TrustForwardedHeaders)
         {
+            var networks = ParseKnownNetworks(server.KnownNetworks);
             services.Configure<ForwardedHeadersOptions>(o =>
             {
-                // Доверяем любому прокси: включать, только если сервис недоступен напрямую, в обход балансировщика
-                // (иначе клиент подделает X-Forwarded-For и обойдёт лимиты по IP).
-                o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+                // X-Forwarded-For/Proto принимаются только от прокси из известных сетей: иначе запрос напрямую на узел
+                // подделал бы IP клиента (обход лимитов по IP, ложный IP в журнале) и схему (обход RequireHttps).
+                // X-Forwarded-Host не принимается: публичный адрес задан Issuer, подмена хоста только расширяла бы атаки.
+                o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
                 o.KnownIPNetworks.Clear();
                 o.KnownProxies.Clear();
+                foreach (var network in networks) o.KnownIPNetworks.Add(network);
             });
         }
     }
@@ -268,5 +271,20 @@ public static class ServiceSetup
         if (!Uri.TryCreate(issuer, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
             || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
             throw new InvalidOperationException($"Auth:Issuer должен быть абсолютным http(s)-адресом без query и фрагмента, получено: '{issuer}'.");
+    }
+
+    // Сети по умолчанию для доверенных прокси: loopback и частные диапазоны (Docker, внутренняя сеть балансировщика).
+    private static readonly string[] DefaultProxyNetworks =
+        ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"];
+
+    /// <summary>Разбирает Auth:KnownNetworks (CIDR через запятую/точку с запятой); ошибка формата — отказ старта.</summary>
+    internal static List<System.Net.IPNetwork> ParseKnownNetworks(string? value)
+    {
+        var items = string.IsNullOrWhiteSpace(value)
+            ? DefaultProxyNetworks
+            : value.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return items.Select(item => System.Net.IPNetwork.TryParse(item, out var network)
+            ? network
+            : throw new InvalidOperationException($"Auth:KnownNetworks: '{item}' — не CIDR (пример: 10.0.0.0/8, 172.18.0.0/16).")).ToList();
     }
 }

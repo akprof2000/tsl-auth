@@ -150,8 +150,10 @@ public sealed class AuthorizationController(
             // Одинаковое сообщение для «нет пользователя» и «неверный пароль» — не раскрываем существование логинов.
             if (user is not { IsActive: true })
             {
+                userService.SimulatePasswordCheck(request.Password); // одинаковое время ответа (M4)
                 await audit.WriteAsync(AuditTypes.LoginFailed, false, AuditSeverity.Info, request.ClientId, user?.Id,
-                    new { login = request.Username, reason = user is null ? "unknown_user" : "inactive", channel = "password_grant" }, "anonymous");
+                    new { login = UserService.MaskLogin(request.Username), reason = user is null ? "unknown_user" : "inactive", channel = "password_grant" },
+                    "anonymous");
                 return Error(Errors.InvalidGrant, "Неверное имя пользователя или пароль.");
             }
 
@@ -166,10 +168,11 @@ public sealed class AuthorizationController(
                 await webhooks.PublishAsync(WebhookEvents.UserLockedOut,
                     $"🔒 Учётная запись {user.UserName} заблокирована (password grant, клиент {request.ClientId}).",
                     new { userId = user.Id, userName = user.UserName, clientId = request.ClientId });
+            // Одно сообщение для неверного пароля и блокировки: отдельный текст «заблокирована» подтверждал бы,
+            // что учётная запись существует (у несуществующей блокировки не бывает).
             if (!check.Succeeded)
-                return Error(Errors.InvalidGrant, check.IsLockedOut
-                    ? "Учётная запись временно заблокирована из-за неудачных попыток входа."
-                    : "Неверное имя пользователя или пароль.");
+                return Error(Errors.InvalidGrant,
+                    "Неверное имя пользователя или пароль. После нескольких неудачных попыток вход временно блокируется.");
 
             // Сменить пароль в password grant нельзя (нет UI) — просроченный пароль помечаем
             // «требует смены» и отправляем пользователя в веб-интерфейс.
@@ -214,6 +217,12 @@ public sealed class AuthorizationController(
             if (principal is null)
                 return Error(Errors.InvalidGrant, "Токен недействителен.");
 
+            // Абсолютный срок сессии: refresh продлевает токены только в пределах MaxSessionDays от входа,
+            // иначе однажды выданная сессия жила бы бесконечно (каждый refresh выдаёт новый refresh-токен).
+            var runtime = await settings.GetAsync();
+            if (request.IsRefreshTokenGrantType() && await SessionExpiredAsync(principal, runtime.Tokens.MaxSessionDays))
+                return Error(Errors.InvalidGrant, "Сессия истекла: войдите заново.");
+
             // Principal пересобирается заново, а не копируется из старого токена: так в новый токен попадают
             // актуальные роли/разрешения, а заблокированный с тех пор пользователь токен не получит.
             ClaimsIdentity identity;
@@ -227,6 +236,10 @@ public sealed class AuthorizationController(
                 var user = await users.FindByIdAsync(principal.GetClaim(Claims.Subject) ?? "");
                 if (user is not { IsActive: true })
                     return Error(Errors.InvalidGrant, "Пользователь не найден или заблокирован.");
+                // Как и остальные гранты: с временным или просроченным паролем токены не продлеваются —
+                // иначе refresh-токен, полученный до выдачи временного пароля, работал бы бесконечно.
+                if (user.MustChangePassword || Security.AppUserManager.IsPasswordExpired(user, runtime.Passwords))
+                    return Error(Errors.InvalidGrant, "Требуется смена пароля: смените его через веб-интерфейс (/Account/ChangePassword).");
 
                 identity = await principals.CreateForUserAsync(user, request.ClientId!, principal.GetScopes());
             }
@@ -295,6 +308,15 @@ public sealed class AuthorizationController(
         }
 
         return Error(Errors.UnsupportedGrantType, "Тип гранта не поддерживается.");
+    }
+
+    /// <summary>Сессия (авторизация OpenIddict) старше maxDays дней с момента входа; 0 — без ограничения.</summary>
+    private async Task<bool> SessionExpiredAsync(ClaimsPrincipal principal, int maxDays)
+    {
+        if (maxDays <= 0 || principal.GetAuthorizationId() is not { } id) return false;
+        if (await authorizations.FindByIdAsync(id) is not { } authorization) return false;
+        var created = await authorizations.GetCreationDateAsync(authorization);
+        return created is { } date && date < DateTimeOffset.UtcNow.AddDays(-maxDays);
     }
 
     /// <summary>OIDC UserInfo: claims профиля по access token; состав зависит от выданных scope (profile, email).</summary>

@@ -53,6 +53,13 @@ public sealed class AuthServerOptions
 
     /// <summary>Доверять заголовкам X-Forwarded-* (сервис за балансировщиком).</summary>
     public bool TrustForwardedHeaders { get; set; }
+
+    /// <summary>
+    /// Сети (CIDR через запятую), от которых принимаются X-Forwarded-* при <see cref="TrustForwardedHeaders"/>.
+    /// Пусто — loopback и частные сети (10/8, 172.16/12, 192.168/16, fc00::/7): там работают Docker-сети и балансировщик.
+    /// Запрос из других адресов (например, прямо на порт узла из интернета) не сможет подменить IP клиента и схему.
+    /// </summary>
+    public string? KnownNetworks { get; set; }
 }
 
 /// <summary>

@@ -60,7 +60,8 @@ public sealed class AppUserManager(
     IdentityErrorDescriber errors,
     IServiceProvider services,
     ILogger<UserManager<AppUser>> logger,
-    AuthDbContext db)
+    AuthDbContext db,
+    SettingsService settings)
     : UserManager<AppUser>(store, optionsAccessor, passwordHasher, userValidators, passwordValidators, keyNormalizer,
         errors, services, logger)
 {
@@ -76,6 +77,26 @@ public sealed class AppUserManager(
             user.PasswordChangedAt = DateTime.UtcNow;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Учёт неудачной попытки входа по политике из БД (число попыток и длительность блокировки). Раньше значения
+    /// копировались в общий singleton IdentityOptions при каждой загрузке настроек — изменяемое разделяемое состояние;
+    /// теперь политика читается здесь, в месте применения.
+    /// </summary>
+    public override async Task<IdentityResult> AccessFailedAsync(AppUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        var store = (IUserLockoutStore<AppUser>)Store;
+        var policy = (await settings.GetAsync(CancellationToken)).Passwords;
+        var count = await store.IncrementAccessFailedCountAsync(user, CancellationToken);
+        if (count >= policy.MaxFailedAttempts)
+        {
+            Logger.LogDebug("Учётная запись заблокирована после {Count} неудачных попыток.", count);
+            await store.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(policy.LockoutMinutes), CancellationToken);
+            await store.ResetAccessFailedCountAsync(user, CancellationToken);
+        }
+        return await UpdateUserAsync(user);
     }
 
     /// <summary>

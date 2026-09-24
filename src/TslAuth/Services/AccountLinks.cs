@@ -73,6 +73,23 @@ public sealed class AccountLinks(
             WebUtility.HtmlEncode(user.UserName), WebUtility.HtmlEncode(link)), ct);
     }
 
+    /// <summary>
+    /// Письмо сброса пароля в фоне: текст собирается сразу (на языке текущего запроса), отправка по SMTP — после ответа.
+    /// Время ответа «забыли пароль» не должно зависеть от того, существует ли пользователь (перечисление по таймингу).
+    /// </summary>
+    public void QueuePasswordReset(AppUser user, string link, ILogger logger)
+    {
+        if (user.Email is not { } address || !email.IsConfigured) return;
+        var subject = L["email.reset.subject"];
+        var body = L.Get("email.reset.body", WebUtility.HtmlEncode(user.UserName), WebUtility.HtmlEncode(link));
+        var userId = user.Id;
+        _ = Task.Run(async () =>
+        {
+            try { await email.SendAsync(address, subject, body); }
+            catch (Exception ex) { logger.LogWarning(ex, "Не удалось отправить письмо сброса пароля пользователю {UserId}.", userId); }
+        });
+    }
+
     public async Task SendPasswordResetAsync(AppUser user, string link, CancellationToken ct = default)
     {
         var address = user.Email ?? throw new AdminException("У пользователя не указан email.");

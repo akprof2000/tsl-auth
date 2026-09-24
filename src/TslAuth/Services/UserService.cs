@@ -214,6 +214,24 @@ public sealed class UserService(
         return true;
     }
 
+    // Хеш-«пустышка» того же формата (PBKDF2), что у настоящих паролей.
+    private static readonly Lazy<string> DummyHash =
+        new(() => new PasswordHasher<AppUser>().HashPassword(new AppUser(), Guid.NewGuid().ToString()));
+
+    /// <summary>
+    /// Проверка пароля «вхолостую» для неизвестного/отключённого логина: время ответа совпадает с проверкой
+    /// настоящего пароля (PBKDF2), и по таймингу нельзя узнать, существует ли учётная запись.
+    /// </summary>
+    public void SimulatePasswordCheck(string? password) =>
+        users.PasswordHasher.VerifyHashedPassword(new AppUser(), DummyHash.Value, password ?? "");
+
+    /// <summary>
+    /// Что писать в журнал о введённом логине при неудачном входе: в поле логина нередко вводят пароль,
+    /// поэтому сырой ввод не сохраняется — только первые символы и длина.
+    /// </summary>
+    public static string MaskLogin(string? login) =>
+        string.IsNullOrEmpty(login) ? "" : $"{login[..Math.Min(2, login.Length)]}… ({login.Length})";
+
     /// <summary>Администратор отправляет пользователю ссылку для сброса пароля.</summary>
     public async Task SendPasswordResetAsync(Guid id, CancellationToken ct = default)
     {
@@ -231,14 +249,8 @@ public sealed class UserService(
         // Молча выходим: одинаковый ответ для существующих и несуществующих логинов защищает от перебора учётных записей.
         if (user is not { IsActive: true, Email: not null }) return;
 
-        try
-        {
-            await links.SendPasswordResetAsync(user, await links.CreatePasswordResetLinkAsync(user), ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Не удалось отправить письмо сброса пароля пользователю {UserId}.", user.Id);
-        }
+        // Письмо — в фоне: синхронная отправка по SMTP только для существующих выдавала бы их по времени ответа.
+        links.QueuePasswordReset(user, await links.CreatePasswordResetLinkAsync(user), logger);
     }
 
     /// <summary>

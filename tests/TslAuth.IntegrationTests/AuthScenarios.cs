@@ -187,8 +187,10 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         var http = fx.Factory.CreateClient();
         for (var i = 0; i < 5; i++) await PasswordGrantAsync(http, client, api, user, "wrong", expectSuccess: false);
 
+        // Даже верный пароль не принимается; текст ошибки тот же, что для неверного пароля (не раскрывает существование).
         var locked = await PasswordGrantAsync(http, client, api, user, expectSuccess: false);
-        Assert.Contains("заблокирована", locked.GetProperty("error_description").GetString());
+        Assert.Equal("invalid_grant", locked.GetProperty("error").GetString());
+        Assert.False(locked.TryGetProperty("access_token", out _));
 
         var audit = await admin.GetJsonAsync($"/api/admin/audit?userId={userId}&type=auth.");
         Assert.Contains(audit.EnumerateArray(), e => e.GetProperty("type").GetString() == AuditTypes.LockedOut);

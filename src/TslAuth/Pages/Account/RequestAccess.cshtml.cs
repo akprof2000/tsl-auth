@@ -15,7 +15,7 @@ public sealed class RequestAccessModel(
     BrandingService branding,
     AccessRequestService requests,
     AccessService access,
-    UserManager<AppUser> users) : PageModel
+    UserManager<AppUser> users) : UserPageModel
 {
     [BindProperty(SupportsGet = true)] public string? ReturnUrl { get; set; }
     [BindProperty(SupportsGet = true)] public string? ClientId { get; set; }
@@ -47,7 +47,7 @@ public sealed class RequestAccessModel(
         }
         catch (AdminException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            AddError(ex);
         }
         return Page();
     }

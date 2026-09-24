@@ -3,6 +3,7 @@
     - /Admin/* — админка (русский интерфейс, меню разделов, счётчик ожидающих заявок, flash-сообщения);
     - остальные (страницы /Account) — узкая карточка входа с брендингом приложения из returnUrl,
       переключателем языка и меню личного кабинета для вошедшего пользователя.
+    Страница ошибки (/Error) этот макет не использует: он ходит в БД (брендинг, заявки, языки).
 *@
 @inject BrandingService BrandingService
 @inject AccessRequestService AccessRequests
@@ -21,6 +22,14 @@
         login = await BrandingService.ResolveFromReturnUrlAsync(returnUrl);
     }
     var brand = login?.Branding ?? new LoginBranding();
+
+    // «Запросить доступ» получает только то, что нужно странице заявки (returnUrl приложения и client_id),
+    // а не весь query string: на страницах сброса пароля и приглашения в нём одноразовые uid/token.
+    var requestQuery = new Dictionary<string, string?>();
+    var currentReturnUrl = ViewData["ReturnUrl"] as string ?? Context.Request.Query["ReturnUrl"].ToString();
+    if (Url.IsLocalUrl(currentReturnUrl)) requestQuery["ReturnUrl"] = currentReturnUrl;
+    if (Context.Request.Query["ClientId"].ToString() is { Length: > 0 } requestClientId) requestQuery["ClientId"] = requestClientId;
+    var requestAccessUrl = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/Account/RequestAccess", requestQuery);
 }
 <!DOCTYPE html>
 <html lang="@(isAdmin ? "ru" : L.Culture)">
@@ -36,7 +45,8 @@
         <link rel="stylesheet" href="@BrandingCssModel.Href(login.ClientId, brand)" />
     }
 </head>
-<body>
+@* Подписи для site.js (кнопка «показать пароль») — на языке страницы: в скрипте своих строк нет. *@
+<body data-password-show="@(isAdmin ? "Показать пароль" : L["password.show"])" data-password-hide="@(isAdmin ? "Скрыть пароль" : L["password.hide"])">
 @if (isAdmin)
 {
     <header class="top">
@@ -63,6 +73,7 @@
         </div>
     </header>
     <main>
+        @* TempData["Flash"] во всём приложении — готовый текст (админка — по-русски, /Account — на языке пользователя). *@
         @if (TempData["Flash"] is string flash)
         {
             <div class="alert ok">@flash</div>
@@ -90,15 +101,16 @@ else
         </div>
         @if (TempData["Flash"] is string accountFlash)
         {
-            <div class="alert ok">@L[accountFlash]</div>
+            <div class="alert ok">@accountFlash</div>
         }
         @RenderBody()
         @if (User.Identity?.IsAuthenticated == true)
         {
             <nav class="account-nav small">
+                <a href="/Account">@L["account.title"]</a>
                 <a href="/Account/Tokens">@L["nav.tokens"]</a>
                 <a href="/Account/Messenger">@L["nav.messenger"]</a>
-                <a href="/Account/RequestAccess@(Context.Request.QueryString)">@L["nav.request"]</a>
+                <a href="@requestAccessUrl">@L["nav.request"]</a>
                 <a href="/Account/ChangePassword">@L["nav.password"]</a>
                 <form method="post" action="/Account/Logout" class="inline">@Html.AntiForgeryToken()<button class="link" type="submit">@L["nav.logout"]</button></form>
             </nav>

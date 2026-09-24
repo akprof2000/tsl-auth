@@ -11,9 +11,10 @@ namespace TslAuth.Pages.Account;
 /// Требует аутентификации (конвенция AuthorizePage); пользователь видит и отзывает только свои токены.
 /// Использует PatService, SettingsService (политика PAT: срок жизни) и UserManager.
 /// </summary>
-public sealed class TokensModel(PatService pats, SettingsService settings, UserManager<AppUser> users) : PageModel
+public sealed class TokensModel(PatService pats, SettingsService settings, UserManager<AppUser> users) : UserPageModel
 {
-    [BindProperty] public string Name { get; set; } = "";
+    // string? — без неявного [Required]: иначе форма отзыва (тот же POST-биндинг) получала бы ошибку «заполните поле».
+    [BindProperty] public string? Name { get; set; }
     [BindProperty] public List<string> Audiences { get; set; } = [];
     [BindProperty] public int? ExpiresInDays { get; set; }
 
@@ -31,7 +32,7 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     {
         try
         {
-            var (_, secret) = await pats.CreateAsync(UserId, new PatInput(Name, Audiences, ExpiresInDays), ct);
+            var (_, secret) = await pats.CreateAsync(UserId, new PatInput(Name ?? "", Audiences, ExpiresInDays), ct);
             // Секрет показывается только один раз в ответе на этот POST (без редиректа): в БД хранится лишь хэш,
             // повторно получить значение невозможно.
             CreatedSecret = secret;
@@ -39,7 +40,7 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
         }
         catch (AdminException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            AddError(ex);
         }
         await LoadAsync(ct);
         return Page();
@@ -48,8 +49,17 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     /// <summary>Отзывает токен; UserId передаётся в сервис, чтобы нельзя было отозвать чужой токен.</summary>
     public async Task<IActionResult> OnPostRevokeAsync(Guid tokenId, CancellationToken ct)
     {
-        await pats.RevokeAsync(tokenId, UserId, ct);
-        TempData["Flash"] = "tokens.revoked";
+        try
+        {
+            await pats.RevokeAsync(tokenId, UserId, ct);
+        }
+        catch (AdminException ex)
+        {
+            AddError(ex);
+            await LoadAsync(ct);
+            return Page();
+        }
+        Flash("tokens.revoked");
         return RedirectToPage();
     }
 

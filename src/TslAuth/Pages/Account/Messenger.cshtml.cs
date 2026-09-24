@@ -11,7 +11,7 @@ namespace TslAuth.Pages.Account;
 /// Требует аутентификации (конвенция AuthorizePage). Использует BotService (одноразовые коды привязки,
 /// список и удаление привязок) и UserManager.
 /// </summary>
-public sealed class MessengerModel(BotService bot, UserManager<AppUser> users) : PageModel
+public sealed class MessengerModel(BotService bot, UserManager<AppUser> users) : UserPageModel
 {
     public List<LinkedIdentityDto> Items { get; private set; } = [];
     public string? Code { get; private set; }
@@ -36,8 +36,17 @@ public sealed class MessengerModel(BotService bot, UserManager<AppUser> users) :
     /// <summary>Удаляет привязку мессенджера (только свою — сервис проверяет владельца).</summary>
     public async Task<IActionResult> OnPostRemoveAsync(Guid identityId, CancellationToken ct)
     {
-        await bot.RemoveAsync(UserId, identityId, ct);
-        TempData["Flash"] = "messenger.removed";
+        try
+        {
+            await bot.RemoveAsync(UserId, identityId, ct);
+        }
+        catch (AdminException ex)
+        {
+            AddError(ex);
+            Items = await bot.ListAsync(UserId, ct);
+            return Page();
+        }
+        Flash("messenger.removed");
         return RedirectToPage();
     }
 }

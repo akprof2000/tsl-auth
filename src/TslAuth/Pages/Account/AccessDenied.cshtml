@@ -5,6 +5,7 @@
 <div class="card">
     <h2>@L["denied.title"]</h2>
     <p>@L["denied.text"]</p>
+    <p><a href="/Account">@L["account.title"]</a></p>
     <form method="post" action="/Account/Logout">
         @Html.AntiForgeryToken()
         <button type="submit">@L["denied.switch"]</button>

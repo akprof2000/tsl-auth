@@ -93,3 +93,5 @@ label.inline.flex { display: flex; }
 .pre-wrap { white-space: pre-wrap; }
 textarea.tall { min-height: 420px; }
 ul.errors-list { margin: 0; padding-left: 18px; }
+ul.account-links { padding-left: 18px; }
+ul.account-links li { margin: 6px 0; }

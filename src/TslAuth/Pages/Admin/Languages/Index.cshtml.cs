@@ -68,7 +68,12 @@ public sealed class IndexModel(LocalizationService localization, UserManager<App
     /// <summary>Удаляет пакет из БД; для встроенных языков снова начинают действовать встроенные строки.</summary>
     public async Task<IActionResult> OnPostDeleteAsync(CancellationToken ct)
     {
-        await TryAsync(() => localization.DeletePackAsync(Culture ?? "", ct));
+        // Ошибку (например, пакета в БД нет — встроенный язык удалять нечего) показываем, а не рапортуем об успехе.
+        if (!await TryAsync(() => localization.DeletePackAsync(Culture ?? "", ct)))
+        {
+            await OnGetAsync();
+            return Page();
+        }
         Flash($"Пакет {Culture} удалён из БД (встроенный язык при этом остаётся).");
         return RedirectToPage(new { culture = (string?)null });
     }

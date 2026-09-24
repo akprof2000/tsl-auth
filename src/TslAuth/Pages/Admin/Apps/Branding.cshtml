@@ -46,13 +46,33 @@
             <label asp-for="Logo">Загрузить логотип (PNG/JPEG/WEBP, до 256 КБ)</label>
             <input asp-for="Logo" type="file" accept="image/png,image/jpeg,image/webp" disabled="@disabled" />
 
+            @*
+                <input type="color"> не бывает пустым и всегда отправляет значение (#000000 по умолчанию), поэтому цвет
+                применяется, только если отмечено «задать»; без отметки — оформление по умолчанию.
+            *@
             <div class="grid2">
-                <div><label asp-for="AccentColor">Акцент (кнопки)</label><input asp-for="AccentColor" type="color" disabled="@disabled" /></div>
-                <div><label asp-for="BackgroundColor">Фон страницы</label><input asp-for="BackgroundColor" type="color" disabled="@disabled" /></div>
-                <div><label asp-for="CardColor">Фон карточки</label><input asp-for="CardColor" type="color" disabled="@disabled" /></div>
-                <div><label asp-for="TextColor">Текст</label><input asp-for="TextColor" type="color" disabled="@disabled" /></div>
+                <fieldset>
+                    <legend>Акцент (кнопки)</legend>
+                    <label class="inline"><input asp-for="SetAccentColor" disabled="@disabled" /> задать</label>
+                    <input asp-for="AccentColor" type="color" aria-label="Цвет акцента" disabled="@disabled" />
+                </fieldset>
+                <fieldset>
+                    <legend>Фон страницы</legend>
+                    <label class="inline"><input asp-for="SetBackgroundColor" disabled="@disabled" /> задать</label>
+                    <input asp-for="BackgroundColor" type="color" aria-label="Цвет фона страницы" disabled="@disabled" />
+                </fieldset>
+                <fieldset>
+                    <legend>Фон карточки</legend>
+                    <label class="inline"><input asp-for="SetCardColor" disabled="@disabled" /> задать</label>
+                    <input asp-for="CardColor" type="color" aria-label="Цвет фона карточки" disabled="@disabled" />
+                </fieldset>
+                <fieldset>
+                    <legend>Текст</legend>
+                    <label class="inline"><input asp-for="SetTextColor" disabled="@disabled" /> задать</label>
+                    <input asp-for="TextColor" type="color" aria-label="Цвет текста" disabled="@disabled" />
+                </fieldset>
             </div>
-            <p class="small muted">Чтобы вернуть цвет по умолчанию, очистите поле через API или удалите оформление целиком.</p>
+            <p class="small muted">Снимите отметку «задать», чтобы вернуть цвет по умолчанию.</p>
         </div>
     </div>
     @if (Model.CanManage)

@@ -63,8 +63,18 @@ public sealed class AdminException(string message, int statusCode = StatusCodes.
 {
     public int StatusCode { get; } = statusCode;
 
+    /// <summary>
+    /// Ключ языкового пакета (например <c>error.emailTaken</c>) для ошибок, которые видит пользователь на страницах
+    /// входа/регистрации: страница показывает <c>L[Key]</c> на языке пользователя, API — русский <see cref="Exception.Message"/>.
+    /// </summary>
+    public string? Key { get; init; }
+
     public static AdminException NotFound(string what) => new($"{what} не найден(о).", StatusCodes.Status404NotFound);
     public static AdminException Conflict(string message) => new(message, StatusCodes.Status409Conflict);
+
+    /// <summary>Ошибка с ключом локализации для пользовательских страниц.</summary>
+    public static AdminException Localized(string key, string message, int statusCode = StatusCodes.Status400BadRequest) =>
+        new(message, statusCode) { Key = key };
 }
 
 /// <summary>

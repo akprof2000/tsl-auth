@@ -93,6 +93,7 @@ public sealed class UserService(
     /// <summary>Создаёт пользователя (с паролем или без — тогда он активируется по приглашению) и назначает роли.</summary>
     public async Task<UserDto> CreateAsync(UserInput input, CancellationToken ct = default)
     {
+        CheckLengths(input);
         // MustChangePassword имеет смысл только при заданном пароле: без пароля пользователь сам задаст его по приглашению.
         var user = new AppUser
         {
@@ -120,6 +121,7 @@ public sealed class UserService(
     /// <summary>Изменяет профиль, статус, (опционально) пароль и роли; при отключении — разлогинивает пользователя везде.</summary>
     public async Task<UserDto> UpdateAsync(Guid id, UserInput input, CancellationToken ct = default)
     {
+        CheckLengths(input);
         var user = await Require(id);
 
         user.UserName = input.UserName?.Trim();
@@ -364,6 +366,20 @@ public sealed class UserService(
         roles);
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Длины полей профиля — до записи в БД. Поля хранятся зашифрованными (шифротекст до 1024 символов ≈ 730 байт
+    /// исходного текста): без проверки длинное значение давало бы на PostgreSQL ошибку БД (500), на SQLite — ничего.
+    /// </summary>
+    internal static void CheckLengths(UserInput input)
+    {
+        if (input.UserName?.Trim().Length > 256)
+            throw AdminException.Localized("error.userNameInvalid", "Логин: не длиннее 256 символов.");
+        if (input.Email?.Trim().Length > 254)
+            throw AdminException.Localized("error.emailInvalid", "Email: не длиннее 254 символов.");
+        if (input.DisplayName?.Trim().Length > 200)
+            throw new AdminException("Имя: не длиннее 200 символов.");
+    }
 
     // Ошибки Identity (валидация логина/пароля) превращаются в AdminException → 400 с понятным текстом и ключом локализации.
     private static void Check(IdentityResult result) => IdentityErrors.ThrowIfFailed(result);

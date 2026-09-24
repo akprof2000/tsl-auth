@@ -39,6 +39,14 @@ public sealed class LocalizationService(IServiceScopeFactory scopes, ILogger<Loc
         return result;
     }
 
+    /// <summary>Строка встроенного пакета (с фолбэком на язык по умолчанию) — запасной вариант для сломанного перевода.</summary>
+    public static string? GetBuiltIn(string culture, string key)
+    {
+        foreach (var c in Chain(culture))
+            if (BuiltIn.TryGetValue(c, out var pack) && pack.TryGetValue(key, out var value)) return value;
+        return null;
+    }
+
     /// <summary>Шаблон пакета (все ключи со значениями из встроенного языка) — для перевода на новый язык.</summary>
     public static Dictionary<string, string> Template(string culture = DefaultCulture) =>
         new(BuiltIn.TryGetValue(culture, out var pack) ? pack : BuiltIn[DefaultCulture]);
@@ -109,6 +117,10 @@ public sealed class LocalizationService(IServiceScopeFactory scopes, ILogger<Loc
         }
         var unknown = strings.Keys.Where(k => k != "_name" && !BuiltIn[DefaultCulture].ContainsKey(k)).Take(5).ToList();
         if (unknown.Count > 0) throw new AdminException($"Неизвестные ключи: {string.Join(", ", unknown)}.");
+        // Плейсхолдеры {0}, {1}… должны разбираться string.Format: иначе строка ломала бы страницу при показе.
+        var broken = strings.Where(kv => kv.Key != "_name" && !FormatIsValid(kv.Value)).Select(kv => kv.Key).Take(5).ToList();
+        if (broken.Count > 0)
+            throw new AdminException($"Некорректные плейсхолдеры ({{0}}, {{1}}…; фигурную скобку в тексте удваивайте: {{{{ }}}}): {string.Join(", ", broken)}.");
 
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
@@ -156,6 +168,13 @@ public sealed class LocalizationService(IServiceScopeFactory scopes, ILogger<Loc
                 : parts[i].Length == 4 ? char.ToUpperInvariant(parts[i][0]) + parts[i][1..].ToLowerInvariant()
                 : parts[i].ToLowerInvariant();
         return string.Join('-', parts);
+    }
+
+    // Проверка формата строки: подстановка десяти пустых аргументов не должна бросать FormatException.
+    private static bool FormatIsValid(string value)
+    {
+        try { _ = string.Format(value, new object?[10]); return true; }
+        catch (FormatException) { return false; }
     }
 
     // Цепочка фолбэка культур: точная → родительская → язык по умолчанию.

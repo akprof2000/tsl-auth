@@ -157,7 +157,17 @@ public sealed class AccessRequestService(
             created.Add(request.Id);
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Уникальный индекс IX_AccessRequests_Pending: параллельный запрос уже создал такую же ожидающую заявку.
+            foreach (var entry in db.ChangeTracker.Entries<AccessRequest>().Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+            throw AdminException.Conflict("Заявка на эту роль уже подана и ожидает рассмотрения.");
+        }
         var result = await QueryAsync(db.AccessRequests.Where(r => created.Contains(r.Id)), ct);
         foreach (var r in result)
             await webhooks.PublishAsync(WebhookEvents.AccessRequestCreated,

@@ -266,6 +266,8 @@ public static class ServiceSetup
         services.AddRazorPages(o =>
         {
             o.Conventions.AuthorizeFolder("/Admin", AdminPolicies.UiView);
+            // Руководство /docs публично по умолчанию (удобно во внутренней сети); Docs:Public=false закрывает его.
+            if (!config.GetValue("Docs:Public", true)) o.Conventions.AuthorizeFolder("/Docs", AdminPolicies.UiView);
             o.Conventions.AuthorizePage("/Account/ChangePassword");
             o.Conventions.AuthorizePage("/Account/Tokens");
             o.Conventions.AuthorizePage("/Account/Messenger");

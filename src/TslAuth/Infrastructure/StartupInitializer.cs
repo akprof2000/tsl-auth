@@ -94,7 +94,9 @@ public static class StartupInitializer
         // БД может стартовать позже сервиса (docker compose) — ждём её доступности.
         for (var attempt = 1; ; attempt++)
         {
-            var connection = new NpgsqlConnection(connectionString);
+            // Без пула: сессионная блокировка снимается при закрытии соединения. Соединение из пула при «закрытии»
+            // лишь возвращается в пул, и блокировка висела бы до его повторного использования — остальные узлы ждали бы.
+            var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false }.ConnectionString);
             try
             {
                 await EnsurePostgresDatabaseAsync(connectionString, logger, ct);

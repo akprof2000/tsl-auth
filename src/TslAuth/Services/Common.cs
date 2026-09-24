@@ -69,7 +69,8 @@ public sealed class AdminException(string message, int statusCode = StatusCodes.
     /// </summary>
     public string? Key { get; init; }
 
-    public static AdminException NotFound(string what) => new($"{what} не найден(о).", StatusCodes.Status404NotFound);
+    public static AdminException NotFound(string what) =>
+        new($"{what} не найден(о).", StatusCodes.Status404NotFound) { Key = "error.notFound" };
     public static AdminException Conflict(string message) => new(message, StatusCodes.Status409Conflict);
 
     /// <summary>Ошибка с ключом локализации для пользовательских страниц.</summary>

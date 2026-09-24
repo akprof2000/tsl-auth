@@ -307,6 +307,7 @@ public sealed class ApplicationService(
     private async Task<ApplicationDto> ToDtoAsync(object app, CancellationToken ct)
     {
         var permissions = await applications.GetPermissionsAsync(app, ct);
+        var properties = await applications.GetPropertiesAsync(app, ct); // один раз: каждый вызов разбирает JSON заново
         return new ApplicationDto(
             (await applications.GetClientIdAsync(app, ct))!,
             await applications.GetDisplayNameAsync(app, ct),
@@ -317,9 +318,9 @@ public sealed class ApplicationService(
                 .Select(p => p[Permissions.Prefixes.GrantType.Length..]).ToList(),
             permissions.Where(p => p.StartsWith(Permissions.Prefixes.Scope, StringComparison.Ordinal))
                 .Select(p => p[Permissions.Prefixes.Scope.Length..]).ToList(),
-            IsSystem(await applications.GetPropertiesAsync(app, ct)),
-            Flag(await applications.GetPropertiesAsync(app, ct), SelfManagementProperty),
-            Flag(await applications.GetPropertiesAsync(app, ct), SelfRegistrationProperty));
+            IsSystem(properties),
+            Flag(properties, SelfManagementProperty),
+            Flag(properties, SelfRegistrationProperty));
     }
 
     /// <summary>Включена ли для приложения самостоятельная регистрация (ссылка «Регистрация» на странице входа).</summary>

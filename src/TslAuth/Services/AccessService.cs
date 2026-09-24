@@ -45,6 +45,7 @@ public sealed class AccessService(AuthDbContext db)
     public async Task<PermissionDto> AddPermissionAsync(string clientId, string name, string? description, CancellationToken ct = default)
     {
         name = Names.Validate(name, "Имя разрешения");
+        if (description is { Length: > 500 }) throw new AdminException("Описание разрешения: не более 500 символов.");
         if (await db.AccessPermissions.AnyAsync(p => p.ClientId == clientId && p.Name == name, ct))
             throw AdminException.Conflict($"Разрешение '{name}' уже существует.");
 

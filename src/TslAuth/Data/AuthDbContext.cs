@@ -123,6 +123,9 @@ public abstract class AuthDbContext(DbContextOptions options)
             e.Property(r => r.DecidedBy).HasMaxLength(150);
             e.HasIndex(r => new { r.Status, r.CreatedAt });
             e.HasIndex(r => r.UserId);
+            // Одна ожидающая заявка на пару «пользователь × роль»: защищает от дублей при параллельной отправке формы
+            // (проверка в коде не атомарна). Status 0 = Pending; фильтр одинаково понимают SQLite и PostgreSQL.
+            e.HasIndex(r => new { r.UserId, r.RoleId }).IsUnique().HasFilter("\"Status\" = 0").HasDatabaseName("IX_AccessRequests_Pending");
             e.HasOne(r => r.Role).WithMany().HasForeignKey(r => r.RoleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
         });

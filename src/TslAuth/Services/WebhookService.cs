@@ -172,6 +172,9 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
     private void Apply(WebhookSubscription entity, SubscriptionInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name)) throw new AdminException("Укажите название подписки.");
+        // Длины — как у столбцов БД (на PostgreSQL превышение иначе давало бы 500 вместо понятной ошибки).
+        if (input.Name.Trim().Length > 100) throw new AdminException("Название подписки: не длиннее 100 символов.");
+        if (input.Secret is { Length: > 256 }) throw new AdminException("Секрет подписки: не длиннее 256 символов.");
         // Только http(s): схемы вроде file:// не должны попадать в HTTP-клиент диспетчера.
         if (!Uri.TryCreate(input.Url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
             throw new AdminException("URL вебхука должен быть абсолютным http(s)-адресом.");
@@ -186,6 +189,7 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
         // AbsoluteUri, а не ToString(): ToString() разэкранирует адрес (%2F → /), и сохранялся бы другой URL.
         entity.Url = uri.AbsoluteUri;
         entity.Events = events.Count == 0 || events.Contains("*") ? "*" : string.Join(",", events);
+        if (entity.Events.Length > 2000) throw new AdminException("Список событий подписки слишком длинный.");
         entity.Secret = string.IsNullOrWhiteSpace(input.Secret) ? null : input.Secret;
         entity.IsEnabled = input.IsEnabled;
     }

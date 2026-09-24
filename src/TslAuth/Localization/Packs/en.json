@@ -32,7 +32,7 @@
   "login.forgot": "Forgot password?",
   "login.noAccount": "No account yet?",
   "login.register": "Sign up",
-  "login.error.invalid": "Invalid username or password.",
+  "login.error.invalid": "Invalid username or password. After several failed attempts, sign-in is temporarily blocked.",
   "login.error.locked": "The account is temporarily locked due to failed sign-in attempts.",
   "validation.required": "This field is required.",
   "validation.email": "Invalid email address.",
@@ -121,6 +121,11 @@
   "denied.title": "Access denied",
   "denied.text": "Your account has no permissions for this section.",
   "denied.switch": "Sign in as another user",
+
+  "endsession.title": "Sign out",
+  "endsession.text": "An application asks to end your session in all applications. Sign out?",
+  "endsession.confirm": "Sign out",
+  "endsession.cancel": "Stay signed in",
 
   "account.title": "My account",
   "account.signedInAs": "Signed in as {0}.",

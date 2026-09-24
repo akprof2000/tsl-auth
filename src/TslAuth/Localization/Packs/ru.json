@@ -32,7 +32,7 @@
   "login.forgot": "Забыли пароль?",
   "login.noAccount": "Нет учётной записи?",
   "login.register": "Зарегистрироваться",
-  "login.error.invalid": "Неверный логин или пароль.",
+  "login.error.invalid": "Неверный логин или пароль. После нескольких неудачных попыток вход временно блокируется.",
   "login.error.locked": "Учётная запись временно заблокирована из-за неудачных попыток входа.",
   "validation.required": "Заполните поле.",
   "validation.email": "Некорректный email.",
@@ -121,6 +121,11 @@
   "denied.title": "Доступ запрещён",
   "denied.text": "У вашей учётной записи нет прав для этого раздела.",
   "denied.switch": "Войти под другим пользователем",
+
+  "endsession.title": "Выход",
+  "endsession.text": "Приложение просит завершить ваш сеанс во всех приложениях. Выйти?",
+  "endsession.confirm": "Выйти",
+  "endsession.cancel": "Остаться",
 
   "account.title": "Личный кабинет",
   "account.signedInAs": "Вы вошли как {0}.",

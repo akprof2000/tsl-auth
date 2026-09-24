@@ -79,8 +79,12 @@ public sealed class LoginModel(
         // по ответу нельзя узнать, существует ли логин (причина фиксируется только в аудите).
         if (user is not { IsActive: true })
         {
+            // Проверка пароля «вхолостую»: без неё ответ для несуществующего логина заметно быстрее (нет PBKDF2),
+            // и существование учётной записи выдаёт время ответа.
+            userService.SimulatePasswordCheck(Password);
+            // В поле логина нередко по ошибке вводят пароль — в журнал попадает только маска ввода.
             await audit.WriteAsync(AuditTypes.LoginFailed, false, AuditSeverity.Info, _clientId, user?.Id,
-                new { login = Login, reason = user is null ? "unknown_user" : "inactive", channel = "web" }, "anonymous");
+                new { login = UserService.MaskLogin(Login), reason = user is null ? "unknown_user" : "inactive", channel = "web" }, "anonymous");
             Error = "login.error.invalid";
             return Page();
         }
@@ -94,7 +98,9 @@ public sealed class LoginModel(
             await webhooks.PublishAsync(WebhookEvents.UserLockedOut,
                 $"🔒 Учётная запись {user.UserName} заблокирована после неудачных попыток входа (IP {HttpContext.Connection.RemoteIpAddress}).",
                 new { userId = user.Id, userName = user.UserName, ip = HttpContext.Connection.RemoteIpAddress?.ToString() });
-            Error = "login.error.locked";
+            // Та же ошибка, что и для неверного пароля: сообщение о блокировке подтверждало бы, что логин существует.
+            // Причина фиксируется в аудите (LockedOut) и уведомлении администраторам.
+            Error = "login.error.invalid";
             return Page();
         }
         if (!result.Succeeded)

@@ -11,7 +11,7 @@
 
 <h1>Настройки</h1>
 <p class="muted">Хранятся в БД и действуют на все экземпляры без перезапуска.
-    @if (Model.UpdatedAt is not null) { <span>Изменено @Model.UpdatedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm"), @Model.UpdatedBy.</span> }</p>
+    @if (Model.UpdatedAt is not null) { <span>Изменено @Ui.Time(Model.UpdatedAt), @Model.UpdatedBy.</span> }</p>
 
 <form method="post">
     <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>

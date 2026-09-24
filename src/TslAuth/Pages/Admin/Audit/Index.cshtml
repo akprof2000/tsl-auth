@@ -40,20 +40,20 @@
     </select>
     <input name="ClientId" value="@Model.ClientId" placeholder="client_id" class="w-sm" />
     <input name="UserId" value="@Model.UserId" placeholder="id пользователя" class="w-lg" />
-    <input name="From" type="datetime-local" value="@Model.From?.ToString("yyyy-MM-ddTHH:mm")" class="w-md" />
-    <input name="To" type="datetime-local" value="@Model.To?.ToString("yyyy-MM-ddTHH:mm")" class="w-md" />
+    <input name="From" type="datetime-local" value="@Model.FromValue" class="w-md" />
+    <input name="To" type="datetime-local" value="@Model.ToValue" class="w-md" />
     <button class="primary" type="submit">Показать</button>
     <a asp-page="Index">Сбросить</a>
 </form>
 
 <div class="table-wrap">
     <table>
-        <thead><tr><th>Время</th><th>Событие</th><th>Кто</th><th>Приложение</th><th>IP / экземпляр</th><th>Детали</th></tr></thead>
+        <thead><tr><th>Время (UTC)</th><th>Событие</th><th>Кто</th><th>Приложение</th><th>IP / экземпляр</th><th>Детали</th></tr></thead>
         <tbody>
         @foreach (var e in Model.Items)
         {
             <tr>
-                <td class="small">@e.OccurredAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss")</td>
+                <td class="small">@Ui.UtcTime(e.OccurredAt)</td>
                 <td>
                     <code>@e.Type</code>
                     <div>

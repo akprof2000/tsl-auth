@@ -39,10 +39,18 @@ public sealed class IndexModel(LocalizationService localization, UserManager<App
         Json = pack?.Json ?? JsonSerializer.Serialize(LocalizationService.Template(Culture), Pretty);
     }
 
-    /// <summary>Шаблон пакета со всеми ключами — отдать переводчику.</summary>
-    public IActionResult OnGetTemplate(string? from) =>
-        File(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(LocalizationService.Template(from ?? "ru"), Pretty)),
-            "application/json", $"tsl-auth-lang-{from ?? "ru"}.json");
+    /// <summary>
+    /// Шаблон пакета со всеми ключами — отдать переводчику. Источник — только встроенный язык (ru, en):
+    /// произвольное значение из query не попадает ни в выбор пакета, ни в имя файла.
+    /// </summary>
+    public async Task<IActionResult> OnGetTemplateAsync(string? from)
+    {
+        var culture = (await localization.ListAsync(includeDisabled: true))
+            .FirstOrDefault(l => l.BuiltIn && l.Culture.Equals(from, StringComparison.OrdinalIgnoreCase))?.Culture
+            ?? LocalizationService.DefaultCulture;
+        return File(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(LocalizationService.Template(culture), Pretty)),
+            "application/json", $"tsl-auth-lang-{culture}.json");
+    }
 
     /// <summary>Сохраняет пакет; валидацию JSON и ключей выполняет LocalizationService.</summary>
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken ct)

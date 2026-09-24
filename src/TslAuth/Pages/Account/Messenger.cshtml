@@ -35,7 +35,7 @@
                 <tr>
                     <td>@i.Provider</td>
                     <td><code>@i.LinkedByClientId</code></td>
-                    <td class="small">@i.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td class="small">@Ui.Time(i.CreatedAt)</td>
                     <td>
                         <form method="post" asp-page-handler="Remove" data-confirm="@L["messenger.removeConfirm"]">
                             <input type="hidden" name="identityId" value="@i.Id" />

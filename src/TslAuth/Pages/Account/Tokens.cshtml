@@ -45,30 +45,6 @@
     }
     else
     {
-        <table>
-            <thead><tr><th>@L["tokens.col.name"]</th><th>@L["tokens.col.apps"]</th><th>@L["tokens.col.expires"]</th><th>@L["tokens.col.lastUsed"]</th><th></th></tr></thead>
-            @foreach (var t in Model.Items)
-            {
-                <tr>
-                    <td>@t.Name<div class="small muted"><code>@t.Prefix</code></div></td>
-                    <td>@foreach (var a in t.Audiences) { <span class="badge">@a</span> }</td>
-                    <td class="small">@t.ExpiresAt?.ToLocalTime().ToString("dd.MM.yyyy")</td>
-                    <td class="small">@t.LastUsedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") @t.LastUsedIp</td>
-                    <td>
-                        @if (t.IsActive)
-                        {
-                            <form method="post" asp-page-handler="Revoke" data-confirm="@L["tokens.revokeConfirm"]">
-                                <input type="hidden" name="tokenId" value="@t.Id" />
-                                <button class="danger" type="submit">@L["tokens.revoke"]</button>
-                            </form>
-                        }
-                        else
-                        {
-                            <span class="badge">@L["tokens.inactive"]</span>
-                        }
-                    </td>
-                </tr>
-            }
-        </table>
+        <partial name="_PatTable" model="@(new PatTableModel(Model.Items, Admin: false, CanRevoke: true, Handler: "Revoke"))" />
     }
 </div>

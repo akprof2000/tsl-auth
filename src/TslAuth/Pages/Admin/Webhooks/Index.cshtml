@@ -82,7 +82,7 @@
                     {
                         <tr>
                             <td>#@d.EventId <code>@d.Event</code></td>
-                            <td><span class="badge @(d.Status == "succeeded" ? "ok" : d.Status == "failed" ? "danger" : "warn")">@d.Status</span></td>
+                            <td><span class="badge @Ui.StatusClass(d.Status)">@d.Status</span></td>
                             <td>@d.Attempts</td>
                             <td class="small">@d.LastStatusCode @d.LastError</td>
                         </tr>

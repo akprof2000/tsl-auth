@@ -36,7 +36,7 @@
                     else { <span class="badge ok">активен</span> }
                 </td>
                 <td>@foreach (var r in u.Roles) { <span class="badge">@r</span> }</td>
-                <td class="small">@(u.LastLoginAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—")</td>
+                <td class="small">@Ui.Time(u.LastLoginAt, "—")</td>
             </tr>
         }
         </tbody>

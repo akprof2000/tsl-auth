@@ -14,38 +14,5 @@
 </form>
 
 <div class="table-wrap">
-    <table>
-        <thead><tr><th>Субъект</th><th>Приложение</th><th>Тип</th><th>Начата</th><th>Последняя выдача</th><th>Токенов</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var s in Model.Items)
-        {
-            <tr>
-                <td>
-                    @if (s.UserName is not null && Guid.TryParse(s.Subject, out var uid))
-                    {
-                        <a asp-page="/Admin/Users/Edit" asp-route-id="@uid">@s.UserName</a>
-                    }
-                    else
-                    {
-                        <code>@s.Subject</code>
-                    }
-                </td>
-                <td><code>@s.ClientId</code></td>
-                <td>@s.Type</td>
-                <td class="small">@s.CreatedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                <td class="small">@s.LastTokenIssuedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                <td>@s.ActiveTokens</td>
-                <td>
-                    @if (Model.CanManage)
-                    {
-                        <form method="post" asp-page-handler="Revoke" asp-route-clientId="@Model.ClientId" class="inline">
-                            <input type="hidden" name="sessionId" value="@s.Id" />
-                            <button class="danger" type="submit">Отозвать</button>
-                        </form>
-                    }
-                </td>
-            </tr>
-        }
-        </tbody>
-    </table>
+    <partial name="_SessionTable" model="@(new SessionTableModel(Model.Items, ShowSubject: true, CanRevoke: Model.CanManage, ClientIdFilter: Model.ClientId))" />
 </div>

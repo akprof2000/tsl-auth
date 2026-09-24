@@ -27,7 +27,7 @@ else
                     <td><a asp-page="/Admin/Users/Edit" asp-route-id="@r.UserId">@r.UserName</a><div class="small muted">@r.Email</div></td>
                     <td><code>@r.ClientId</code> → <b>@r.RoleTitle</b>@if (r.RoleDisplayName is not null) { <code class="small">@r.Role</code> }</td>
                     <td class="small">@r.Comment</td>
-                    <td class="small">@r.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                    <td class="small">@Ui.Time(r.CreatedAt)</td>
                     <td>
                         @if (r.Status == "pending" && Model.CanManage)
                         {
@@ -40,8 +40,8 @@ else
                         }
                         else
                         {
-                            <span class="badge @(r.Status == "approved" ? "ok" : r.Status == "rejected" ? "danger" : "warn")">@r.Status</span>
-                            <div class="small muted">@r.DecidedBy @r.DecidedAt?.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                            <span class="badge @Ui.StatusClass(r.Status)">@r.Status</span>
+                            <div class="small muted">@r.DecidedBy @Ui.Time(r.DecidedAt)</div>
                             <div class="small">@r.DecisionComment</div>
                         }
                     </td>

@@ -204,6 +204,12 @@ function Run-Ha {
         $s = Wait-Ready $Lb; "подъём кластера за $([math]::Round($s,1)) c"
     } -expectOutage $true
 
+    # Стабильное исходное состояние после полного отказа: все узлы готовы, и nginx вернул их в ротацию
+    # (после ошибки узел исключается на fail_timeout=5s, deploy/nginx.conf). Иначе остановка узла 3 сразу
+    # после подъёма могла оставить балансировщик без «живых» узлов — ошибка теста, а не отказоустойчивости.
+    foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://127.0.0.1:$p" | Out-Null }
+    Start-Sleep 6
+    Wait-Ready $Lb | Out-Null
     docker stop tsl-auth-3 | Out-Null  # режим «2 узла»
     Scenario "ha" "2 узла: отказ одного и возврат" "второй узел обслуживает без ошибок" {
         docker stop -t 10 tsl-auth-1 | Out-Null; Start-Sleep 5; docker start tsl-auth-1 | Out-Null

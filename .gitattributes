@@ -5,3 +5,4 @@ Dockerfile text eol=lf
 *.yml text eol=lf
 *.conf text eol=lf
 *.png binary
+*.cmd text eol=crlf

@@ -21,10 +21,14 @@ $H = @{ Authorization = "Bearer $($tok.access_token)" }
 function Api($method, $path, $body) {
     $req = @{ Uri = "$Issuer/api/admin$path"; Method = $method; Headers = $H; ContentType = "application/json; charset=utf-8" }
     if ($null -ne $body) { $req.Body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $body -Depth 6)) }
-    try { Invoke-RestMethod @req }
-    catch {
-        if ($_.Exception.Response.StatusCode.value__ -eq 404 -and $method -eq "GET") { throw }
-        throw "$method $path -> $($_.ErrorDetails.Message)"
+    # Повтор при конфликте версий: TSL Auth может параллельно обновлять ту же учётную запись (например, сразу после старта).
+    for ($attempt = 1; ; $attempt++) {
+        try { return Invoke-RestMethod @req }
+        catch {
+            if ($_.Exception.Response.StatusCode.value__ -eq 404 -and $method -eq "GET") { throw }
+            if ($attempt -lt 4 -and "$($_.ErrorDetails.Message)" -match "concurrency") { Start-Sleep -Milliseconds 500; continue }
+            throw "$method $path -> $($_.ErrorDetails.Message)"
+        }
     }
 }
 

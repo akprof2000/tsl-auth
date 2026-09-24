@@ -25,7 +25,7 @@ public sealed class UiScenarios(UiFixture fx)
         await UiFixture.ShotAsync(page, "01-login-eye");
 
         await UiFixture.LoginAsync(page, UiFixture.UiAdmin, "wrong-password");
-        await Expect(page.Locator(".alert.error")).ToContainTextAsync("Неверный логин или пароль");
+        await Expect(page.Locator(".alert.error")).ToContainTextAsync(UiFixture.Ru("login.error.invalid"));
         await UiFixture.ShotAsync(page, "02-login-error");
     }
 
@@ -116,7 +116,7 @@ public sealed class UiScenarios(UiFixture fx)
         var page = await fx.NewPageAsync();
         await page.GotoAsync($"{UiFixture.Auth}/Account/Login");
         await UiFixture.LoginAsync(page, name, "Temp-Passw0rd-1");
-        await Expect(page.Locator(".alert.secret")).ToContainTextAsync("временным");
+        await Expect(page.Locator(".alert.secret")).ToContainTextAsync(UiFixture.Ru("change.forced"));
         await UiFixture.ShotAsync(page, "30-forced-change");
 
         await page.FillAsync("#Current", "Temp-Passw0rd-1");
@@ -124,6 +124,9 @@ public sealed class UiScenarios(UiFixture fx)
         await page.FillAsync("#Confirm", "New-Passw0rd-22");
         await page.ClickAsync("button.primary");
         await Expect(page).Not.ToHaveURLAsync(new System.Text.RegularExpressions.Regex("ChangePassword"));
+        // Без returnUrl и без прав администрирования — личный кабинет, а не «Доступ запрещён» в /Admin.
+        await Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/Account$"));
+        await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("change.done"));
     }
 
     // ---------- Демо-приложения на разных стеках ----------
@@ -221,7 +224,7 @@ public sealed class UiScenarios(UiFixture fx)
         var page = await fx.NewPageAsync();
         await page.GotoAsync(UiFixture.Spa);
         await page.ClickAsync("#login");
-        await page.ClickAsync("text=Зарегистрироваться");
+        await page.ClickAsync("a[href*='/Account/Register']");
         await page.FillAsync("#UserName", name);
         await page.FillAsync("#Password", "Reg-Passw0rd-1");
         await page.FillAsync("#Confirm", "Reg-Passw0rd-1");
@@ -229,7 +232,7 @@ public sealed class UiScenarios(UiFixture fx)
         await page.FillAsync("#Comment", "UI-тест: нужен просмотр заказов");
         await UiFixture.ShotAsync(page, "70-register-form");
         await page.ClickAsync("button.primary");
-        await Expect(page.Locator(".alert.ok")).ToContainTextAsync("Заявка на доступ отправлена");
+        await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("register.doneWithRequest"));
 
         var admin = await fx.NewPageAsync();
         await admin.GotoAsync($"{UiFixture.Auth}/Admin/Requests");
@@ -251,7 +254,8 @@ public sealed class UiScenarios(UiFixture fx)
         var page = await fx.NewPageAsync();
         await page.GotoAsync($"{UiFixture.Auth}/Account/Tokens");
         await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
-        await page.FillAsync("#Name", Unique("ui-pat"));
+        var name = Unique("ui-pat");
+        await page.FillAsync("#Name", name);
         await page.CheckAsync("input[name=Audiences][value=demo-node-api]");
         await page.ClickAsync("form[action*=Create] button");
         var secret = (await page.Locator("#pat-secret").TextContentAsync())!.Trim();
@@ -266,5 +270,10 @@ public sealed class UiScenarios(UiFixture fx)
         http.DefaultRequestHeaders.Authorization = new("Bearer", token.GetProperty("access_token").GetString());
         var orders = await http.GetAsync($"{UiFixture.Spa}/api/orders");
         Assert.Equal(200, (int)orders.StatusCode); // JWT по PAT принимается Node API
+
+        // Уборка: токен отзывается, иначе повторные прогоны упрутся в лимит активных PAT на пользователя.
+        page.Dialog += (_, dialog) => dialog.AcceptAsync();
+        await page.Locator("tr", new() { HasText = name }).Locator("form[action*=Revoke] button").ClickAsync();
+        await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("tokens.revoked"));
     }
 }

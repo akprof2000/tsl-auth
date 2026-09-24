@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TslAuth.Data;
+using TslAuth.Security;
 using TslAuth.Infrastructure;
 
 namespace TslAuth.Services;
@@ -197,7 +198,8 @@ public sealed class UserService(
     public async Task<bool> AcceptInviteAsync(Guid id, string token, string password)
     {
         var user = await users.FindByIdAsync(id.ToString());
-        if (user is null || !await links.ValidateInviteAsync(user, token)) return false;
+        // Отключённый администратором пользователь не должен «оживать» по старой ссылке приглашения.
+        if (user is not { IsActive: true } || !await links.ValidateInviteAsync(user, token)) return false;
 
         // Пароль может уже быть (повторное приглашение существующему пользователю) — тогда перезаписываем его.
         Check(await users.HasPasswordAsync(user)
@@ -246,7 +248,10 @@ public sealed class UserService(
     public async Task<IdentityResult> CompletePasswordResetAsync(Guid id, string token, string password, CancellationToken ct = default)
     {
         var user = await users.FindByIdAsync(id.ToString());
-        if (user is null) return IdentityResult.Failed(new IdentityError { Description = "Ссылка недействительна." });
+        if (user is null) return IdentityResult.Failed(new IdentityError { Code = "InvalidToken", Description = "Ссылка недействительна." });
+        // Сброс пароля не включает отключённую учётную запись (и не должен давать ей новый пароль).
+        if (!user.IsActive)
+            return IdentityResult.Failed(new IdentityError { Code = "AccountDisabled", Description = "Учётная запись отключена." });
 
         var result = await users.ResetPasswordAsync(user, token, password);
         if (!result.Succeeded) return result;
@@ -345,10 +350,6 @@ public sealed class UserService(
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    // Ошибки Identity (валидация логина/пароля) превращаются в AdminException → 400 с понятным текстом.
-    private static void Check(IdentityResult result)
-    {
-        if (!result.Succeeded)
-            throw new AdminException(string.Join(" ", result.Errors.Select(e => e.Description)));
-    }
+    // Ошибки Identity (валидация логина/пароля) превращаются в AdminException → 400 с понятным текстом и ключом локализации.
+    private static void Check(IdentityResult result) => IdentityErrors.ThrowIfFailed(result);
 }

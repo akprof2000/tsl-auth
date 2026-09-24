@@ -41,24 +41,24 @@ public sealed class PatService(AuthDbContext db, SettingsService settings, Audit
     public async Task<(PatDto Token, string Secret)> CreateAsync(Guid userId, PatInput input, CancellationToken ct = default)
     {
         var policy = (await settings.GetAsync(ct)).Pats;
-        if (!policy.Enabled) throw new AdminException("Персональные токены отключены администратором.", StatusCodes.Status403Forbidden);
+        if (!policy.Enabled) throw AdminException.Localized("error.tokensDisabled", "Персональные токены отключены администратором.", StatusCodes.Status403Forbidden);
 
         var name = input.Name?.Trim();
-        if (string.IsNullOrEmpty(name) || name.Length > 100) throw new AdminException("Укажите название токена (до 100 символов).");
+        if (string.IsNullOrEmpty(name) || name.Length > 100) throw AdminException.Localized("error.tokenNameRequired", "Укажите название токена (до 100 символов).");
 
         var active = await db.PersonalAccessTokens.CountAsync(t => t.UserId == userId && t.RevokedAt == null &&
                                                                     (t.ExpiresAt == null || t.ExpiresAt > DateTime.UtcNow), ct);
-        if (active >= policy.MaxTokensPerUser) throw new AdminException($"Не более {policy.MaxTokensPerUser} активных токенов.");
+        if (active >= policy.MaxTokensPerUser) throw AdminException.Localized("error.tokenLimit", $"Не более {policy.MaxTokensPerUser} активных токенов.");
 
         var days = input.ExpiresInDays ?? policy.MaxLifetimeDays;
         if (days < 1 || days > policy.MaxLifetimeDays)
-            throw new AdminException($"Срок действия токена: от 1 до {policy.MaxLifetimeDays} дней.");
+            throw AdminException.Localized("error.tokenExpiryInvalid", $"Срок действия токена: от 1 до {policy.MaxLifetimeDays} дней.");
 
         var allowed = await AvailableAudiencesAsync(userId, ct);
         var audiences = (input.Audiences ?? []).Distinct().ToList();
-        if (audiences.Count == 0) throw new AdminException("Выберите хотя бы одно приложение.");
+        if (audiences.Count == 0) throw AdminException.Localized("error.tokenAppsRequired", "Выберите хотя бы одно приложение.");
         var forbidden = audiences.Except(allowed).ToList();
-        if (forbidden.Count > 0) throw new AdminException($"Нет ролей в приложениях: {string.Join(", ", forbidden)}.");
+        if (forbidden.Count > 0) throw AdminException.Localized("error.tokenAppsRequired", $"Нет ролей в приложениях: {string.Join(", ", forbidden)}.");
 
         // 256 бит случайности: соль при хэшировании не нужна, перебор невозможен, поэтому достаточно SHA-256
         // (быстрый поиск по индексу TokenHash без медленных KDF вроде PBKDF2).

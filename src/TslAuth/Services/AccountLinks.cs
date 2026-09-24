@@ -42,6 +42,7 @@ public sealed class AccountLinks(
     IEmailSender email,
     IOptions<AuthServerOptions> server,
     IHttpContextAccessor http,
+    IHostEnvironment environment,
     Localization.Texts L)
 {
     public bool EmailConfigured => email.IsConfigured;
@@ -81,11 +82,15 @@ public sealed class AccountLinks(
 
     private string BuildUrl(string path, Guid userId, string token)
     {
-        // Предпочитаем настроенный Issuer: за reverse proxy Host запроса может быть внутренним адресом.
-        // Хост запроса — лишь запасной вариант, когда Issuer не задан.
+        // Только настроенный Issuer: Host запроса подделывается (письмо сброса со ссылкой на чужой домен).
+        // Вне Development Issuer обязателен (проверяется при старте); адрес из запроса — лишь удобство локальной разработки.
         var baseUrl = server.Value.Issuer?.TrimEnd('/');
-        if (string.IsNullOrEmpty(baseUrl) && http.HttpContext?.Request is { } request)
+        if (string.IsNullOrEmpty(baseUrl))
+        {
+            if (!environment.IsDevelopment() || http.HttpContext?.Request is not { } request)
+                throw new InvalidOperationException("Не задан Auth:Issuer — ссылку в письме построить нельзя.");
             baseUrl = $"{request.Scheme}://{request.Host}{request.PathBase}";
+        }
 
         return QueryHelpers.AddQueryString(baseUrl + path, new Dictionary<string, string?>
         {

@@ -78,6 +78,21 @@ public sealed class AppUserManager(
         return result;
     }
 
+    /// <summary>
+    /// Поиск по email без исключения при дубликатах: стандартный UserStore делает SingleOrDefault и падает (500),
+    /// если адрес встречается дважды — такое возможно в БД старых версий, где уникальность email не проверялась.
+    /// Неоднозначный адрес трактуется как «не найден»: вход по логину и администрирование продолжают работать.
+    /// </summary>
+    public override async Task<AppUser?> FindByEmailAsync(string email)
+    {
+        ArgumentNullException.ThrowIfNull(email);
+        var normalized = NormalizeEmail(email);
+        var matches = await Users.Where(u => u.NormalizedEmail == normalized).Take(2).ToListAsync();
+        if (matches.Count > 1)
+            Logger.LogWarning("Email встречается у нескольких учётных записей — поиск по нему отключён до устранения дубликатов.");
+        return matches.Count == 1 ? matches[0] : null;
+    }
+
     /// <summary>Истёк ли срок действия пароля по политике (0 — бессрочно).</summary>
     public static bool IsPasswordExpired(AppUser user, PasswordPolicy policy) =>
         policy.MaxAgeDays > 0 && user.PasswordHash is not null &&

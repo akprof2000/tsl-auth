@@ -105,7 +105,8 @@ public sealed class AccessRequestService(
     public async Task<Guid> RegisterAsync(string clientId, RegistrationInput input, CancellationToken ct = default)
     {
         if (!await apps.IsSelfRegistrationEnabledAsync(clientId, ct))
-            throw new AdminException("Самостоятельная регистрация для этого приложения отключена.", StatusCodes.Status403Forbidden);
+            throw AdminException.Localized("error.registrationDisabled", "Самостоятельная регистрация для этого приложения отключена.",
+                StatusCodes.Status403Forbidden);
 
         // Роли проверяем до создания учётной записи, чтобы не оставлять «полу-зарегистрированных» пользователей.
         await ResolveRequestableAsync(clientId, input.Roles, ct);
@@ -213,7 +214,7 @@ public sealed class AccessRequestService(
         var found = candidates.Where(r => wanted.Contains(new RoleRef(r.ClientId, r.Name))).ToList();
         var missing = wanted.Where(w => found.All(f => f.ClientId != w.ClientId || f.Name != w.Role)).Select(w => w.ToString()).ToList();
         if (missing.Count > 0)
-            throw new AdminException($"Эти роли нельзя запросить: {string.Join(", ", missing)}.");
+            throw AdminException.Localized("error.rolesNotRequestable", $"Эти роли нельзя запросить: {string.Join(", ", missing)}.");
         return found;
     }
 

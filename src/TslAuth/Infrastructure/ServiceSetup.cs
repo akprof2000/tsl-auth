@@ -20,7 +20,8 @@ namespace TslAuth.Infrastructure;
 public static class ServiceSetup
 {
     /// <summary>Регистрирует все сервисы TSL Auth в контейнере.</summary>
-    public static void AddTslAuth(this WebApplicationBuilder builder)
+    /// <param name="cli">Запуск служебной команды (admin ...): веб-сервер не поднимается, Issuer не обязателен.</param>
+    public static void AddTslAuth(this WebApplicationBuilder builder, bool cli = false)
     {
         var services = builder.Services;
         var config = builder.Configuration;
@@ -40,6 +41,7 @@ public static class ServiceSetup
         });
         var encryption = config.GetSection(EncryptionOptions.Section).Get<EncryptionOptions>() ?? new EncryptionOptions();
         var server = config.GetSection(AuthServerOptions.Section).Get<AuthServerOptions>() ?? new AuthServerOptions();
+        ValidateIssuer(server.Issuer, builder.Environment, cli);
 
         // Ключ шифрования полей нужен до первого обращения к БД.
         // FieldCrypto статический (его используют value converter'ы EF), поэтому инициализируется здесь, вне DI;
@@ -88,6 +90,7 @@ public static class ServiceSetup
             .AddEntityFrameworkStores<AuthDbContext>()
             .AddUserManager<AppUserManager>()
             .AddPasswordValidator<PolicyPasswordValidator>()
+            .AddUserValidator<UserIdentityValidator>()
             .AddDefaultTokenProviders()
             .AddTokenProvider<InviteTokenProvider>(InviteTokenProvider.ProviderName);
 
@@ -245,5 +248,25 @@ public static class ServiceSetup
                 o.KnownProxies.Clear();
             });
         }
+    }
+
+    /// <summary>
+    /// Issuer — публичный адрес сервиса: из него строятся <c>iss</c> токенов, адреса discovery и ссылки в письмах
+    /// (приглашения, сброс пароля). Без него всё это бралось бы из заголовка Host запроса, который подделывается
+    /// (Host-header poisoning: письмо сброса пароля жертве со ссылкой на чужой домен). Поэтому вне Development
+    /// сервис без Issuer не стартует. Служебные CLI-команды ссылок и токенов не выдают — им Issuer не нужен.
+    /// </summary>
+    private static void ValidateIssuer(string? issuer, IHostEnvironment environment, bool cli)
+    {
+        if (string.IsNullOrWhiteSpace(issuer))
+        {
+            if (cli || environment.IsDevelopment()) return;
+            throw new InvalidOperationException(
+                "Не задан Auth:Issuer (переменная Auth__Issuer / AUTH_ISSUER) — публичный адрес сервиса, например https://auth.corp/. " +
+                "Без него ссылки в письмах и iss токенов строились бы из заголовка Host запроса, который может подделать атакующий.");
+        }
+        if (!Uri.TryCreate(issuer, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+            || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+            throw new InvalidOperationException($"Auth:Issuer должен быть абсолютным http(s)-адресом без query и фрагмента, получено: '{issuer}'.");
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using TslAuth.Data;
+using TslAuth.Security;
 
 namespace TslAuth.Services;
 
@@ -110,7 +111,7 @@ public sealed class AppSelfService(
         user.Email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
         user.DisplayName = string.IsNullOrWhiteSpace(input.DisplayName) ? null : input.DisplayName.Trim();
         var result = await userManager.UpdateAsync(user);
-        if (!result.Succeeded) throw new AdminException(string.Join(" ", result.Errors.Select(e => e.Description)));
+        IdentityErrors.ThrowIfFailed(result);
 
         if (input.Roles is not null)
             await SetUserRolesAsync(clientId, id, await ValidateRolesAsync(clientId, input.Roles, ct), ct);

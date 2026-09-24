@@ -24,7 +24,10 @@ Set-Location $root
 $artifacts = Join-Path $root "tests/artifacts/resilience"
 New-Item -ItemType Directory -Force $artifacts | Out-Null
 $results = [System.Collections.Generic.List[object]]::new()
-$Lb = "http://localhost:8080"
+# Точка входа: порт из AUTH_PORT (как в compose), чтобы тест можно было запустить рядом с другим стендом на 8080.
+$Lb = "http://localhost:$(if ($env:AUTH_PORT) { $env:AUTH_PORT } else { 8080 })"
+# Узлы опубликованы только на 127.0.0.1 (docker-compose.ha-nodes.yml) — обращаемся к ним именно так: localhost
+# на Windows сначала пробует ::1, и соединение висит до таймаута вместо быстрого отказа.
 $HaCompose = @("-f", "docker-compose.ha.yml", "-f", "docker-compose.ha-nodes.yml")
 
 # ---------------------------------------------------------------- helpers
@@ -135,7 +138,7 @@ function Run-Single {
     docker compose @HaCompose down 2>&1 | Out-Null
     docker compose up -d 2>&1 | Out-Null
     Wait-Ready $Lb | Out-Null
-    & pwsh -NoProfile -File samples/seed-demo.ps1 | Out-Null
+    & pwsh -NoProfile -File samples/seed-demo.ps1 -Issuer $Lb | Out-Null
     Ensure-PublicClient $Lb
 
     Scenario "single" "Штатный перезапуск контейнера" "простой только на время рестарта; сессии и ключи сохраняются" {
@@ -159,26 +162,26 @@ function Run-Ha {
     # Вывод не глушим: ошибка compose (переменные, порты, образы) должна быть видна в журнале.
     docker compose @HaCompose up -d 2>&1 | Write-Host
     if ($LASTEXITCODE -ne 0) { throw "docker compose (кластер) завершился с кодом $LASTEXITCODE" }
-    Wait-Ready $Lb | Out-Null; foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://localhost:$p" | Out-Null }
-    & pwsh -NoProfile -File samples/seed-demo.ps1 | Out-Null
+    Wait-Ready $Lb | Out-Null; foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://127.0.0.1:$p" | Out-Null }
+    & pwsh -NoProfile -File samples/seed-demo.ps1 -Issuer $Lb | Out-Null
     Ensure-PublicClient $Lb
 
     # Синхронизация состояния между узлами: сессия создана на узле 1, используется на узле 2, отзывается через узел 3.
     Write-Host "`n=== [ha] Синхронизация состояния между узлами ===" -ForegroundColor Cyan
-    $r1 = New-Session "http://localhost:8081"
-    $r2 = Use-Session "http://localhost:8082" $r1
-    $t = Token "http://localhost:8083" @{ grant_type = "client_credentials"; client_id = $ClientId; client_secret = $ClientSecret; scope = "tsl-auth-admin" }
+    $r1 = New-Session "http://127.0.0.1:8081"
+    $r2 = Use-Session "http://127.0.0.1:8082" $r1
+    $t = Token "http://127.0.0.1:8083" @{ grant_type = "client_credentials"; client_id = $ClientId; client_secret = $ClientSecret; scope = "tsl-auth-admin" }
     $h = @{ Authorization = "Bearer $($t.access_token)" }
-    $userId = (Invoke-RestMethod "http://localhost:8083/api/admin/users?search=$User" -Headers $h).items[0].id
-    Invoke-RestMethod "http://localhost:8083/api/admin/users/$userId/sessions" -Method Delete -Headers $h | Out-Null
-    $revoked = $false; try { Use-Session "http://localhost:8081" $r2 | Out-Null } catch { $revoked = $true }
+    $userId = (Invoke-RestMethod "http://127.0.0.1:8083/api/admin/users?search=$User" -Headers $h).items[0].id
+    Invoke-RestMethod "http://127.0.0.1:8083/api/admin/users/$userId/sessions" -Method Delete -Headers $h | Out-Null
+    $revoked = $false; try { Use-Session "http://127.0.0.1:8081" $r2 | Out-Null } catch { $revoked = $true }
     $results.Add([pscustomobject]@{ Mode = "ha"; Scenario = "Синхронизация: вход на узле 1 → refresh на 2 → отзыв на 3"
         Expectation = "отзыв на любом узле мгновенно действует на всех"; Requests = 3; Errors = 0; ErrorWindowSec = 0; ActionSec = 0
         SessionSurvived = $true; KeysSame = $true; Notes = "отозванная сессия отклонена узлом 1: $revoked"; Passed = $revoked })
     Write-Host "  -> отзыв через узел 3 применился на узле 1: $revoked" -ForegroundColor $(if ($revoked) { "Green" } else { "Red" })
 
     Scenario "ha" "3 узла: поочерёдный рестарт (rolling)" "без ошибок для клиентов: балансировщик уводит трафик" {
-        foreach ($n in 1..3) { docker stop -t 10 "tsl-auth-$n" | Out-Null; Start-Sleep 2; docker start "tsl-auth-$n" | Out-Null; Wait-Ready "http://localhost:808$n" | Out-Null }
+        foreach ($n in 1..3) { docker stop -t 10 "tsl-auth-$n" | Out-Null; Start-Sleep 2; docker start "tsl-auth-$n" | Out-Null; Wait-Ready "http://127.0.0.1:808$n" | Out-Null }
         "узлы перезапущены по одному"
     }
 
@@ -186,13 +189,13 @@ function Run-Ha {
         docker stop -t 10 tsl-auth-1 | Out-Null; Start-Sleep 3
         docker stop -t 10 tsl-auth-2 | Out-Null; Start-Sleep 3
         docker start tsl-auth-1 tsl-auth-2 | Out-Null
-        Wait-Ready "http://localhost:8081" | Out-Null; Wait-Ready "http://localhost:8082" | Out-Null
+        Wait-Ready "http://127.0.0.1:8081" | Out-Null; Wait-Ready "http://127.0.0.1:8082" | Out-Null
         "оставался только узел 3"
     }
 
     Scenario "ha" "3 узла: аварийное убийство одного (SIGKILL)" "остальные узлы продолжают без ошибок" {
         docker kill -s KILL tsl-auth-2 | Out-Null; Start-Sleep 5; docker start tsl-auth-2 | Out-Null
-        Wait-Ready "http://localhost:8082" | Out-Null; "узел 2 убит и поднят"
+        Wait-Ready "http://127.0.0.1:8082" | Out-Null; "узел 2 убит и поднят"
     }
 
     Scenario "ha" "3 узла: полный отказ всех узлов" "простой на время отказа; после подъёма сессии и ключи целы" {
@@ -204,7 +207,7 @@ function Run-Ha {
     docker stop tsl-auth-3 | Out-Null  # режим «2 узла»
     Scenario "ha" "2 узла: отказ одного и возврат" "второй узел обслуживает без ошибок" {
         docker stop -t 10 tsl-auth-1 | Out-Null; Start-Sleep 5; docker start tsl-auth-1 | Out-Null
-        Wait-Ready "http://localhost:8081" | Out-Null; "узел 1 перезапущен"
+        Wait-Ready "http://127.0.0.1:8081" | Out-Null; "узел 1 перезапущен"
     }
 
     Scenario "ha" "2 узла: полный отказ обоих" "простой; после подъёма сессии и ключи целы" {
@@ -212,7 +215,7 @@ function Run-Ha {
         docker start tsl-auth-1 tsl-auth-2 | Out-Null
         $s = Wait-Ready $Lb; "подъём за $([math]::Round($s,1)) c"
     } -expectOutage $true
-    docker start tsl-auth-3 | Out-Null; Wait-Ready "http://localhost:8083" | Out-Null
+    docker start tsl-auth-3 | Out-Null; Wait-Ready "http://127.0.0.1:8083" | Out-Null
 
     Scenario "ha" "Отказ PostgreSQL и возврат" "узлы не падают, /health/ready=503, после возврата БД — самовосстановление без рестарта узлов" {
         docker stop tsl-auth-postgres | Out-Null; Start-Sleep 5

@@ -99,9 +99,11 @@ public sealed class AccessService(AuthDbContext db)
     /// Меняет название роли для пользователей и описание. Техническое имя не меняется: на него ссылаются
     /// выданные токены и код приложений.
     /// </summary>
+    /// <param name="system">Вызов из StartupInitializer: только он может менять описание встроенных ролей администрирования.</param>
     public async Task<RoleDto> UpdateRoleAsync(string clientId, string name, string? displayName, string? description,
-        CancellationToken ct = default)
+        CancellationToken ct = default, bool system = false)
     {
+        if (!system) GuardSystem(clientId, "изменить");
         displayName = Names.DisplayName(displayName);
         description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == name)
@@ -113,6 +115,8 @@ public sealed class AccessService(AuthDbContext db)
     /// <summary>Помечает роль как доступную (или недоступную) для запроса через заявку.</summary>
     public async Task SetRoleRequestableAsync(string clientId, string roleName, bool requestable, CancellationToken ct = default)
     {
+        // Иначе прямым POST можно было сделать роль administrator «запрашиваемой» при самостоятельной регистрации.
+        GuardSystem(clientId, "сделать запрашиваемыми");
         // Точечный UPDATE без загрузки сущности; 0 затронутых строк = роли нет.
         var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == roleName)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRequestable, requestable), ct);
@@ -250,9 +254,9 @@ public sealed class AccessService(AuthDbContext db)
     public Task RemoveSubjectAsync(SubjectType type, string subjectId, CancellationToken ct = default) =>
         db.AccessRoleAssignments.Where(a => a.SubjectType == type && a.SubjectId == subjectId).ExecuteDeleteAsync(ct);
 
-    private static void GuardSystem(string clientId)
+    private static void GuardSystem(string clientId, string action = "удалить")
     {
         if (clientId == SystemApp.ClientId)
-            throw new AdminException("Встроенные роли и разрешения администрирования нельзя удалить.");
+            throw new AdminException($"Встроенные роли и разрешения администрирования нельзя {action}.", StatusCodes.Status403Forbidden);
     }
 }

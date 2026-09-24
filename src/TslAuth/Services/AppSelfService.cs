@@ -49,7 +49,8 @@ public sealed class AppSelfService(
     AccessService access,
     UserService users,
     UserManager<AppUser> userManager,
-    SessionService sessions)
+    SessionService sessions,
+    AuditService audit)
 {
     /// <summary>Пользователи, связанные с приложением (созданные им или имеющие его роли).</summary>
     public async Task<List<AppUserDto>> ListUsersAsync(string clientId, CancellationToken ct = default)
@@ -100,6 +101,9 @@ public sealed class AppSelfService(
 
         var user = await users.FindByLoginAsync(input.Login.Trim()) ?? throw AdminException.NotFound("Пользователь");
         await SetUserRolesAsync(clientId, user.Id, roles, ct);
+        // Привязка чужой (не созданной приложением) учётной записи — заметное событие: приложение по логину
+        // «подключает» к себе существующего пользователя. Warning → попадает в ленту для ботов/SIEM.
+        await audit.WriteAsync("app.user_linked", true, AuditSeverity.Warning, clientId, user.Id, new { roles });
         return await GetUserAsync(clientId, user.Id, ct);
     }
 
@@ -107,11 +111,20 @@ public sealed class AppSelfService(
     public async Task<AppUserDto> UpdateUserAsync(string clientId, Guid id, AppUserInput input, CancellationToken ct = default)
     {
         var user = await RequireOwnedAsync(clientId, id, ct);
+        if (string.IsNullOrWhiteSpace(input.UserName)) throw new AdminException("Укажите логин.");
+        var email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
+        // Новый адрес не подтверждён: иначе в токене был бы email_verified=true для непроверенного адреса.
+        if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)) user.EmailConfirmed = false;
         user.UserName = input.UserName.Trim();
-        user.Email = string.IsNullOrWhiteSpace(input.Email) ? null : input.Email.Trim();
+        user.Email = email;
         user.DisplayName = string.IsNullOrWhiteSpace(input.DisplayName) ? null : input.DisplayName.Trim();
         var result = await userManager.UpdateAsync(user);
         IdentityErrors.ThrowIfFailed(result);
+
+        // Пароль, переданный в изменении, применяется (раньше молча игнорировался) — с политикой паролей,
+        // признаком «сменить при входе» и отзывом сессий, как при установке пароля администратором.
+        if (!string.IsNullOrWhiteSpace(input.Password))
+            await users.SetPasswordAsync(id, input.Password, input.MustChangePassword, ct);
 
         if (input.Roles is not null)
             await SetUserRolesAsync(clientId, id, await ValidateRolesAsync(clientId, input.Roles, ct), ct);
@@ -202,9 +215,15 @@ public sealed class AppSelfService(
         return wanted;
     }
 
-    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct) => new(
-        user.Id, user.UserName!, user.Email, user.DisplayName, user.IsActive, user.PasswordHash is not null,
-        user.MustChangePassword, user.CreatedByClientId == clientId,
-        (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
-            .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
+    // Профиль (email, состояние пароля, активность) видит только приложение-владелец учётной записи; для пользователей,
+    // лишь получивших роль этого приложения, — логин, имя и роли. Иначе App API раскрывал бы данные любых учётных
+    // записей системы (включая администраторов), привязанных через /users/link.
+    private async Task<AppUserDto> ToDtoAsync(string clientId, AppUser user, CancellationToken ct)
+    {
+        var owned = user.CreatedByClientId == clientId;
+        return new AppUserDto(user.Id, user.UserName!, owned ? user.Email : null, user.DisplayName, owned ? user.IsActive : true,
+            owned && user.PasswordHash is not null, owned && user.MustChangePassword, owned,
+            (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
+                .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
+    }
 }

@@ -35,7 +35,8 @@ public sealed class AuthorizationController(
     SettingsService settings,
     TokenLifetimeService lifetimes,
     PatService pats,
-    TokenPrincipalFactory principals) : Controller
+    TokenPrincipalFactory principals,
+    Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery) : Controller
 {
     private const string Scheme = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme;
 
@@ -359,6 +360,19 @@ public sealed class AuthorizationController(
     [HttpGet("~/connect/logout"), HttpPost("~/connect/logout"), IgnoreAntiforgeryToken]
     public async Task<IActionResult> Logout()
     {
+        // Без id_token_hint нельзя убедиться, что выход запросило приложение пользователя: картинка или ссылка
+        // на стороннем сайте разлогинила бы его везде (logout-CSRF). Такой запрос вошедшего пользователя —
+        // только после подтверждения на странице /Account/EndSession, которая присылает POST с antiforgery-токеном.
+        // С id_token_hint (его подпись проверил OpenIddict) — выход сразу, как принято в OIDC RP-Initiated Logout.
+        var request = HttpContext.GetOpenIddictServerRequest();
+        if (User.Identity?.IsAuthenticated == true && string.IsNullOrEmpty(request?.IdTokenHint))
+        {
+            if (HttpMethods.IsGet(Request.Method))
+                return Redirect("/Account/EndSession" + Request.QueryString);
+            if (!await antiforgery.IsRequestValidAsync(HttpContext))
+                return BadRequest("Выход не подтверждён: отправьте форму со страницы /Account/EndSession.");
+        }
+
         if (User.Identity?.IsAuthenticated == true)
             await audit.WriteAsync(AuditTypes.Logout, true, AuditSeverity.Info, HttpContext.GetOpenIddictServerRequest()?.ClientId,
                 Guid.TryParse(users.GetUserId(User), out var lid) ? lid : null);

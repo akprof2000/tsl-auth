@@ -57,6 +57,11 @@ flowchart LR
 
 ## Запуск в Docker
 
+Проще всего — двойным щелчком из корня репозитория: `demo-start.cmd` запускает всё и открывает браузер,
+`demo-stop.cmd` останавливает (данные сохраняются; `demo-stop.cmd -Clean` удаляет их).
+
+Вручную:
+
 ```powershell
 cd samples/docflow-demo
 docker compose up -d tsl-auth

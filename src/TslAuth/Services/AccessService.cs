@@ -74,14 +74,20 @@ public sealed class AccessService(AuthDbContext db)
         if (await db.AccessRoles.AnyAsync(r => r.ClientId == clientId && r.Name == name, ct))
             throw AdminException.Conflict($"Роль '{name}' уже существует в этом приложении.");
 
-        db.AccessRoles.Add(new AccessRole
+        if (description is { Length: > 500 }) throw new AdminException("Описание роли: не более 500 символов.");
+        // Роль и её разрешения — одной транзакцией: неизвестное разрешение не должно оставлять созданную роль
+        // (повторный запрос получил бы 409 «уже существует»).
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            ClientId = clientId, Name = name, DisplayName = displayName, Description = description, IsRequestable = requestable
-        });
-        await db.SaveChangesAsync(ct);
-
-        if (permissions is not null)
-            await SetRolePermissionsAsync(clientId, name, permissions, ct);
+            db.AccessRoles.Add(new AccessRole
+            {
+                ClientId = clientId, Name = name, DisplayName = displayName, Description = description, IsRequestable = requestable
+            });
+            await db.SaveChangesAsync(ct);
+            if (permissions is not null)
+                await SetRolePermissionsAsync(clientId, name, permissions, ct);
+            await tx.CommitAsync(ct);
+        }
 
         return (await GetMatrixAsync(clientId, ct)).Roles.First(r => r.Name == name);
     }

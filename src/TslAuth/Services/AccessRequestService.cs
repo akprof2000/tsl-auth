@@ -111,18 +111,24 @@ public sealed class AccessRequestService(
         // Роли проверяем до создания учётной записи, чтобы не оставлять «полу-зарегистрированных» пользователей.
         await ResolveRequestableAsync(clientId, input.Roles, ct);
 
-        var user = await users.CreateAsync(new UserInput(input.UserName, input.Email, input.DisplayName, true, input.Password), ct);
-        // Запоминаем приложение-«владельца»: AppSelfService разрешает ему управлять такими пользователями.
-        var entity = await db.Users.FirstAsync(u => u.Id == user.Id, ct);
-        entity.CreatedByClientId = clientId;
-        await db.SaveChangesAsync(ct);
+        // Учётная запись, отметка владельца и заявки — одной транзакцией: без «полу-зарегистрированных»
+        // пользователей (учётка есть, заявок нет), если что-то упало посередине.
+        UserDto user;
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            user = await users.CreateAsync(new UserInput(input.UserName, input.Email, input.DisplayName, true, input.Password), ct);
+            // Запоминаем приложение-«владельца»: AppSelfService разрешает ему управлять такими пользователями.
+            var entity = await db.Users.FirstAsync(u => u.Id == user.Id, ct);
+            entity.CreatedByClientId = clientId;
+            await db.SaveChangesAsync(ct);
+            if (input.Roles is { Count: > 0 })
+                await CreateAsync(user.Id, clientId, input.Roles, input.Comment, ct);
+            await tx.CommitAsync(ct);
+        }
 
         await webhooks.PublishAsync(WebhookEvents.UserRegistered,
             $"👤 Новая регистрация: {user.UserName} ({user.Email ?? "без email"}) в приложении {clientId}.",
             new { userId = user.Id, userName = user.UserName, email = user.Email, clientId }, ct);
-
-        if (input.Roles is { Count: > 0 })
-            await CreateAsync(user.Id, clientId, input.Roles, input.Comment, ct);
         return user.Id;
     }
 
@@ -190,11 +196,19 @@ public sealed class AccessRequestService(
         request.Status = approve ? AccessRequestStatus.Approved : AccessRequestStatus.Rejected;
         request.DecidedAt = DateTime.UtcNow;
         request.DecidedBy = decidedBy;
-        request.DecisionComment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
-        await db.SaveChangesAsync(ct);
+        comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim();
+        if (comment is { Length: > 2048 }) throw new AdminException("Комментарий к решению: не более 2048 символов.");
+        request.DecisionComment = comment;
 
-        if (approve)
-            await access.AssignAsync(SubjectType.User, request.UserId.ToString(), new RoleRef(request.Role.ClientId, request.Role.Name), ct);
+        // Статус и назначение роли — одной транзакцией: иначе при сбое назначения заявка осталась бы
+        // «одобренной» без роли, и переоткрыть её было бы нельзя.
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            await db.SaveChangesAsync(ct);
+            if (approve)
+                await access.AssignAsync(SubjectType.User, request.UserId.ToString(), new RoleRef(request.Role.ClientId, request.Role.Name), ct);
+            await tx.CommitAsync(ct);
+        }
 
         var dto = (await QueryAsync(db.AccessRequests.Where(r => r.Id == id), ct)).Single();
         await webhooks.PublishAsync(approve ? WebhookEvents.AccessRequestApproved : WebhookEvents.AccessRequestRejected,

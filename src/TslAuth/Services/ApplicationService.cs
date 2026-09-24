@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
 using TslAuth.Data;
@@ -66,7 +67,8 @@ public sealed class ApplicationService(
     IOpenIddictScopeManager scopes,
     AccessService access,
     SessionService sessions,
-    WebhookService webhooks)
+    WebhookService webhooks,
+    AuthDbContext db)
 {
     private const string SystemProperty = "tsl_system";
     private const string SelfManagementProperty = "tsl_self_management";
@@ -189,12 +191,23 @@ public sealed class ApplicationService(
         if (IsSystem(await applications.GetPropertiesAsync(app, ct)))
             throw new AdminException("Системное приложение нельзя удалить.");
 
-        // Сначала отзываем выданные токены, пока приложение ещё существует и связи с ним можно найти.
-        await sessions.RevokeByClientAsync(clientId, ct);
-        await applications.DeleteAsync(app, ct);
-        if (await scopes.FindByNameAsync(clientId, ct) is { } scope)
-            await scopes.DeleteAsync(scope, ct);
-        await access.RemoveApplicationAsync(clientId, ct);
+        // Одна транзакция: сбой на середине не должен оставлять «полуудалённое» приложение (например, клиента
+        // без scope или матрицу без клиента). Менеджеры OpenIddict работают через тот же DbContext и попадают в неё.
+        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        {
+            // Сначала отзываем выданные токены, пока приложение ещё существует и связи с ним можно найти.
+            await sessions.RevokeByClientAsync(clientId, ct);
+            await applications.DeleteAsync(app, ct);
+            if (await scopes.FindByNameAsync(clientId, ct) is { } scope)
+                await scopes.DeleteAsync(scope, ct);
+            await access.RemoveApplicationAsync(clientId, ct);
+            // Владение пользователями и привязки мессенджеров, сделанные ботом этого приложения, снимаются:
+            // иначе новое приложение с тем же client_id унаследовало бы управление чужими учётными записями.
+            await db.Users.Where(u => u.CreatedByClientId == clientId)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, (string?)null), ct);
+            await db.ExternalIdentities.Where(e => e.LinkedByClientId == clientId).ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+        }
         await webhooks.PublishAsync(WebhookEvents.ApplicationDeleted, $"🗑 Удалено приложение {clientId}.", new { clientId }, ct);
     }
 

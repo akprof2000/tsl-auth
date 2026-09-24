@@ -1,0 +1,23 @@
+# HTTPS прямо в контейнере сервиса с сертификатом PFX (PKCS#12). Вместо docker-compose.https.yml (не вместе с ним):
+#   TLS_CERT_PASSWORD=... docker compose -f docker-compose.yml -f docker-compose.https-pfx.yml up -d
+# Файл — ./certs/tls.pfx (или TLS_CERT_PATH внутри контейнера), доступный на чтение UID 1654.
+#
+# Отдельный файл, а не оверлей поверх docker-compose.https.yml: PEM-параметр KeyPath должен отсутствовать совсем —
+# с пустым KeyPath Kestrel ищет файл ключа и не стартует («The provided key file is missing or invalid»),
+# а убрать переменную, заданную предыдущим файлом, compose надёжно не умеет.
+
+services:
+  auth:
+    ports:
+      - "${AUTH_HTTPS_PORT:-8443}:8443"
+    environment:
+      Auth__Issuer: "${AUTH_ISSUER:-https://localhost:8443/}"
+      Auth__RequireHttps: "true"
+      Kestrel__Endpoints__Http__Url: "http://+:8080"
+      Kestrel__Endpoints__Https__Url: "https://+:8443"
+      Kestrel__Endpoints__Https__Certificate__Path: "${TLS_CERT_PATH:-/certs/tls.pfx}"
+      Kestrel__Endpoints__Https__Certificate__Password: "${TLS_CERT_PASSWORD:?Задайте TLS_CERT_PASSWORD — пароль PFX}"
+      Kestrel__Endpoints__Https__SslProtocols__0: "Tls12"
+      Kestrel__Endpoints__Https__SslProtocols__1: "Tls13"
+    volumes:
+      - ./certs:/certs:ro

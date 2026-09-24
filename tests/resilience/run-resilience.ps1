@@ -34,6 +34,13 @@ function Wait-Ready([string]$url, [int]$timeoutSec = 90) {
         try { if ((Invoke-WebRequest "$url/health/ready" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { return $sw.Elapsed.TotalSeconds } } catch { }
         Start-Sleep -Milliseconds 500
     }
+    # Диагностика в журнал CI: без неё видно только таймаут, а причина (не стартовал узел, nginx, БД) теряется.
+    Write-Host "Сервис $url не поднялся за $timeoutSec с. Состояние контейнеров:" -ForegroundColor Red
+    docker ps -a --format "table {{.Names}}	{{.Status}}	{{.Ports}}" | Write-Host
+    foreach ($name in docker ps -a --format "{{.Names}}" | Where-Object { $_ -like "tsl-auth*" }) {
+        Write-Host "--- $name (последние 25 строк)" -ForegroundColor Yellow
+        docker logs --tail 25 $name 2>&1 | Write-Host
+    }
     throw "Сервис $url не поднялся за $timeoutSec с"
 }
 
@@ -149,7 +156,9 @@ function Run-Single {
 function Run-Ha {
     Write-Host "`n##### Кластер (PostgreSQL + 3 узла + nginx) #####" -ForegroundColor Yellow
     docker compose down 2>&1 | Out-Null
-    docker compose @HaCompose up -d 2>&1 | Out-Null
+    # Вывод не глушим: ошибка compose (переменные, порты, образы) должна быть видна в журнале.
+    docker compose @HaCompose up -d 2>&1 | Write-Host
+    if ($LASTEXITCODE -ne 0) { throw "docker compose (кластер) завершился с кодом $LASTEXITCODE" }
     Wait-Ready $Lb | Out-Null; foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://localhost:$p" | Out-Null }
     & pwsh -NoProfile -File samples/seed-demo.ps1 | Out-Null
     Ensure-PublicClient $Lb

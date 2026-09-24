@@ -8,7 +8,7 @@ flowchart LR
         S1[tsl-auth] --> V1[(том auth-data<br/>SQLite + master.key)]
     end
     subgraph "Кластер — docker-compose.ha.yml"
-        LB[nginx :8080] --> N1[auth1 :8081] & N2[auth2 :8082] & N3[auth3 :8083]
+        LB[nginx :8080] --> N1[auth1] & N2[auth2] & N3[auth3]
         N1 & N2 & N3 --> PG[(PostgreSQL)]
     end
 ```
@@ -34,29 +34,62 @@ docker logs tsl-auth | grep "временным паролем"
 2. Задайте постоянный пароль (система потребует сразу).
 3. Если сервис будет доступен по другому адресу — задайте `AUTH_ISSUER` (см. ниже) **до** выдачи первых токенов.
 
+**Публичный адрес `AUTH_ISSUER` обязателен.** Из него строятся `iss` в токенах, discovery и ссылки в письмах
+(приглашения, сброс пароля); заголовок `Host` запроса для этого не используется, поэтому поддельный `Host` не уведёт
+ссылку сброса на чужой домен. Compose по умолчанию подставляет `http://localhost:8080/`; при запуске образа без compose
+(`docker run`, Kubernetes) переменная `Auth__Issuer` должна быть задана явно — иначе сервис не стартует.
+Дополнительно задайте `AUTH_ALLOWED_HOSTS` (`AllowedHosts`) — имя из адреса, например `auth.corp`: запросы с другим
+`Host` получат 400.
+
 Данные (SQLite и сгенерированный `master.key`) лежат в томе `auth-data`. **Сохраните `master.key`** — без него зашифрованные данные не прочитать:
 
 ```bash
-docker run --rm -v auth_auth-data:/d busybox cat /d/master.key   # в самом образе сервиса нет shell и cat
+docker run --rm -v tsl-auth_auth-data:/d busybox cat /d/master.key   # в самом образе сервиса нет shell и cat
 ```
+
+Полное имя тома — `<проект>_auth-data`, где проект compose — имя каталога с `docker-compose.yml`
+(`tsl-auth` при клонировании репозитория; см. `docker volume ls`). Здесь и ниже в примерах — `tsl-auth_*`.
+Если БД в томе уже есть, а `master.key` пропал (например, том с ключом не примонтирован), сервис не стартует,
+а не создаёт новый ключ: с новым ключом все зашифрованные данные стали бы нечитаемыми.
 
 ## Кластер
 
 ```bash
 cp .env.example .env
 # ENCRYPTION_MASTER_KEY: openssl rand -base64 32
-# POSTGRES_PASSWORD, BOOTSTRAP_ADMIN_PASSWORD (или оставить пустым — будет сгенерирован и выведен в лог)
+# POSTGRES_PASSWORD — обязателен (значения по умолчанию нет)
+# BOOTSTRAP_ADMIN_PASSWORD (или оставить пустым — будет сгенерирован и выведен в лог)
 docker compose -f docker-compose.ha.yml up -d --build
 docker logs tsl-auth-1 | grep -E "Схема|администратор"
 ```
 
-Точка входа — nginx на `:8080`; узлы доступны напрямую на `:8081–8083` для диагностики.
+Без `ENCRYPTION_MASTER_KEY` и `POSTGRES_PASSWORD` (или `AUTH_SECRETS_DIR`, см. [секреты файлами](#секреты-файлами-docker-secrets))
+compose откажется запускать кластер.
+
+Точка входа — **только** nginx на `:8080`. Узлы наружу не публикуются: они работают с
+`Auth__TrustForwardedHeaders=true` и берут IP клиента и схему из `X-Forwarded-For/Proto`. Будь узел доступен напрямую,
+клиент подставил бы в эти заголовки что угодно — обошёл бы лимиты попыток по IP, записал бы в журнал чужой IP,
+выдал бы HTTP-запрос за HTTPS. Поэтому заголовки принимаются только от адресов из `Auth__KnownNetworks`
+(`AUTH_KNOWN_NETWORKS`; по умолчанию loopback и частные сети, куда входит docker-сеть с nginx).
+
+Для диагностики и тестов отказоустойчивости узлы можно открыть на `127.0.0.1:8081–8083` оверлеем
+`docker-compose.ha-nodes.yml`:
+
+```bash
+docker compose -f docker-compose.ha.yml -f docker-compose.ha-nodes.yml up -d
+```
+
+Даже так запрос с хоста приходит в контейнер с адреса шлюза docker-сети, то есть из доверенной частной сети:
+на многопользовательском сервере держите оверлей выключенным.
+
 Добавить узел: скопируйте блок `auth3` в compose с новым именем и добавьте `server auth4:8080 resolve ...` в `deploy/nginx.conf`.
 
 ### Внешний PostgreSQL
 
-1. Удалите сервис `postgres` и `depends_on` из `docker-compose.ha.yml` (или оставьте — он не будет использоваться).
-2. В `.env`: `DB_CONNECTION_STRING=Host=db.corp;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=...;SSL Mode=Require`.
+1. Удалите сервис `postgres` и `depends_on` из `docker-compose.ha.yml`. Если оставить его, задайте и `POSTGRES_PASSWORD`:
+   без пароля контейнер postgres не инициализируется, и узлы, ждущие его готовности, не запустятся.
+2. В `.env`: `DB_CONNECTION_STRING=Host=db.corp;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=...;SSL Mode=Require`
+   (или файл `db_connection_string` в [секретах](#секреты-файлами-docker-secrets)).
 3. Базу сервис **создаст сам**, если у пользователя есть право `CREATEDB`; иначе создайте пустую БД заранее:
    ```sql
    CREATE ROLE tsl_auth LOGIN PASSWORD '...';
@@ -81,7 +114,7 @@ flowchart LR
 2. Поднимите PostgreSQL (узлы кластера пока не запускайте): `docker compose -f docker-compose.ha.yml up -d postgres`.
 3. Запустите перенос в контейнере с томом одиночного режима и доступом к PostgreSQL:
    ```bash
-   docker run --rm -v auth_auth-data:/app/data --network auth_default \
+   docker run --rm -v tsl-auth_auth-data:/app/data --network tsl-auth_default \
      -e TARGET_DB_CONNECTION_STRING="Host=postgres;Database=tsl_auth;Username=tsl_auth;Password=..." \
      ghcr.io/akprof2000/tsl-auth:latest admin migrate-to-postgres
    ```
@@ -94,7 +127,7 @@ flowchart LR
    Перенос завершён: 28 таблиц, 14279 записей, все совпадают.
    ```
 4. Задайте кластеру **тот же мастер-ключ** — содержимое `master.key` из тома одиночного режима:
-   `docker run --rm -v auth_auth-data:/d busybox cat /d/master.key` → `ENCRYPTION_MASTER_KEY` в `.env`.
+   `docker run --rm -v tsl-auth_auth-data:/d busybox cat /d/master.key` → `ENCRYPTION_MASTER_KEY` в `.env`.
    Данные переносятся зашифрованными; с другим ключом узлы не смогут их прочитать.
 5. Запустите узлы: `docker compose -f docker-compose.ha.yml up -d`.
 
@@ -104,7 +137,8 @@ flowchart LR
   Остановите узлы и добавьте `--overwrite`: данные PostgreSQL будут заменены данными SQLite.
 * При любом расхождении сверки транзакция откатывается — в PostgreSQL ничего не остаётся, SQLite не изменяется.
 * Строку подключения передавайте переменной `TARGET_DB_CONNECTION_STRING` (или `--target "..."`), чтобы пароль не попал в историю shell.
-* Имя сети — `<каталог проекта>_default` (здесь `auth_default`, см. `docker network ls`); внешний PostgreSQL указывается адресом сервера.
+* Имя сети — `<проект>_default` (здесь `tsl-auth_default`, см. `docker network ls`); внешний PostgreSQL указывается адресом сервера.
+* `Auth__Issuer` команде переноса не нужен (как и `admin reset-password`): служебные команды CLI его не проверяют.
 
 ## HTTPS
 
@@ -117,7 +151,15 @@ AUTH_ISSUER=https://auth.corp.local:8443/ \
 docker compose -f docker-compose.yml -f docker-compose.https.yml up -d
 ```
 
-PFX вместо PEM: `TLS_CERT_PATH=/certs/tls.pfx TLS_KEY_PATH= TLS_CERT_PASSWORD=...`. Протоколы — только TLS 1.2/1.3.
+PFX вместо PEM — отдельный файл `docker-compose.https-pfx.yml` (вместо `docker-compose.https.yml`, не вместе с ним):
+
+```bash
+# сертификат: certs/tls.pfx
+AUTH_ISSUER=https://auth.corp.local:8443/ TLS_CERT_PASSWORD=... \
+docker compose -f docker-compose.yml -f docker-compose.https-pfx.yml up -d
+```
+
+Протоколы — только TLS 1.2/1.3. Файлы сертификата должны быть доступны на чтение пользователю сервиса (UID 1654).
 
 ### Вариант 2 — TLS на обратном прокси (кластер)
 
@@ -127,10 +169,43 @@ docker compose -f docker-compose.ha.yml -f docker-compose.ha-https.yml up -d
 
 nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, перенаправляет HTTP → HTTPS, добавляет HSTS
 и передаёт `X-Forwarded-Proto`; узлы внутри сети остаются на HTTP (`Auth__TrustForwardedHeaders=true`).
-Если прокси ваш собственный (F5, HAProxy, внешний nginx) — передавайте `X-Forwarded-For/Proto/Host` и
-задайте `AUTH_ISSUER` с внешним HTTPS-адресом.
+Если прокси ваш собственный (F5, HAProxy, внешний nginx):
 
-> После включения HTTPS задайте `AUTH_REQUIRE_HTTPS=true`: сервис будет отклонять OAuth-запросы по HTTP и включит HSTS.
+* передавайте `X-Forwarded-For` и `X-Forwarded-Proto` (`X-Forwarded-Host` сервис не принимает — адрес берётся
+  из `AUTH_ISSUER`, который задайте внешним HTTPS-адресом);
+* укажите подсеть прокси в `AUTH_KNOWN_NETWORKS`, если она не из частных диапазонов, и закройте узлы от прямого доступа;
+* для `/api/admin/events` держите таймаут чтения ответа не меньше 75–90 с и отключите буферизацию: long-polling
+  ждёт событий до `wait` ≤ 60 с, SSE-поток открыт постоянно (так настроены `deploy/nginx*.conf`).
+
+> При TLS на вашем прокси задайте `AUTH_REQUIRE_HTTPS=true`: сервис будет отклонять OAuth-запросы по HTTP и включит HSTS.
+> `docker-compose.https*.yml` и `docker-compose.ha-https.yml` включают это сами.
+
+## Секреты файлами (docker secrets)
+
+По умолчанию секреты передаются переменными из `.env` — их видно в `docker inspect` и в окружении процесса.
+Оверлеи `docker-compose.secrets.yml` (одиночный режим) и `docker-compose.ha-secrets.yml` (кластер) передают их файлами
+через docker secrets (`/run/secrets/...`), а сервис читает переменные `*File`
+([список](configuration.md#секреты-из-файлов-docker-secrets)).
+
+```bash
+sudo install -d -m 0700 /etc/tsl-auth/secrets && cd /etc/tsl-auth/secrets
+openssl rand -base64 32 | sudo tee master_key > /dev/null
+printf '%s' 'пароль-БД'            | sudo tee postgres_password > /dev/null
+printf '%s' 'Host=postgres;Port=5432;Database=tsl_auth;Username=tsl_auth;Password=пароль-БД' | sudo tee db_connection_string > /dev/null
+printf '%s' 'пароль-администратора' | sudo tee admin_password > /dev/null
+printf '%s' 'секрет-admin-cli'      | sudo tee admin_api_client_secret > /dev/null
+sudo chmod 0444 *    # compose без Swarm монтирует файлы как есть: читать их должны UID 1654 и postgres
+
+cd ~/tsl-auth
+echo AUTH_SECRETS_DIR=/etc/tsl-auth/secrets >> .env   # ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD тогда не нужны
+docker compose -f docker-compose.ha.yml -f docker-compose.ha-secrets.yml up -d
+```
+
+Одиночному режиму нужны только `admin_password` и `admin_api_client_secret`
+(`docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d`). Доступ к файлам ограничивает каталог
+(`0700`): внутрь контейнеров файлы попадают через монтирование, посторонние пользователи хоста их не прочитают.
+Указанный, но отсутствующий файл — ошибка старта сервиса. Если `.env` при этом ещё содержит `BOOTSTRAP_ADMIN_PASSWORD`
+или `ENCRYPTION_MASTER_KEY`, оверлеи их обнуляют — действуют только файлы.
 
 ## Закрытый контур (без интернета)
 
@@ -140,7 +215,7 @@ sequenceDiagram
     participant M as Носитель
     participant T as Сервер в закрытом контуре
     I->>I: ./scripts/export-images.ps1 -Version 1.0.0
-    Note over I: docker build + pull postgres, nginx<br/>docker save → dist/tsl-auth-images-1.0.0.tar.gz + .sha256<br/>+ compose-файлы, deploy/, .env.example
+    Note over I: docker build + pull postgres, nginx<br/>docker save → dist/tsl-auth-images-1.0.0.tar.gz + .sha256<br/>+ список образов с digest, compose-файлы, deploy/, .env.example
     I->>M: копирование каталога dist/
     M->>T: копирование
     T->>T: ./import-images.sh (проверка SHA-256, docker load)
@@ -151,12 +226,19 @@ sequenceDiagram
 логотипы приложений хранятся в БД, почта — через ваш внутренний SMTP.
 
 Можно также брать готовые образы из реестра: `ghcr.io/akprof2000/tsl-auth:<версия>` или Docker Hub
-(публикуются GitHub Actions после прохождения тестов и сканирования Trivy).
+(публикуются GitHub Actions после прохождения тестов, E2E-стенда и сканирования Trivy/Dockle).
+
+`postgres` и `nginx` в compose указаны тегами (`17-alpine`, `1.29-alpine`), а не digest: ссылка по digest после
+`docker load` находится не на всех версиях Docker, и запуск в закрытом контуре сорвался бы попыткой скачать образ.
+Какие именно образы перенесены, фиксирует `dist/tsl-auth-images-<версия>.txt` (ID и digest каждого).
+Без PostgreSQL (внешняя БД) или nginx комплект собирается с ключами `-NoPostgres` / `-NoNginx`.
 
 ## Первичная настройка после установки
 
 1. Вход `admin` → смена пароля.
-2. **Настройки**: политика паролей, сроки жизни токенов, сроки хранения журнала.
+2. **Настройки**: политика паролей, сроки жизни токенов и максимальный срок сессии, сроки хранения журнала.
+   После сохранения политики токенов действуют значения из БД; переменные `Auth__*LifetimeMinutes/Days` — только
+   значения по умолчанию до этого момента.
 3. **Приложения → Зарегистрировать**: клиент для каждого приложения, redirect URI, потоки, scopes.
 4. **Матрица доступа** приложения: разрешения, роли, отметки «роль × разрешение».
 5. **Пользователи**: приглашения / временные пароли, назначение ролей.
@@ -184,7 +266,7 @@ docker compose up -d           # кластер: docker compose -f docker-compos
 | Что | Как | Важно |
 |---|---|---|
 | PostgreSQL | `pg_dump -Fc tsl_auth > tsl_auth.dump` | делать перед каждым обновлением |
-| SQLite | `docker run --rm -u 1654:1654 -v auth_auth-data:/d -v $PWD:/b keinos/sqlite3 sqlite3 /d/tsl-auth.db ".backup /b/tsl-auth.db"` | горячий бэкап (WAL) |
+| SQLite | `docker run --rm -u 1654:1654 -v tsl-auth_auth-data:/d -v $PWD:/b keinos/sqlite3 sqlite3 /d/tsl-auth.db ".backup /b/tsl-auth.db"` | горячий бэкап (WAL) |
 | Мастер-ключ | `.env` / `master.key` / docker secret | **хранить отдельно** от бэкапов БД |
 
 Восстановление: вернуть БД из бэкапа и запустить сервис с **тем же** мастер-ключом.

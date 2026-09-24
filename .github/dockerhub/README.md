@@ -43,19 +43,30 @@ docker logs tsl-auth | grep "временным паролем"
 -e Database__Provider=Postgres
 -e Database__ConnectionString="Host=db;Database=tsl_auth;Username=tsl_auth;Password=..."
 -e Encryption__MasterKey=<base64, 32 байта, одинаковый на всех узлах>
+-e Auth__Issuer=https://auth.corp/          # внешний адрес балансировщика, одинаковый на всех узлах
+-e AllowedHosts=auth.corp
+-e Auth__RequireHttps=true                  # TLS завершается на балансировщике
+-e Auth__TrustForwardedHeaders=true         # IP клиента и схема — из X-Forwarded-For/Proto
+-e Auth__KnownNetworks=10.20.0.0/24         # подсеть балансировщика (по умолчанию — частные сети)
 ```
+
+Узлы с `Auth__TrustForwardedHeaders=true` не должны быть доступны напрямую, в обход балансировщика: иначе клиент
+подделает `X-Forwarded-For` (обход лимитов по IP) и `X-Forwarded-Proto`. Секреты можно передавать файлами (docker secrets):
+`Encryption__MasterKeyFile`, `Database__ConnectionStringFile`, `Bootstrap__AdminPasswordFile`.
 
 ## Основные параметры
 
 | Переменная | Назначение |
 |---|---|
-| `Auth__Issuer` | Публичный адрес сервиса (`iss` в токенах), одинаковый на всех узлах |
-| `Auth__RequireHttps` | Требовать HTTPS (по умолчанию `true`) |
+| `Auth__Issuer` | **Обязателен.** Публичный адрес сервиса (`iss` в токенах, ссылки в письмах), одинаковый на всех узлах |
+| `AllowedHosts` | Допустимые значения заголовка `Host`, например `auth.corp` (по умолчанию `*`) |
+| `Auth__RequireHttps` | Требовать HTTPS (по умолчанию `true`; `false` — только для стенда без TLS) |
 | `Database__Provider` | `Sqlite` (по умолчанию) или `Postgres` |
 | `Database__ConnectionString` | Строка подключения к БД |
 | `Encryption__MasterKey` / `Encryption__MasterKeyFile` | Мастер-ключ шифрования данных (обязателен для PostgreSQL) |
-| `Bootstrap__AdminUserName` / `Bootstrap__AdminPassword` | Первый администратор (пароль пуст — будет сгенерирован) |
-| `Auth__TrustForwardedHeaders` | Доверять `X-Forwarded-*` за обратным прокси |
+| `Bootstrap__AdminUserName` / `Bootstrap__AdminPassword` (`...File`) | Первый администратор (пароль пуст — будет сгенерирован) |
+| `Auth__TrustForwardedHeaders` | Принимать `X-Forwarded-For/Proto` за обратным прокси (узлы не должны быть доступны напрямую) |
+| `Auth__KnownNetworks` | Подсети прокси (CIDR через запятую); по умолчанию loopback и частные сети |
 
 Полный список — в [документации по конфигурации](https://github.com/akprof2000/tsl-auth/blob/main/docs/configuration.md).
 
@@ -74,7 +85,7 @@ docker run --rm -v tsl-auth-data:/app/data -e TARGET_DB_CONNECTION_STRING="Host=
 
 - База: `mcr.microsoft.com/dotnet/aspnet:10.0-azurelinux3.0-distroless` — без shell и пакетного менеджера, закреплена по digest.
 - Запуск под непривилегированным пользователем `1654`, совместим с `--read-only` и `--cap-drop ALL`; встроенный `HEALTHCHECK`.
-- Каждая сборка проходит тесты, сканирование Trivy (0 уязвимостей) и Dockle; образ подписан cosign, приложены SBOM и SLSA provenance.
+- Каждая сборка проходит тесты, полный E2E-стенд, сканирование Trivy (0 уязвимостей) и Dockle; подписан cosign именно проверенный digest, приложены SBOM и SLSA provenance.
 
 Проверка подписи:
 

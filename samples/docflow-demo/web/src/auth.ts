@@ -1,7 +1,7 @@
 // Вход через TSL Auth: authorization code + PKCE прямо в браузере (public-клиент docflow-web).
 // Токены хранятся в sessionStorage (не localStorage): закрыли вкладку — сессия приложения закончилась;
 // пока вкладка открыта, access-токен обновляется refresh-токеном автоматически.
-import { UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
+import { OidcClient, UserManager, WebStorageStateStore, type User } from "oidc-client-ts";
 
 declare global {
   interface Window { DOCFLOW_CONFIG?: { issuer: string; clientId: string; apiClientId: string } }
@@ -31,4 +31,17 @@ export async function accessToken(): Promise<string | null> {
     try { return (await userManager.signinSilent())?.access_token ?? null; } catch { return null; }
   }
   return user.access_token;
+}
+
+/**
+ * Саморегистрация: готовим обычный запрос входа (PKCE, state сохраняется как при signinRedirect)
+ * и открываем форму регистрации TSL Auth с этим запросом в returnUrl. После регистрации TSL Auth
+ * сразу выполняет вход и возвращает пользователя в /callback, как после обычного входа.
+ */
+export async function registerRedirect() {
+  const request = await new OidcClient(userManager.settings).createSigninRequest({ request_type: "si:r", state: "/" });
+  const authorize = new URL(request.url);
+  const register = new URL("Account/Register", config.issuer);
+  register.searchParams.set("returnUrl", authorize.pathname + authorize.search);
+  location.assign(register.toString());
 }

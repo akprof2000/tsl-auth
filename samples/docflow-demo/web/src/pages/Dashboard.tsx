@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, CheckCircle2, ClipboardCheck, Clock3, FileText, History } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ClipboardCheck, Clock3, FileText, Hourglass, History, RefreshCw, XCircle } from "lucide-react";
+import { cabinetUrl, userManager } from "../auth";
 import clsx from "clsx";
 import { api, type DocSummary, type Status } from "../api";
 import { useSession } from "../session";
@@ -36,13 +37,7 @@ export default function Dashboard() {
   const hour = new Date().getHours();
   const hello = hour < 6 ? "Доброй ночи" : hour < 12 ? "Доброе утро" : hour < 18 ? "Добрый день" : "Добрый вечер";
 
-  if (!can("documents.view")) return (
-    <>
-      <PageHeader title={`${hello}, ${first}!`} />
-      <div className="card p-6 text-sm">У вашей учётной записи пока нет ролей в документообороте. Попросите администратора выдать роль или
-        запросите её на странице входа TSL Auth. Бот безопасности доступен в меню.</div>
-    </>
-  );
+  if (!can("documents.view")) return <NoRoles hello={`${hello}, ${first}!`} />;
   if (dash.error) return <ErrorBox text={dash.error} />;
   if (dash.data === null && can("dashboard.view")) return <PageLoader />;
   const d = dash.data;
@@ -164,3 +159,65 @@ export default function Dashboard() {
   );
 }
 
+
+type MyRequest = { role: string; roleTitle: string; status: "pending" | "approved" | "rejected"; createdAt: string; decisionComment: string | null };
+
+/**
+ * Экран пользователя без ролей в документообороте — обычно сразу после саморегистрации.
+ * Показывает его заявки; после одобрения нужен новый токен (роли приходят в нём), поэтому
+ * «Обновить права» заново проходит вход — сессия TSL Auth уже есть, пароль не спрашивается.
+ */
+function NoRoles({ hello }: { hello: string }) {
+  const requests = useLoad(() => api<MyRequest[]>("/api/me/requests"));
+  const list = requests.data ?? [];
+  const pending = list.filter((r) => r.status === "pending");
+  const approved = list.some((r) => r.status === "approved");
+  const refresh = () => userManager.signinRedirect({ state: "/" });
+  const meta = {
+    pending: { icon: Hourglass, cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300", label: "на рассмотрении" },
+    approved: { icon: CheckCircle2, cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300", label: "одобрена" },
+    rejected: { icon: XCircle, cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300", label: "отклонена" }
+  } as const;
+  return (
+    <>
+      <PageHeader title={hello} />
+      <div className="card mx-auto max-w-2xl p-8 text-center">
+        <div className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-500/30">
+          <Hourglass className="size-7" />
+        </div>
+        <h2 className="text-xl font-semibold">
+          {approved ? "Заявка одобрена — обновите права" : pending.length ? "Заявка на доступ на рассмотрении" : "У вас пока нет доступа к документообороту"}
+        </h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
+          {approved
+            ? "Администратор выдал роль. Нажмите «Обновить права», чтобы получить её в этом сеансе."
+            : pending.length
+              ? "Администратор документооборота рассмотрит заявку. Когда роль выдадут, нажмите «Обновить права»."
+              : "Попросите администратора выдать роль или запросите её: выйдите и нажмите «Зарегистрироваться» — либо обратитесь к администратору."}
+        </p>
+        {list.length > 0 && (
+          <div className="mx-auto mt-6 max-w-md space-y-2 text-left">
+            {list.map((r, i) => {
+              const m = meta[r.status] ?? meta.pending;
+              return (
+                <div key={i} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">
+                  <span className={clsx("grid size-9 place-items-center rounded-lg", m.cls)}><m.icon className="size-4" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium">{r.roleTitle}</div>
+                    <div className="text-xs text-slate-500">заявка от {relTime(r.createdAt)}{r.decisionComment && ` · «${r.decisionComment}»`}</div>
+                  </div>
+                  <span className={clsx("chip", m.cls)}>{m.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <button className="btn-primary" onClick={refresh}><RefreshCw className="size-4" />Обновить права</button>
+          <button className="btn-outline" onClick={requests.reload}>Проверить статус</button>
+          <a className="btn-ghost" href={cabinetUrl("Account")} target="_blank" rel="noopener">Личный кабинет TSL Auth</a>
+        </div>
+      </div>
+    </>
+  );
+}

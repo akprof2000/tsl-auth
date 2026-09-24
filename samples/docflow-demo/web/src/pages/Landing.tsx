@@ -1,5 +1,5 @@
-import { ArrowRight, FileCheck2, KeyRound, ShieldCheck, Users } from "lucide-react";
-import { userManager } from "../auth";
+import { ArrowRight, FileCheck2, KeyRound, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { registerRedirect, userManager } from "../auth";
 
 /** Экран до входа: вход только через TSL Auth — пароли приложение никогда не видит. */
 export default function Landing() {
@@ -32,7 +32,13 @@ export default function Landing() {
               <button className="btn-primary px-6 py-3 text-base" onClick={() => userManager.signinRedirect({ state: location.pathname })}>
                 Войти через TSL Auth <ArrowRight className="size-4" />
               </button>
+              <button className="btn-outline px-6 py-3 text-base" onClick={() => registerRedirect()}>
+                <UserPlus className="size-4" />Зарегистрироваться
+              </button>
             </div>
+            <p className="mt-3 max-w-xl text-sm text-slate-500 dark:text-slate-400">
+              Новый сотрудник регистрируется сам и выбирает роль — её выдают после одобрения администратором.
+            </p>
             <p className="mt-4 text-xs text-slate-500">Демо-учётки: ivanova, petrov, sidorova, kozlov, admin-doc · пароль Demo-Passw0rd!</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

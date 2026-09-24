@@ -88,6 +88,25 @@ app.MapGet("/config.js", () => Results.Text(
     "application/javascript"));
 
 app.MapGet("/api/me", (CurrentUser me) => me).RequireAuthorization();
+
+// Мои заявки на роли (саморегистрация): пользователь без ролей видит, что заявка на рассмотрении.
+// Доступно без разрешений матрицы — только вошедшему пользователю и только про него самого.
+app.MapGet("/api/me/requests", async (CurrentUser me, TslAuthClient auth, CancellationToken ct) =>
+{
+    var all = await auth.CallAsync(HttpMethod.Get, "/access-requests", ct: ct);
+    return all.EnumerateArray()
+        .Where(r => r.GetProperty("userId").GetGuid() == me.Id)
+        .Select(r => new
+        {
+            role = r.GetProperty("role").GetString(),
+            roleTitle = r.TryGetProperty("roleTitle", out var t) ? t.GetString() : r.GetProperty("role").GetString(),
+            status = r.GetProperty("status").GetString()?.ToLowerInvariant(),
+            createdAt = r.GetProperty("createdAt").GetDateTime(),
+            decisionComment = r.TryGetProperty("decisionComment", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null
+        })
+        .OrderByDescending(r => r.createdAt)
+        .ToList();
+}).RequireAuthorization();
 app.MapDocuments();
 app.MapUsers();
 

@@ -18,7 +18,7 @@
 
     <div class="grid2">
         <div class="card">
-            <h2 style="margin-top:0">Политика паролей</h2>
+            <h2>Политика паролей</h2>
             <label asp-for="Passwords.MinLength">Минимальная длина</label>
             <input asp-for="Passwords.MinLength" type="number" min="6" max="128" disabled="@disabled" />
             <label class="inline"><input asp-for="Passwords.RequireLowercase" disabled="@disabled" /> строчные буквы</label>
@@ -40,8 +40,8 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-top:0">Сроки жизни токенов</h2>
-            <p class="small muted" style="margin-top:0">Максимальные значения. Приложение может задать меньше в своей карточке,
+            <h2>Сроки жизни токенов</h2>
+            <p class="small muted mt0">Максимальные значения. Приложение может задать меньше в своей карточке,
                 клиент — запросить меньше параметрами <code>expires_in</code> / <code>refresh_expires_in</code> (сек). Больше — нельзя.</p>
             <div class="grid2">
                 <div><label asp-for="Tokens.AccessTokenMinutes">Access-токен, мин</label>
@@ -83,7 +83,7 @@
 
     <div class="grid2">
         <div class="card">
-            <h2 style="margin-top:0">Хранение данных</h2>
+            <h2>Хранение данных</h2>
             <label asp-for="AuditRetentionDays">Журнал безопасности по умолчанию, дней</label>
             <input asp-for="AuditRetentionDays" type="number" min="1" max="3650" disabled="@disabled" />
             <label asp-for="EventsRetentionDays">Лента событий и доставки вебхуков, дней</label>
@@ -94,7 +94,7 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-top:0">Срок хранения по типам событий</h2>
+            <h2>Срок хранения по типам событий</h2>
             <p class="small muted">Пусто — общий срок. Можно задать префикс группы (например <code>auth.</code>) — действует самое точное совпадение.</p>
             <div class="table-wrap">
                 <table>
@@ -104,12 +104,12 @@
                         <tr>
                             <td><code>@type</code></td>
                             <td><input type="number" min="1" max="3650" name="Retention[@type]" value="@Model.Retention[type]"
-                                       placeholder="@Model.AuditRetentionDays" style="max-width:120px" disabled="@disabled" /></td>
+                                       placeholder="@Model.AuditRetentionDays" class="w-xs" disabled="@disabled" /></td>
                         </tr>
                     }
                     <tr>
                         <td><input asp-for="NewType" placeholder="новое правило, напр. auth." disabled="@disabled" /></td>
-                        <td><input asp-for="NewDays" type="number" min="1" max="3650" style="max-width:120px" disabled="@disabled" /></td>
+                        <td><input asp-for="NewDays" type="number" min="1" max="3650" class="w-xs" disabled="@disabled" /></td>
                     </tr>
                 </table>
             </div>

@@ -26,8 +26,8 @@
         </table>
         @if (Model.CanManage)
         {
-            <form method="get" class="row" style="margin-top:12px">
-                <input name="Culture" placeholder="код нового языка, напр. kk" style="max-width:220px" required />
+            <form method="get" class="row mt12">
+                <input name="Culture" placeholder="код нового языка, напр. kk" class="w-md" required />
                 <button type="submit">Добавить язык</button>
             </form>
         }
@@ -36,13 +36,13 @@
     @if (Model.Culture is not null)
     {
         <form method="post" asp-page-handler="Save" asp-route-culture="@Model.Culture" enctype="multipart/form-data" class="card">
-            <h2 style="margin-top:0">Пакет <code>@Model.Culture</code></h2>
+            <h2>Пакет <code>@Model.Culture</code></h2>
             <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
             <label asp-for="Name">Название языка</label>
             <input asp-for="Name" placeholder="Қазақша" />
             <label class="inline"><input asp-for="IsEnabled" /> Включён (доступен в переключателе языка)</label>
             <label asp-for="Json">JSON «ключ → текст» (можно указать только переопределяемые ключи)</label>
-            <textarea asp-for="Json" style="min-height:420px"></textarea>
+            <textarea asp-for="Json" class="tall"></textarea>
             <label asp-for="Upload">…или загрузить файл .json</label>
             <input asp-for="Upload" type="file" accept="application/json,.json" />
             @if (Model.CanManage)

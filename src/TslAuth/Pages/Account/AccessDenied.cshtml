@@ -3,7 +3,7 @@
 @{ ViewData["Title"] = L["denied.title"]; }
 
 <div class="card">
-    <h2 style="margin-top:0">@L["denied.title"]</h2>
+    <h2>@L["denied.title"]</h2>
     <p>@L["denied.text"]</p>
     <form method="post" action="/Account/Logout">
         @Html.AntiForgeryToken()

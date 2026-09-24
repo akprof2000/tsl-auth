@@ -20,7 +20,7 @@
     <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
     <div class="grid2">
         <div class="card">
-            <h2 style="margin-top:0">Тексты</h2>
+            <h2>Тексты</h2>
             <label asp-for="Title">Заголовок</label>
             <input asp-for="Title" placeholder="@(Model.DisplayName ?? Model.ClientId)" disabled="@disabled" />
             <label asp-for="WelcomeText">Приветствие</label>
@@ -37,10 +37,10 @@
             </select>
         </div>
         <div class="card">
-            <h2 style="margin-top:0">Логотип и цвета</h2>
+            <h2>Логотип и цвета</h2>
             @if (Model.CurrentLogo is not null)
             {
-                <div class="brand-preview" style="text-align:center"><img src="@Model.CurrentLogo" alt="логотип" class="login-logo" /></div>
+                <div class="brand-preview center"><img src="@Model.CurrentLogo" alt="логотип" class="login-logo" /></div>
                 <label class="inline"><input asp-for="RemoveLogo" disabled="@disabled" /> Удалить логотип</label>
             }
             <label asp-for="Logo">Загрузить логотип (PNG/JPEG/WEBP, до 256 КБ)</label>

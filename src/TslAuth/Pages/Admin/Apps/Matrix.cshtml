@@ -28,14 +28,14 @@
 {
     <div class="grid2">
         <form method="post" asp-page-handler="AddPermission" asp-route-clientId="@Model.ClientId" class="card">
-            <h2 style="margin-top:0">Новое разрешение</h2>
+            <h2>Новое разрешение</h2>
             <input name="Name" placeholder="orders.read" required />
             <label>Описание</label>
             <input name="Description" placeholder="Просмотр заказов" />
             <div class="actions"><button type="submit">Добавить разрешение</button></div>
         </form>
         <form method="post" asp-page-handler="AddRole" asp-route-clientId="@Model.ClientId" class="card">
-            <h2 style="margin-top:0">Новая роль</h2>
+            <h2>Новая роль</h2>
             <label>Техническое имя</label>
             <input name="Name" placeholder="orders-manager" required pattern="[a-z][a-z0-9._\-]{0,99}" autocapitalize="off" spellcheck="false"
                    title="Строчные латинские буквы, цифры и . _ - без пробелов, начинается с буквы" />

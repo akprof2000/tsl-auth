@@ -4,14 +4,14 @@
 @{ ViewData["Title"] = L["messenger.title"]; }
 
 <div class="card">
-    <h2 style="margin-top:0">@L["messenger.title"]</h2>
+    <h2>@L["messenger.title"]</h2>
     <p class="small muted">@L["messenger.intro"]</p>
 
     @if (Model.Code is not null)
     {
         <div class="alert secret">
             @L["messenger.sendToBot"]<br />
-            <code style="font-size:20px">/link @Model.Code</code><br />
+            <code class="code-lg">/link @Model.Code</code><br />
             <span class="small muted">@L.Get("messenger.validUntil", Model.CodeExpiresAt!.Value.ToLocalTime().ToString("HH:mm"))</span>
         </div>
     }

@@ -13,13 +13,13 @@
 
 <div class="card">
     <b>Как подключить бота мессенджера</b> — сам бот внешний, сервис только отдаёт события. Способы (любой, можно вместе):
-    <ol class="small" style="margin-bottom:0">
+    <ol class="small mb0">
         <li><b>Long-polling</b>: <code>GET /api/admin/events?after=&lt;id&gt;&amp;wait=30</code> → <code>{ events, next }</code>.</li>
         <li><b>SSE</b>: <code>GET /api/admin/events/stream</code> (заголовок <code>Last-Event-ID</code> продолжит с места обрыва).</li>
         <li><b>Вебхук</b>: сервис сам POST-ит JSON на URL бота; подпись <code>X-TSL-Signature: sha256=HMAC(секрет, тело)</code>.
             Поле <code>text</code> совместимо с incoming-webhook Mattermost / Rocket.Chat.</li>
     </ol>
-    <p class="small muted" style="margin-bottom:0">Боту выдайте confidential-клиента с client_credentials, scope <code>@SystemApp.ClientId</code>
+    <p class="small muted mb0">Боту выдайте confidential-клиента с client_credentials, scope <code>@SystemApp.ClientId</code>
         и ролью <code>@SystemApp.NotifierRole</code> (только события, без прав администратора).</p>
 </div>
 
@@ -43,8 +43,8 @@
 
         @if (Model.CanManage)
         {
-            <form method="post" asp-page-handler="Save" asp-route-id="@Model.Id" class="card" style="margin-top:16px">
-                <h2 style="margin-top:0">@(Model.Id is null ? "Новая подписка" : "Изменить подписку")</h2>
+            <form method="post" asp-page-handler="Save" asp-route-id="@Model.Id" class="card mt16">
+                <h2>@(Model.Id is null ? "Новая подписка" : "Изменить подписку")</h2>
                 <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
                 <label asp-for="Name">Название</label>
                 <input asp-for="Name" placeholder="Бот Mattermost — дежурные админы" required />

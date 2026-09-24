@@ -4,7 +4,7 @@
 @{ ViewData["Title"] = "Заявки на доступ"; }
 
 <h1>Заявки на доступ</h1>
-<div class="row" style="margin-bottom:16px">
+<div class="row mb16">
     @foreach (var (value, label) in new[] { ("pending", "Ожидают"), ("approved", "Одобренные"), ("rejected", "Отклонённые"), ("all", "Все") })
     {
         <a class="btn @(Model.Status == value ? "primary" : "")" asp-page="Index" asp-route-status="@value">@label</a>
@@ -33,7 +33,7 @@ else
                         {
                             <form method="post" class="row" asp-route-status="@Model.Status">
                                 <input type="hidden" name="requestId" value="@r.Id" />
-                                <input name="comment" placeholder="Комментарий (необязательно)" style="max-width:220px" />
+                                <input name="comment" placeholder="Комментарий (необязательно)" class="w-md" />
                                 <button class="primary" type="submit" asp-page-handler="Approve">Одобрить</button>
                                 <button class="danger" type="submit" asp-page-handler="Reject">Отклонить</button>
                             </form>

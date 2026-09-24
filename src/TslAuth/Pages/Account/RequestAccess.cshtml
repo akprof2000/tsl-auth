@@ -4,7 +4,7 @@
 @{ ViewData["Title"] = L["request.title"]; }
 
 <div class="card">
-    <h2 style="margin-top:0">@(Model.AppClientId is null ? L["request.title"] : L.Get("request.forApp", Model.AppClientId))</h2>
+    <h2>@(Model.AppClientId is null ? L["request.title"] : L.Get("request.forApp", Model.AppClientId))</h2>
     @if (Model.Message is not null) { <div class="alert ok">@L[Model.Message]</div> }
     <partial name="_Errors" />
 
@@ -24,7 +24,7 @@
             @foreach (var role in Model.Requestable)
             {
                 var has = Model.Assigned.Contains(role.Key);
-                <label class="inline" style="display:flex">
+                <label class="inline flex">
                     <input type="checkbox" name="Roles" value="@role.Key" disabled="@has" checked="@has" />
                     <span><b>@role.Title</b> <span class="badge">@role.AppTitle</span> @(has ? L["request.already"] : "")
                         <span class="muted small">@role.Description</span></span>

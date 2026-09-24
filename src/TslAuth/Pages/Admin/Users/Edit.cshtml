@@ -30,7 +30,7 @@
     <div asp-validation-summary="ModelOnly" class="validation-summary-errors"></div>
     <div class="grid2">
         <div class="card">
-            <h2 style="margin-top:0">Профиль</h2>
+            <h2>Профиль</h2>
             <label asp-for="UserName">Логин</label>
             <input asp-for="UserName" required disabled="@readOnly" />
             <label asp-for="Email">Email</label>
@@ -43,11 +43,11 @@
             {
                 <fieldset>
                     <legend>Как пользователь получит доступ</legend>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="invite" checked="@(Model.Onboarding == "invite")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="invite" checked="@(Model.Onboarding == "invite")" />
                         <span>Приглашение — пользователь сам задаст пароль по ссылке@(Model.EmailConfigured ? " (отправим на email)" : " (ссылку нужно передать вручную)")</span></label>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="temporary" checked="@(Model.Onboarding == "temporary")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="temporary" checked="@(Model.Onboarding == "temporary")" />
                         <span>Одноразовый пароль — будет сгенерирован и показан вам, при первом входе потребуется сменить</span></label>
-                    <label class="inline" style="display:flex"><input type="radio" name="Onboarding" value="password" checked="@(Model.Onboarding == "password")" />
+                    <label class="inline flex"><input type="radio" name="Onboarding" value="password" checked="@(Model.Onboarding == "password")" />
                         <span>Задать постоянный пароль:</span></label>
                     <input asp-for="Password" type="password" autocomplete="new-password" placeholder="только для варианта «постоянный пароль»" />
                 </fieldset>
@@ -65,7 +65,7 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-top:0">Роли в приложениях</h2>
+            <h2>Роли в приложениях</h2>
             <partial name="_RoleCheckboxes" model="@(("Roles", Model.AllRoles, Model.Roles, readOnly))" />
         </div>
     </div>

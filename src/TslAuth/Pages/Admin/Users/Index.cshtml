@@ -11,8 +11,8 @@
     }
 </div>
 
-<form method="get" class="row" style="margin-bottom:16px">
-    <input name="Search" value="@Model.Search" placeholder="Точный логин или email" style="max-width:360px" />
+<form method="get" class="row mb16">
+    <input name="Search" value="@Model.Search" placeholder="Точный логин или email" class="w-xl" />
     <button type="submit">Найти</button>
     @if (!string.IsNullOrEmpty(Model.Search)) { <a asp-page="Index">Сбросить</a> }
 </form>

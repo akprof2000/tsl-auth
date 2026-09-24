@@ -30,17 +30,10 @@
     <title>@(ViewData["Title"] is { } t ? $"{t} — " : "")TSL Auth</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <script src="~/js/site.js" asp-append-version="true" defer></script>
-    @if (!brand.IsEmpty)
+    @if (login is not null && BrandingCssModel.HasColors(brand))
     {
-        @* Значения цветов провалидированы (#RRGGBB), поэтому безопасно подставлять в CSS. *@
-        <style>
-            :root {
-                @if (brand.AccentColor is not null) { <text>--accent: @brand.AccentColor; --accent-text: #fff;</text> }
-                @if (brand.BackgroundColor is not null) { <text>--bg: @brand.BackgroundColor;</text> }
-                @if (brand.CardColor is not null) { <text>--surface: @brand.CardColor;</text> }
-                @if (brand.TextColor is not null) { <text>--text: @brand.TextColor;</text> }
-            }
-        </style>
+        @* Цвета приложения — отдельной таблицей стилей: CSP запрещает inline-стили (style-src 'self'). *@
+        <link rel="stylesheet" href="@BrandingCssModel.Href(login.ClientId, brand)" />
     }
 </head>
 <body>
@@ -120,7 +113,7 @@ else
                    class="@(lang.Culture.Equals(L.Culture, StringComparison.OrdinalIgnoreCase) ? "active" : "")" lang="@lang.Culture">@lang.Name</a>
             }
         </div>
-        <p class="small muted" style="text-align:center">@(brand.FooterText ?? L["footer.default"])</p>
+        <p class="small muted center">@(brand.FooterText ?? L["footer.default"])</p>
     </main>
 }
 </body>

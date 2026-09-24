@@ -83,3 +83,13 @@ pre.code { background: var(--code-bg); border-radius: var(--radius); padding: 12
 .brand-preview { border: 1px dashed var(--border); border-radius: var(--radius); padding: 24px; }
 fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px 12px; margin: 12px 0; }
 legend { font-weight: 600; padding: 0 4px; }
+/* Утилиты вместо inline-стилей: CSP страниц запрещает style="..." (style-src без 'unsafe-inline'). */
+.card > h2:first-child { margin-top: 0; }
+.mt0 { margin-top: 0; } .mb0 { margin-bottom: 0; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; } .mb16 { margin-bottom: 16px; }
+.center { text-align: center; }
+label.inline.flex { display: flex; }
+.w-xs { max-width: 120px; } .w-sm { max-width: 160px; } .w-md { max-width: 220px; } .w-lg { max-width: 300px; } .w-xl { max-width: 360px; }
+.code-lg { font-size: 20px; }
+.pre-wrap { white-space: pre-wrap; }
+textarea.tall { min-height: 420px; }
+ul.errors-list { margin: 0; padding-left: 18px; }

@@ -8,6 +8,8 @@
 #
 #   pwsh tests/resilience/run-resilience.ps1 -Mode single   # SQLite, docker-compose.yml
 #   pwsh tests/resilience/run-resilience.ps1 -Mode ha       # PostgreSQL + 3 узла + nginx, docker-compose.ha.yml
+# В кластере сценарии обращаются и к отдельным узлам, поэтому поверх docker-compose.ha.yml накладывается
+# docker-compose.ha-nodes.yml (узлы на 127.0.0.1:8081–8083; в штатной конфигурации узлы наружу не публикуются).
 param(
     [ValidateSet("single", "ha", "all")] [string]$Mode = "all",
     [string]$ClientId = "admin-cli",
@@ -23,6 +25,7 @@ $artifacts = Join-Path $root "tests/artifacts/resilience"
 New-Item -ItemType Directory -Force $artifacts | Out-Null
 $results = [System.Collections.Generic.List[object]]::new()
 $Lb = "http://localhost:8080"
+$HaCompose = @("-f", "docker-compose.ha.yml", "-f", "docker-compose.ha-nodes.yml")
 
 # ---------------------------------------------------------------- helpers
 function Wait-Ready([string]$url, [int]$timeoutSec = 90) {
@@ -122,7 +125,7 @@ function Scenario([string]$mode, [string]$name, [string]$expectation, [scriptblo
 # ---------------------------------------------------------------- single (SQLite)
 function Run-Single {
     Write-Host "`n##### Одиночный режим (SQLite) #####" -ForegroundColor Yellow
-    docker compose -f docker-compose.ha.yml down 2>&1 | Out-Null
+    docker compose @HaCompose down 2>&1 | Out-Null
     docker compose up -d 2>&1 | Out-Null
     Wait-Ready $Lb | Out-Null
     & pwsh -NoProfile -File samples/seed-demo.ps1 | Out-Null
@@ -146,7 +149,7 @@ function Run-Single {
 function Run-Ha {
     Write-Host "`n##### Кластер (PostgreSQL + 3 узла + nginx) #####" -ForegroundColor Yellow
     docker compose down 2>&1 | Out-Null
-    docker compose -f docker-compose.ha.yml up -d 2>&1 | Out-Null
+    docker compose @HaCompose up -d 2>&1 | Out-Null
     Wait-Ready $Lb | Out-Null; foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://localhost:$p" | Out-Null }
     & pwsh -NoProfile -File samples/seed-demo.ps1 | Out-Null
     Ensure-PublicClient $Lb

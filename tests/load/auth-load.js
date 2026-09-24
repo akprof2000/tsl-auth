@@ -1,7 +1,8 @@
 // Нагрузочный тест TSL Auth (k6). Запуск: tests/load/run-load.ps1
 //   BASE_URL      — адрес сервиса (по умолчанию http://host.docker.internal:8080)
 //   CLIENT_ID/SECRET — confidential-клиент с client_credentials (admin-cli)
-//   USER/PASSWORD/PUBLIC_CLIENT — пользователь и public-клиент с password grant
+//   USERS/PASSWORD/PUBLIC_CLIENT — пул пользователей (через запятую, один пароль) и public-клиент с password grant;
+//                    USER — один пользователь, если пул не задан
 //   DURATION, VUS — длительность и число виртуальных пользователей на сценарий
 import http from "k6/http";
 import { check, sleep } from "k6";
@@ -11,6 +12,11 @@ const BASE = __ENV.BASE_URL || "http://host.docker.internal:8080";
 const DURATION = __ENV.DURATION || "60s";
 const VUS = Number(__ENV.VUS || 20);
 const form = { headers: { "Content-Type": "application/x-www-form-urlencoded" } };
+// Каждый VU входит своим пользователем из пула: при одном пользователе на всех тест мерил бы конкуренцию
+// за одну учётную запись (блокировки строк, счётчик неудачных входов, тысячи сессий у одного человека),
+// а не поведение сервиса под нагрузкой от разных людей.
+const USERS = (__ENV.USERS || __ENV.USER || "alice").split(",").map((u) => u.trim()).filter(Boolean);
+const userOf = () => USERS[(__VU - 1) % USERS.length];
 
 const tokenLatency = new Trend("token_client_credentials_ms", true);
 const loginLatency = new Trend("token_password_ms", true);
@@ -48,8 +54,8 @@ function adminToken() {
 }
 
 export function setup() {
-  const login = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: __ENV.USER, password: __ENV.PASSWORD,
-    scope: "openid offline_access" });
+  const login = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: USERS[0], password: __ENV.PASSWORD,
+    scope: "openid" });
   check(login, { "setup login ok": (r) => r.status === 200 });
   return { admin: adminToken() };
 }
@@ -60,9 +66,10 @@ export function clientCredentials() {
   errors.add(!check(r, { "cc 200": (x) => x.status === 200 && !!x.json("access_token") }));
 }
 
+// Без offline_access: каждый вход иначе оставлял бы в БД новую refresh-сессию до истечения её срока.
 export function passwordLogin() {
-  const r = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: __ENV.USER, password: __ENV.PASSWORD,
-    scope: "openid offline_access" });
+  const r = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: userOf(), password: __ENV.PASSWORD,
+    scope: "openid" });
   loginLatency.add(r.timings.duration);
   errors.add(!check(r, { "login 200": (x) => x.status === 200 }));
   sleep(0.2);
@@ -72,7 +79,7 @@ export function passwordLogin() {
 let refreshToken = null;
 export function refresh() {
   if (!refreshToken) {
-    const l = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: __ENV.USER, password: __ENV.PASSWORD,
+    const l = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: userOf(), password: __ENV.PASSWORD,
       scope: "openid offline_access" });
     refreshToken = l.json("refresh_token");
     return;

@@ -169,8 +169,10 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
         var query = db.AuditEntries.AsNoTracking().AsQueryable();
-        if (q.From is { } from) query = query.Where(e => e.OccurredAt >= from);
-        if (q.To is { } to) query = query.Where(e => e.OccurredAt <= to);
+        // Время из query-строки API приходит без зоны (Kind=Unspecified): PostgreSQL (timestamptz) такое отвергает,
+        // SQLite молча сравнивает строки. Нормализуем в UTC здесь, в одной точке для Admin API, App API и страниц.
+        if (q.From is { } from) { var f = AsUtc(from); query = query.Where(e => e.OccurredAt >= f); }
+        if (q.To is { } to) { var t = AsUtc(to); query = query.Where(e => e.OccurredAt <= t); }
         if (!string.IsNullOrWhiteSpace(q.Type)) query = query.Where(e => e.Type.StartsWith(q.Type));
         if (q.MinSeverity is { } sev) query = query.Where(e => e.Severity >= sev);
         if (!string.IsNullOrWhiteSpace(q.ClientId)) query = query.Where(e => e.ClientId == q.ClientId);
@@ -241,4 +243,12 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
         var name = user.Identity?.Name ?? user.GetClaim(Claims.PreferredUsername);
         return ($"user:{id}", name);
     }
+
+    /// <summary>Время без зоны считается UTC (так документирован API), локальное переводится в UTC.</summary>
+    internal static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+    };
 }

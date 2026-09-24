@@ -37,9 +37,17 @@ public sealed class ApiAuditFilter(string type) : IEndpointFilter
         }
         finally
         {
-            // Пишем и при исключении (как 500). Для App API приложение — это сам вызывающий клиент (sub токена),
-            // для Admin API — clientId из маршрута.
-            var status = error is not null ? 500 : (result as IStatusCodeHttpResult)?.StatusCode ?? http.Response.StatusCode;
+            // Пишем и при исключении. Ошибки бизнес-логики (AdminException: 400/404/409) и некорректные запросы —
+            // со своим кодом и уровнем Info: иначе каждая опечатка в API попадала бы в журнал как сбой (500)
+            // с немедленным security.alert. Warning и алерт — только для настоящих сбоев (5xx).
+            // Для App API приложение — это сам вызывающий клиент (sub токена), для Admin API — clientId из маршрута.
+            var status = error switch
+            {
+                null => (result as IStatusCodeHttpResult)?.StatusCode ?? http.Response.StatusCode,
+                AdminException admin => admin.StatusCode,
+                BadHttpRequestException bad => bad.StatusCode,
+                _ => StatusCodes.Status500InternalServerError
+            };
             var clientId = type == AuditTypes.AppApiChange ? http.User.GetClaim(Claims.Subject)
                 : http.Request.RouteValues.TryGetValue("clientId", out var c) ? c?.ToString() : null;
             Guid? userId = http.Request.RouteValues.TryGetValue("id", out var id) && Guid.TryParse(id?.ToString(), out var g) ? g : null;

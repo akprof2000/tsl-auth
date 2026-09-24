@@ -52,12 +52,14 @@
                 <input asp-for="HookUrl" placeholder="https://chat.tsl.local/hooks/xxxx" required />
                 <label asp-for="Secret">Секрет подписи @(Model.Id is null ? "" : "(пусто — не менять)")</label>
                 <input asp-for="Secret" type="password" autocomplete="off" />
-                <label>События</label>
-                <label class="inline"><input type="checkbox" name="Events" value="*" checked="@Model.Events.Contains("*")" /> все</label>
-                @foreach (var e in WebhookEvents.All)
-                {
-                    <label class="inline"><input type="checkbox" name="Events" value="@e" checked="@Model.Events.Contains(e)" /> @e</label>
-                }
+                <fieldset class="plain">
+                    <legend>События</legend>
+                    <label class="inline"><input type="checkbox" name="Events" value="*" checked="@Model.Events.Contains("*")" /> все</label>
+                    @foreach (var e in WebhookEvents.All)
+                    {
+                        <label class="inline"><input type="checkbox" name="Events" value="@e" checked="@Model.Events.Contains(e)" /> @e</label>
+                    }
+                </fieldset>
                 <label class="inline"><input asp-for="IsEnabled" /> Включена</label>
                 <div class="actions">
                     <button class="primary" type="submit">Сохранить</button>

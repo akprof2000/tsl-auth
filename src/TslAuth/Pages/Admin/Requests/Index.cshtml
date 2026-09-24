@@ -33,7 +33,7 @@ else
                         {
                             <form method="post" class="row" asp-route-status="@Model.Status">
                                 <input type="hidden" name="requestId" value="@r.Id" />
-                                <input name="comment" placeholder="Комментарий (необязательно)" class="w-md" />
+                                <input name="comment" placeholder="Комментарий (необязательно)" class="w-md" aria-label="Комментарий к решению по заявке @r.UserName" />
                                 <button class="primary" type="submit" asp-page-handler="Approve">Одобрить</button>
                                 <button class="danger" type="submit" asp-page-handler="Reject">Отклонить</button>
                             </form>

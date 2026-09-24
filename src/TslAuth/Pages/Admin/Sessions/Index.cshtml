@@ -9,7 +9,8 @@
 </p>
 
 <form method="get" class="row mb16">
-    <input name="ClientId" value="@Model.ClientId" placeholder="Фильтр по client_id" class="w-lg" />
+    <label for="session-client" class="visually-hidden">Фильтр по client_id</label>
+    <input id="session-client" name="ClientId" value="@Model.ClientId" placeholder="Фильтр по client_id" class="w-lg" />
     <button type="submit">Показать</button>
 </form>
 

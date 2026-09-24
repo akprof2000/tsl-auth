@@ -27,7 +27,8 @@
         @if (Model.CanManage)
         {
             <form method="get" class="row mt12">
-                <input name="Culture" placeholder="код нового языка, напр. kk" class="w-md" required />
+                <label for="new-culture" class="visually-hidden">Код нового языка</label>
+                <input id="new-culture" name="Culture" placeholder="код нового языка, напр. kk" class="w-md" required />
                 <button type="submit">Добавить язык</button>
             </form>
         }

@@ -26,11 +26,13 @@
         <form method="post" asp-page-handler="Create">
             <label for="Name">@L["tokens.name"]</label>
             <input asp-for="Name" placeholder="@L["tokens.namePlaceholder"]" required maxlength="100" />
-            <label>@L["tokens.apps"]</label>
-            @foreach (var app in Model.Available)
-            {
-                <label class="inline"><input type="checkbox" name="Audiences" value="@app" checked="@Model.Audiences.Contains(app)" /> @app</label>
-            }
+            <fieldset class="plain">
+                <legend>@L["tokens.apps"]</legend>
+                @foreach (var app in Model.Available)
+                {
+                    <label class="inline"><input type="checkbox" name="Audiences" value="@app" checked="@Model.Audiences.Contains(app)" /> @app</label>
+                }
+            </fieldset>
             <label for="ExpiresInDays">@L["tokens.expires"] (≤ @Model.Policy.MaxLifetimeDays)</label>
             <input asp-for="ExpiresInDays" type="number" min="1" max="@Model.Policy.MaxLifetimeDays" />
             <div class="actions"><button class="primary" type="submit">@L["tokens.create"]</button></div>

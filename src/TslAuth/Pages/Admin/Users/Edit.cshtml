@@ -49,7 +49,8 @@
                         <span>Одноразовый пароль — будет сгенерирован и показан вам, при первом входе потребуется сменить</span></label>
                     <label class="inline flex"><input type="radio" name="Onboarding" value="password" checked="@(Model.Onboarding == "password")" />
                         <span>Задать постоянный пароль:</span></label>
-                    <input asp-for="Password" type="password" autocomplete="new-password" placeholder="только для варианта «постоянный пароль»" />
+                    <input asp-for="Password" type="password" autocomplete="new-password" placeholder="только для варианта «постоянный пароль»"
+                           aria-label="Постоянный пароль" />
                 </fieldset>
             }
             else

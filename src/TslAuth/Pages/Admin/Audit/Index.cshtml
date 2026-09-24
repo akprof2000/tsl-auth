@@ -16,7 +16,8 @@
     <a class="btn" asp-page="Index" asp-page-handler="Csv" asp-all-route-data="query">Выгрузить CSV (до 1000 строк)</a>
 </div>
 
-<form method="get" class="card row">
+<form method="get" class="card row filters">
+    <label>Тип события
     <select name="Type" class="w-md">
         <option value="">все типы</option>
         @foreach (var group in Model.Types.Select(t => t.Split('.')[0] + ".").Distinct())
@@ -27,21 +28,23 @@
         {
             <option value="@t" selected="@(Model.Type == t)">@t</option>
         }
-    </select>
+    </select></label>
+    <label>Уровень
     <select name="MinSeverity" class="w-sm">
         <option value="">любой уровень</option>
         <option value="Warning" selected="@(Model.MinSeverity == AuditSeverity.Warning)">warning+</option>
         <option value="Critical" selected="@(Model.MinSeverity == AuditSeverity.Critical)">critical</option>
-    </select>
+    </select></label>
+    <label>Результат
     <select name="Success" class="w-sm">
         <option value="">любой результат</option>
         <option value="true" selected="@(Model.Success == true)">успешно</option>
         <option value="false" selected="@(Model.Success == false)">неуспешно</option>
-    </select>
-    <input name="ClientId" value="@Model.ClientId" placeholder="client_id" class="w-sm" />
-    <input name="UserId" value="@Model.UserId" placeholder="id пользователя" class="w-lg" />
-    <input name="From" type="datetime-local" value="@Model.FromValue" class="w-md" />
-    <input name="To" type="datetime-local" value="@Model.ToValue" class="w-md" />
+    </select></label>
+    <label>Приложение <input name="ClientId" value="@Model.ClientId" placeholder="client_id" class="w-sm" /></label>
+    <label>Пользователь <input name="UserId" value="@Model.UserId" placeholder="id пользователя" class="w-lg" /></label>
+    <label>С (UTC) <input name="From" type="datetime-local" value="@Model.FromValue" class="w-md" /></label>
+    <label>По (UTC) <input name="To" type="datetime-local" value="@Model.ToValue" class="w-md" /></label>
     <button class="primary" type="submit">Показать</button>
     <a asp-page="Index">Сбросить</a>
 </form>

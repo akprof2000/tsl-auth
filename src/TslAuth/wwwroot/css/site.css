@@ -95,3 +95,12 @@ textarea.tall { min-height: 420px; }
 ul.errors-list { margin: 0; padding-left: 18px; }
 ul.account-links { padding-left: 18px; }
 ul.account-links li { margin: 6px 0; }
+/* Группы флажков/переключателей: fieldset + legend вместо «подписи» <label> без поля; выглядит как обычная подпись. */
+fieldset.plain { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+fieldset.plain > legend, .field-title { display: block; font-weight: 600; padding: 0; margin: 0 0 4px; }
+.field-title { margin-top: 12px; }
+/* Фильтры: подпись над полем, мелким шрифтом. */
+form.filters > label { margin: 0; font-weight: 400; font-size: 13px; color: var(--muted); }
+form.filters > label > input, form.filters > label > select { display: block; margin-top: 2px; }
+/* Подпись для программ чтения с экрана, когда видимая подпись не нужна (поле поиска с кнопкой рядом). */
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

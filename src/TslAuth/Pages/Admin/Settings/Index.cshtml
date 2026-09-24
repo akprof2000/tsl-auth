@@ -104,12 +104,13 @@
                         <tr>
                             <td><code>@type</code></td>
                             <td><input type="number" min="1" max="3650" name="Retention[@type]" value="@Model.Retention.GetValueOrDefault(type)"
-                                       placeholder="@Model.AuditRetentionDays" class="w-xs" disabled="@disabled" /></td>
+                                       placeholder="@Model.AuditRetentionDays" class="w-xs" disabled="@disabled"
+                                       aria-label="Срок хранения @type, дней" /></td>
                         </tr>
                     }
                     <tr>
-                        <td><input asp-for="NewType" placeholder="новое правило, напр. auth." disabled="@disabled" /></td>
-                        <td><input asp-for="NewDays" type="number" min="1" max="3650" class="w-xs" disabled="@disabled" /></td>
+                        <td><input asp-for="NewType" placeholder="новое правило, напр. auth." disabled="@disabled" aria-label="Тип или префикс нового правила" /></td>
+                        <td><input asp-for="NewDays" type="number" min="1" max="3650" class="w-xs" disabled="@disabled" aria-label="Срок хранения по новому правилу, дней" /></td>
                     </tr>
                 </table>
             </div>

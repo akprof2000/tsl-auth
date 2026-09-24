@@ -45,34 +45,40 @@
     <div class="grid2">
         <div class="card">
             <h2>Клиент</h2>
-            <label>client_id</label>
             @if (Model.IsNew)
             {
+                <label asp-for="NewClientId">client_id</label>
                 <input asp-for="NewClientId" placeholder="orders-web" required />
                 <p class="small muted">Также станет именем scope и audience для обращения к этому приложению как к API.</p>
             }
             else
             {
+                <div class="field-title">client_id</div>
                 <code>@Model.ClientId</code>
             }
 
             <label asp-for="DisplayName">Название</label>
             <input asp-for="DisplayName" disabled="@readOnly" />
 
-            <label>Тип клиента</label>
-            <label class="inline"><input type="radio" asp-for="ClientType" value="confidential" disabled="@readOnly" /> confidential — серверное приложение с секретом</label>
-            <label class="inline"><input type="radio" asp-for="ClientType" value="public" disabled="@readOnly" /> public — SPA / мобильное / десктоп (без секрета)</label>
+            <fieldset class="plain">
+                <legend>Тип клиента</legend>
+                <label class="inline"><input type="radio" asp-for="ClientType" id="ClientType-confidential" value="confidential" disabled="@readOnly" /> confidential — серверное приложение с секретом</label>
+                <label class="inline"><input type="radio" asp-for="ClientType" id="ClientType-public" value="public" disabled="@readOnly" /> public — SPA / мобильное / десктоп (без секрета)</label>
+            </fieldset>
 
-            <label>Разрешённые потоки</label>
-            @foreach (var (grant, info) in grantInfo)
-            {
-                <label class="inline flex">
-                    <input type="checkbox" name="GrantTypes" value="@grant" checked="@Model.GrantTypes.Contains(grant)" disabled="@readOnly" />
-                    <span><code>@(grant == AppGrantTypes.TokenExchange ? "token_exchange" : grant)</code> <span class="muted small">— @info</span></span>
-                </label>
-            }
+            <fieldset class="plain">
+                <legend>Разрешённые потоки</legend>
+                @foreach (var (grant, info) in grantInfo)
+                {
+                    <label class="inline flex">
+                        <input type="checkbox" name="GrantTypes" value="@grant" checked="@Model.GrantTypes.Contains(grant)" disabled="@readOnly" />
+                        <span><code>@(grant == AppGrantTypes.TokenExchange ? "token_exchange" : grant)</code> <span class="muted small">— @info</span></span>
+                    </label>
+                }
+            </fieldset>
 
-            <label>App API</label>
+            <fieldset class="plain">
+            <legend>App API</legend>
             <label class="inline flex">
                 <input type="checkbox" asp-for="SelfManagement" disabled="@readOnly" />
                 <span>Самоуправление — приложение само управляет своими пользователями, ролями и матрицей через
@@ -83,6 +89,7 @@
                 <span>Самостоятельная регистрация — на странице входа появится «Зарегистрироваться»; пользователь запрашивает
                     роли, отмеченные в матрице как «запрашиваемые», и получает их после одобрения</span>
             </label>
+            </fieldset>
         </div>
 
         <div class="card">
@@ -93,12 +100,14 @@
             <label asp-for="PostLogoutRedirectUris">Post-logout redirect URIs</label>
             <textarea asp-for="PostLogoutRedirectUris" placeholder="https://orders.local/" disabled="@readOnly"></textarea>
 
-            <label>Разрешённые scopes</label>
-            <p class="small muted mt0"><code>openid</code> и <code>offline_access</code> разрешены всегда. Scope другого приложения даёт доступ к его API (audience + права из его матрицы).</p>
-            @foreach (var scope in Model.AvailableScopes)
-            {
-                <label class="inline"><input type="checkbox" name="Scopes" value="@scope" checked="@Model.Scopes.Contains(scope)" disabled="@readOnly" /> @scope</label>
-            }
+            <fieldset class="plain">
+                <legend>Разрешённые scopes</legend>
+                <p class="small muted mt0"><code>openid</code> и <code>offline_access</code> разрешены всегда. Scope другого приложения даёт доступ к его API (audience + права из его матрицы).</p>
+                @foreach (var scope in Model.AvailableScopes)
+                {
+                    <label class="inline"><input type="checkbox" name="Scopes" value="@scope" checked="@Model.Scopes.Contains(scope)" disabled="@readOnly" /> @scope</label>
+                }
+            </fieldset>
         </div>
     </div>
 

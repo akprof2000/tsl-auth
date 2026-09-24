@@ -16,9 +16,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:35d40304542c8689331f8cab17c65926cdf48fe711e289321d71924b230a7d29 AS build
 WORKDIR /src
 COPY src/TslAuth/TslAuth.csproj src/TslAuth/
-RUN dotnet restore src/TslAuth/TslAuth.csproj -r linux-x64
+# Кэш пакетов NuGet — в cache mount BuildKit: при изменении csproj пакеты не скачиваются заново,
+# а в слои образа кэш не попадает. publish монтирует тот же кэш, т.к. идёт с --no-restore.
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet restore src/TslAuth/TslAuth.csproj -r linux-x64
 COPY src/TslAuth/ src/TslAuth/
-RUN dotnet publish src/TslAuth/TslAuth.csproj -c Release -r linux-x64 --self-contained false --no-restore -o /out \
+RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
+    dotnet publish src/TslAuth/TslAuth.csproj -c Release -r linux-x64 --self-contained false --no-restore -o /out \
     && rm -f /out/appsettings.Development.json \
     && mkdir -p /data
 
@@ -44,7 +48,10 @@ USER 1654:1654
 VOLUME /app/data
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
+# Каждая проверка запускает отдельный процесс .NET (десятки МБ) внутри лимита памяти контейнера,
+# поэтому в штатном режиме — раз в 30 с. На старте (start-period) проверки идут каждые 2 с
+# (--start-interval, Docker 25+; старые версии параметр игнорируют), чтобы healthy появлялся сразу.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --start-interval=2s --retries=3 \
     CMD ["dotnet", "/app/TslAuth.dll", "healthcheck"]
 
 # Восстановление доступа администратора (shell в образе нет):

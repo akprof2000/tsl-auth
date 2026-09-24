@@ -150,6 +150,7 @@
   "error.tokenExpiryInvalid": "Invalid token lifetime.",
   "error.tokensDisabled": "Personal access tokens are disabled by the administrator.",
   "error.generic": "The operation failed. Try again or contact the administrator.",
+  "error.notFound": "The requested item was not found — it may have been deleted already.",
 
   "tokens.title": "Personal access tokens",
   "tokens.intro": "Tokens for scripts and automated services (like GitHub). Exchange a token for a JWT: POST /connect/token, grant_type=urn:tsl:grant-type:pat, client_id=tsl-pat, token=<token>. The JWT never has more permissions than you currently have.",

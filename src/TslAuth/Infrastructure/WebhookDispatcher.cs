@@ -78,7 +78,7 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
     /// Одна попытка отправки. Результат (статус, ошибка, время следующей попытки) записывается в delivery;
     /// сохраняет вызывающий код.
     /// </summary>
-    private async Task SendAsync(WebhookDelivery delivery, CancellationToken ct)
+    internal async Task SendAsync(WebhookDelivery delivery, CancellationToken ct)
     {
         var dto = WebhookService.ToDto(delivery.Event);
         var body = JsonSerializer.Serialize(new

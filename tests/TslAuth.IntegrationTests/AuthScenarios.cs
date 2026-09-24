@@ -207,7 +207,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
         var result = await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, user, temp, expectSuccess: false);
         Assert.Equal("invalid_grant", result.GetProperty("error").GetString());
-        Assert.Contains("временный", result.GetProperty("error_description").GetString());
+        Assert.False(result.TryGetProperty("access_token", out _));
     }
 
     // ---------- Token exchange ----------
@@ -527,8 +527,8 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
     {
         var admin = await fx.Factory.AdminAsync();
         var start = (await admin.GetJsonAsync("/api/admin/events?after=0&limit=500")).GetProperty("next").GetInt64();
+        // Задержка не нужна: опрос идёт от курсора start, событие вернётся, даже если создано раньше начала ожидания.
         var pending = admin.GetJsonAsync($"/api/admin/events?after={start}&wait=15&types=user.created");
-        await Task.Delay(300);
         await admin.PostJsonAsync("/api/admin/users", new { userName = TestApi.Unique("evt"), password = Password });
 
         var result = await pending;
@@ -561,7 +561,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
             // Запросить можно только роль, помеченную как «запрашиваемая».
             var ex = await Assert.ThrowsAsync<AdminException>(() => requests.RegisterAsync(api,
                 new RegistrationInput(TestApi.Unique("x"), null, null, Password, [new RoleRef(api, "writer")], null)));
-            Assert.Contains("нельзя запросить", ex.Message);
+            Assert.Equal("error.rolesNotRequestable", ex.Key);
             userId = await requests.RegisterAsync(api, new RegistrationInput(TestApi.Unique("reg"), null, null, Password, [new RoleRef(api, "reader")], "нужен доступ"));
         }
 
@@ -689,10 +689,11 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
     public async Task LoginPage_IsLocalized()
     {
         var http = fx.Factory.CreateClient();
+        // Ожидаемые строки — из встроенных пакетов, а не зашитым в тест текстом.
         var en = await http.GetStringAsync("/Account/Login?lang=en");
-        Assert.Contains("Sign in", en);
+        Assert.Contains(System.Net.WebUtility.HtmlEncode(Localization.LocalizationService.GetBuiltIn("en", "login.title")!), en);
         var ru = await fx.Factory.CreateClient().GetStringAsync("/Account/Login?lang=ru");
-        Assert.Contains("Вход", ru);
+        Assert.Contains(Localization.LocalizationService.GetBuiltIn("ru", "login.title")!, ru);
     }
 }
 

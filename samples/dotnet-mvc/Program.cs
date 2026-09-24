@@ -133,9 +133,6 @@ async Task<IResult> Refresh(HttpContext ctx, IHttpClientFactory http, IConfigura
 }
 
 app.MapPost("/refresh", Refresh).RequireAuthorization().WithMetadata(new RequireAntiforgeryTokenAttribute());
-// Временно: GET /refresh открывает UI-тест (tests/TslAuth.UiTests, DotnetMvc_Oidc_Login_Authorization_Refresh).
-// Удалить, когда тест перейдёт на кнопку формы POST /refresh.
-app.MapGet("/refresh", Refresh).RequireAuthorization();
 
 app.MapGet("/health", () => "ok");
 app.Run();

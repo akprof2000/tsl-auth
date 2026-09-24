@@ -40,7 +40,7 @@ public sealed class IndexModel(WebhookService webhooks, UserManager<AppUser> use
         SubscriptionDto? saved = null;
         if (!await TryAsync(async () => saved = Id is { } id
                 ? await webhooks.UpdateSubscriptionAsync(id, input, ct)
-                : await webhooks.CreateSubscriptionAsync(input, $"user:{users.GetUserName(User)}", ct)))
+                : await webhooks.CreateSubscriptionAsync(input, $"user:{users.GetUserId(User)}", ct)))
         {
             // Только списки: введённые в форму значения не перезатираются сохранёнными.
             await LoadListsAsync(ct);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -210,23 +211,13 @@ public sealed class IssuerStartupCheck
     [Fact]
     public void H1_ServiceRefusesToStart_WithoutIssuer_OutsideDevelopment()
     {
-        var saved = (Issuer: Environment.GetEnvironmentVariable("Auth__Issuer"),
-            Env: Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            Key: Environment.GetEnvironmentVariable("Encryption__MasterKey"));
-        try
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
-            Environment.SetEnvironmentVariable("Auth__Issuer", "");
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Production");
-            Environment.SetEnvironmentVariable("Encryption__MasterKey", AuthFixture.MasterKey);
-            using var factory = new WebApplicationFactory<Program>();
-            var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-            Assert.Contains("Auth:Issuer", (ex.InnerException ?? ex).Message + ex.Message);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("Auth__Issuer", saved.Issuer);
-            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", saved.Env);
-            Environment.SetEnvironmentVariable("Encryption__MasterKey", saved.Key);
-        }
+            b.UseEnvironment("Production");
+            b.UseSetting("Auth:Issuer", "");
+            b.UseSetting("Encryption:MasterKey", AuthFixture.MasterKey);
+        });
+        var ex = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
+        Assert.Contains("Auth:Issuer", (ex.InnerException ?? ex).Message + ex.Message);
     }
 }

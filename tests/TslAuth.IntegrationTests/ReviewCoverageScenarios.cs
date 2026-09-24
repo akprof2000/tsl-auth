@@ -26,7 +26,7 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
-    private const string Password = "Cover4ge-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
 
     // ---------- Подготовка ----------
 
@@ -399,9 +399,10 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.True((await LoginAsync(fx.Factory.CreateClient(), client, api, name)).TryGetProperty("access_token", out _));
 
         // Ссылка одноразовая.
+        var another = TestApi.NewPassword();
         var again = await browser.PostAsync(page, new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["Uid"] = query["uid"]!, ["Token"] = query["token"]!, ["Password"] = "Another-Passw0rd!", ["Confirm"] = "Another-Passw0rd!",
+            ["Uid"] = query["uid"]!, ["Token"] = query["token"]!, ["Password"] = another, ["Confirm"] = another,
             ["__RequestVerificationToken"] = token
         }));
         Assert.NotEqual(HttpStatusCode.Redirect, again.StatusCode);
@@ -508,16 +509,17 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         using (var scope = fx.Factory.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<AuthDbContext>().Users.Where(u => u.Id == ownId)
                 .ExecuteUpdateAsync(u => u.SetProperty(x => x.EmailConfirmed, true));
+        var appSet = TestApi.NewPassword();
         await self.PutJsonAsync($"/api/app/users/{ownId}", new
         {
-            userName = own.GetProperty("userName").GetString(), email = $"{Guid.NewGuid():N}@it.local", password = "App-Set-Passw0rd!"
+            userName = own.GetProperty("userName").GetString(), email = $"{Guid.NewGuid():N}@it.local", password = appSet
         });
         using (var scope = fx.Factory.Services.CreateScope())
         {
             var user = await scope.ServiceProvider.GetRequiredService<AuthDbContext>().Users.AsNoTracking().FirstAsync(u => u.Id == ownId);
             Assert.False(user.EmailConfirmed);
             Assert.True(await scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<AppUser>>()
-                .CheckPasswordAsync(user, "App-Set-Passw0rd!"));
+                .CheckPasswordAsync(user, appSet));
         }
 
         // M14: постранично с общим числом в заголовке.
@@ -581,7 +583,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         await using (await WithSettingsAsync(admin, s => Section(s, "passwordPolicy")["historyCount"] = 2))
         {
             for (var i = 0; i < 5; i++)
-                (await admin.PostAsJsonAsync($"/api/admin/users/{userId}/password", new { password = $"Hist0ry-Passw0rd-{i}!" })).EnsureSuccessStatusCode();
+                (await admin.PostAsJsonAsync($"/api/admin/users/{userId}/password", new { password = TestApi.NewPassword() })).EnsureSuccessStatusCode();
         }
         using var scope = fx.Factory.Services.CreateScope();
         Assert.Equal(2, await scope.ServiceProvider.GetRequiredService<AuthDbContext>().PasswordHistory.CountAsync(h => h.UserId == userId));

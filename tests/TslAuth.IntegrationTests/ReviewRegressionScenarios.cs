@@ -19,7 +19,7 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
-    private const string Password = "Rev1ew-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
 
     // ---------- H1: ссылки в письмах не зависят от заголовка Host ----------
 

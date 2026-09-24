@@ -199,4 +199,10 @@ public static class TestApi
         : [v.GetString()!];
 
     public static string Unique(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..8]}";
+
+    /// <summary>
+    /// Пароль тестового пользователя, новый при каждом запуске: литералов-паролей в коде нет (сканеры секретов
+    /// не должны принимать тестовые данные за утечку), а политика паролей выполняется — есть все классы символов.
+    /// </summary>
+    public static string NewPassword() => $"Tst-{Guid.NewGuid():N}-9aZ!";
 }

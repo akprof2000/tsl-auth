@@ -17,7 +17,7 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
-    private const string Password = "C0de-Fl0w-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
     private const string RedirectUri = "https://app.example/cb";
     private const string PostLogoutUri = "https://app.example/";
 

@@ -205,7 +205,9 @@ public static class StartupInitializer
                      (SystemApp.ViewPermission, "Просмотр приложений, пользователей и сессий"),
                      (SystemApp.ManagePermission, "Изменение приложений, матриц доступа, пользователей и сессий"),
                      (SystemApp.EventsPermission, "Лента событий (long-polling/SSE) и управление подписками-вебхуками"),
-                     (SystemApp.PasswordResetPermission, "Бот: привязка мессенджера и сброс пароля пользователя")
+                     (SystemApp.PasswordResetPermission, "Бот: привязка мессенджера и сброс пароля пользователя"),
+                     (SystemApp.UserLockPermission, "Бот: блокировка и разблокировка учётной записи по команде"),
+                     (SystemApp.PasswordForcePermission, "Бот: принудительная смена пароля по команде")
                  })
         {
             if (matrix.Permissions.All(p => p.Name != name))
@@ -221,7 +223,11 @@ public static class StartupInitializer
                          new[] { SystemApp.ViewPermission, SystemApp.ManagePermission, SystemApp.EventsPermission }),
                      (SystemApp.AuditorRole, "Аудитор", "Только просмотр", new[] { SystemApp.ViewPermission }),
                      (SystemApp.NotifierRole, "Бот уведомлений", "Бот-уведомитель: только события", new[] { SystemApp.EventsPermission }),
-                     (SystemApp.ResetBotRole, "Бот сброса пароля", "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission })
+                     (SystemApp.ResetBotRole, "Бот сброса пароля", "Бот сброса пароля (мессенджер)", new[] { SystemApp.PasswordResetPermission }),
+                     (SystemApp.SecurityBotRole, "Бот безопасности", "Бот мессенджера: сброс пароля, блокировка, принудительная смена пароля",
+                         new[] { SystemApp.PasswordResetPermission, SystemApp.UserLockPermission, SystemApp.PasswordForcePermission }),
+                     (SystemApp.SecurityOfficerRole, "Офицер безопасности", "Через бота блокирует чужие учётные записи и требует смену пароля",
+                         new[] { SystemApp.UserLockPermission, SystemApp.PasswordForcePermission })
                  })
         {
             var existing = matrix.Roles.FirstOrDefault(r => r.Name == role);

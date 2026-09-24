@@ -270,6 +270,43 @@ public sealed class UserService(
                 .SetProperty(u => u.LastLoginAt, DateTime.UtcNow).SetProperty(u => u.MustChangePassword, true), ct)
             : db.Users.Where(u => u.Id == id).ExecuteUpdateAsync(s => s.SetProperty(u => u.LastLoginAt, DateTime.UtcNow), ct);
 
+    /// <summary>
+    /// Включает/отключает учётную запись. Отключение — как в <see cref="UpdateAsync"/>: security stamp меняется
+    /// (cookie админки перестаёт действовать), все сессии и refresh-токены отзываются. Включение заодно снимает
+    /// блокировку за неверные пароли. Возвращает false, если состояние уже было таким.
+    /// </summary>
+    public async Task<bool> SetActiveAsync(Guid id, bool active, CancellationToken ct = default)
+    {
+        var user = await Require(id);
+        if (user.IsActive == active) return false;
+        user.IsActive = active;
+        if (active)
+        {
+            user.LockoutEnd = null;
+            user.AccessFailedCount = 0;
+        }
+        Check(await users.UpdateAsync(user));
+        if (!active)
+        {
+            await users.UpdateSecurityStampAsync(user);
+            await sessions.RevokeBySubjectAsync(user.Id.ToString(), ct);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Требует сменить пароль при следующем входе и отзывает все сессии: текущий пароль остаётся,
+    /// но воспользоваться им можно только один раз — для установки нового.
+    /// </summary>
+    public async Task RequirePasswordChangeAsync(Guid id, CancellationToken ct = default)
+    {
+        var user = await Require(id);
+        user.MustChangePassword = true;
+        Check(await users.UpdateAsync(user));
+        await users.UpdateSecurityStampAsync(user);
+        await sessions.RevokeBySubjectAsync(user.Id.ToString(), ct);
+    }
+
     /// <summary>Снимает блокировку после неудачных попыток входа и сбрасывает счётчик.</summary>
     public async Task UnlockAsync(Guid id)
     {

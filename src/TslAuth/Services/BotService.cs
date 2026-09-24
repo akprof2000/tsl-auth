@@ -17,6 +17,15 @@ public sealed record BotLinkInput(string Provider, string ExternalId, string Cod
 /// <summary>Идентификация пользователя мессенджера: провайдер (например mattermost) + его внешний Id.</summary>
 public sealed record BotUserRef(string Provider, string ExternalId);
 
+/// <summary>
+/// Команда бота над учётной записью: отправитель (provider + externalId) и цель — логин или email.
+/// <c>Target</c> пустой — действие над собственной учётной записью отправителя.
+/// </summary>
+public sealed record BotTargetInput(string Provider, string ExternalId, string? Target = null);
+
+/// <summary>Результат команды блокировки/смены пароля: кто инициировал, над кем выполнено, изменилось ли состояние.</summary>
+public sealed record BotActionResult(string Action, string Actor, string UserName, bool Self, bool Changed);
+
 /// <summary>Результат сброса пароля через бота.</summary>
 /// <param name="Mode">"link" — ResetLink заполнена (отправьте пользователю лично); "temporary" — TemporaryPassword.</param>
 public sealed record BotResetResult(string Mode, string UserName, string? ResetLink, string? TemporaryPassword, DateTime ExpiresAt);
@@ -33,7 +42,8 @@ public sealed class BotService(
     AccountLinks links,
     SettingsService settings,
     AuditService audit,
-    WebhookService webhooks)
+    WebhookService webhooks,
+    AccessService access)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
     private const string ResetAuditType = "bot.password_reset";
@@ -147,6 +157,67 @@ public sealed class BotService(
         await webhooks.PublishAsync("security.alert", $"🔑 Сброс пароля {user.UserName} через бота {botClientId} ({provider}, режим {result.Mode}).",
             new { userId = user.Id, userName = user.UserName, bot = botClientId, provider, mode = result.Mode }, ct);
         return result;
+    }
+
+    /// <summary>
+    /// Блокировка учётной записи по команде в боте. Свою учётку («телефон украли») может заблокировать любой
+    /// привязанный пользователь; чужую — только имеющий разрешение user_lock в системном приложении.
+    /// </summary>
+    public Task<BotActionResult> LockAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.user_lock", SystemApp.UserLockPermission, allowSelf: true,
+            (user, c) => users.SetActiveAsync(user.Id, false, c),
+            user => $"🔒 Учётная запись {user.UserName} заблокирована через бота", ct);
+
+    /// <summary>Разблокировка (включение) учётной записи: только по разрешению user_lock — себя разблокировать нельзя.</summary>
+    public Task<BotActionResult> UnlockAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.user_unlock", SystemApp.UserLockPermission, allowSelf: false,
+            (user, c) => users.SetActiveAsync(user.Id, true, c),
+            user => $"🔓 Учётная запись {user.UserName} разблокирована через бота", ct);
+
+    /// <summary>
+    /// Принудительная смена пароля: сессии отзываются, при следующем входе потребуется новый пароль.
+    /// Для себя — любой привязанный пользователь, для других — разрешение password_force.
+    /// </summary>
+    public Task<BotActionResult> ForcePasswordChangeAsync(string botClientId, BotTargetInput input, CancellationToken ct = default) =>
+        ExecuteAsync(botClientId, input, "bot.password_force", SystemApp.PasswordForcePermission, allowSelf: true,
+            async (user, c) => { await users.RequirePasswordChangeAsync(user.Id, c); return true; },
+            user => $"🔑 Для {user.UserName} через бота потребована смена пароля", ct);
+
+    /// <summary>
+    /// Общий сценарий команд над учётной записью: отправитель обязан быть привязан и активен; цель — он сам
+    /// (если <paramref name="allowSelf"/>) или другой пользователь при наличии разрешения в tsl-auth-admin.
+    /// Каждое действие — запись аудита уровня Warning и событие security.alert для ботов-уведомителей.
+    /// </summary>
+    private async Task<BotActionResult> ExecuteAsync(string botClientId, BotTargetInput input, string auditType, string permission,
+        bool allowSelf, Func<AppUser, CancellationToken, Task<bool>> action, Func<AppUser, string> text, CancellationToken ct)
+    {
+        var provider = Provider(input.Provider);
+        var identity = await db.ExternalIdentities.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == input.ExternalId, ct);
+        if (identity is null)
+            throw AdminException.NotFound("Привязка мессенджера (пользователь должен сначала выполнить /link с кодом из личного кабинета)");
+        var actor = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == identity.UserId, ct) ?? throw AdminException.NotFound("Пользователь");
+        if (!actor.IsActive) throw new AdminException("Ваша учётная запись отключена.", StatusCodes.Status403Forbidden);
+
+        var target = string.IsNullOrWhiteSpace(input.Target) ? actor : await users.FindByLoginAsync(input.Target.Trim());
+        if (target is null) throw AdminException.NotFound("Пользователь");
+        var self = target.Id == actor.Id;
+
+        if (self && !allowSelf)
+            throw new AdminException("Эту команду нельзя применить к самому себе.", StatusCodes.Status403Forbidden);
+        if (!self && !await access.HasPermissionAsync(SubjectType.User, actor.Id.ToString(), SystemApp.ClientId, permission, ct))
+        {
+            await audit.WriteAsync(auditType, false, AuditSeverity.Warning, botClientId, actor.Id,
+                new { provider, target = target.UserName, reason = "forbidden" });
+            throw new AdminException("Недостаточно прав для действий над другими пользователями.", StatusCodes.Status403Forbidden);
+        }
+
+        var changed = await action(target, ct);
+        await audit.WriteAsync(auditType, true, AuditSeverity.Warning, botClientId, target.Id,
+            new { provider, actor = actor.UserName, self, changed });
+        await webhooks.PublishAsync("security.alert", $"{text(target)} (инициатор {actor.UserName}, бот {botClientId}).",
+            new { userId = target.Id, userName = target.UserName, actor = actor.UserName, bot = botClientId, provider, action = auditType }, ct);
+        return new BotActionResult(auditType, actor.UserName!, target.UserName!, self, changed);
     }
 
     /// <summary>Привязки пользователя (для страницы Account/Messenger).</summary>

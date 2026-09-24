@@ -440,6 +440,84 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Contains("/Account/ResetPassword?uid=", reset.GetProperty("resetLink").GetString());
     }
 
+    [Fact]
+    public async Task Bot_LockAndForcePasswordChange()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var (api, client) = await CreateAppsAsync(admin);
+        var (officerId, officer) = await CreateUserAsync(admin, api, "reader");
+        var (victimId, victim) = await CreateUserAsync(admin, api, "reader");
+        var (bystanderId, bystander) = await CreateUserAsync(admin, api, "reader");
+
+        // Бот безопасности: все три разрешения. Бот только со сбросом пароля в /lock не попадает.
+        var bot = TestApi.Unique("secbot");
+        var created = await admin.PostJsonAsync("/api/admin/applications", new
+        {
+            clientId = bot, clientType = "confidential", grantTypes = new[] { "client_credentials" }, scopes = new[] { SystemApp.ClientId }
+        });
+        await admin.PutJsonAsync($"/api/admin/applications/{bot}/service-roles", new[] { new { clientId = SystemApp.ClientId, role = SystemApp.ResetBotRole } });
+        var secret = created.GetProperty("clientSecret").GetString()!;
+        async Task<HttpClient> BotHttpAsync()
+        {
+            var token = await fx.Factory.CreateClient().TokenAsync(new()
+            {
+                ["grant_type"] = "client_credentials", ["client_id"] = bot, ["client_secret"] = secret, ["scope"] = SystemApp.ClientId
+            });
+            return fx.Factory.CreateClient().WithBearer(token.GetProperty("access_token").GetString()!);
+        }
+        var botHttp = await BotHttpAsync();
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1" })).StatusCode);
+        await admin.PutJsonAsync($"/api/admin/applications/{bot}/service-roles", new[] { new { clientId = SystemApp.ClientId, role = SystemApp.SecurityBotRole } });
+
+        // Привязываем офицера и обычного пользователя.
+        using (var scope = fx.Factory.Services.CreateScope())
+        {
+            var s = scope.ServiceProvider.GetRequiredService<BotService>();
+            var (c1, _) = await s.CreateLinkCodeAsync(officerId);
+            await botHttp.PostJsonAsync("/api/bot/link", new { provider = "chat", externalId = "o-1", code = c1 });
+            var (c2, _) = await s.CreateLinkCodeAsync(bystanderId);
+            await botHttp.PostJsonAsync("/api/bot/link", new { provider = "chat", externalId = "b-1", code = c2 });
+        }
+
+        // Без роли security-officer чужую учётку заблокировать нельзя.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1", target = victim })).StatusCode);
+        await admin.PutJsonAsync($"/api/admin/users/{officerId}/roles",
+            new[] { new { clientId = api, role = "reader" }, new { clientId = SystemApp.ClientId, role = SystemApp.SecurityOfficerRole } });
+
+        // Офицер блокирует: пользователь перестаёт входить, refresh отзывается.
+        var victimTokens = await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim);
+        var locked = await botHttp.PostJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.True(locked.GetProperty("changed").GetBoolean());
+        Assert.False(locked.GetProperty("self").GetBoolean());
+        Assert.False((await admin.GetJsonAsync($"/api/admin/users/{victimId}")).GetProperty("isActive").GetBoolean());
+        await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim, expectSuccess: false);
+        await RefreshAsync(fx.Factory.CreateClient(), client, victimTokens.GetProperty("refresh_token").GetString()!, expectSuccess: false);
+
+        // Себя разблокировать нельзя даже офицеру; чужого — можно.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/unlock", new { provider = "chat", externalId = "o-1" })).StatusCode);
+        var unlocked = await botHttp.PostJsonAsync("/api/bot/unlock", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.True(unlocked.GetProperty("changed").GetBoolean());
+        await PasswordGrantAsync(fx.Factory.CreateClient(), client, api, victim);
+
+        // Принудительная смена пароля: флаг выставлен, вход по паролю через password grant запрещён до смены.
+        var forced = await botHttp.PostJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "o-1", target = victim });
+        Assert.Equal(victim, forced.GetProperty("userName").GetString());
+        Assert.True((await admin.GetJsonAsync($"/api/admin/users/{victimId}")).GetProperty("mustChangePassword").GetBoolean());
+
+        // Обычный пользователь: только над собой. Самоблокировка — сценарий «телефон украли».
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "b-1", target = officer })).StatusCode);
+        var selfLock = await botHttp.PostJsonAsync("/api/bot/lock", new { provider = "chat", externalId = "b-1" });
+        Assert.True(selfLock.GetProperty("self").GetBoolean());
+        Assert.Equal(bystander, selfLock.GetProperty("userName").GetString());
+        // Заблокированный отправитель больше ничего не может.
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await botHttp.PostAsJsonAsync("/api/bot/force-password-change", new { provider = "chat", externalId = "b-1" })).StatusCode);
+    }
+
     // ---------- События ----------
 
     [Fact]

@@ -23,6 +23,18 @@ public static class SystemApp
     public const string PasswordResetPermission = "password_reset";
     public const string ResetBotRole = "reset-bot";
 
+    /// <summary>Блокировка/разблокировка учётной записи по команде в боте (для клиента бота и для пользователя-инициатора).</summary>
+    public const string UserLockPermission = "user_lock";
+
+    /// <summary>Принудительная смена пароля по команде в боте (для клиента бота и для пользователя-инициатора).</summary>
+    public const string PasswordForcePermission = "password_force";
+
+    /// <summary>Клиент бота безопасности: сброс, блокировка, принудительная смена пароля.</summary>
+    public const string SecurityBotRole = "security-bot";
+
+    /// <summary>Пользователь, которому разрешено через бота блокировать чужие учётки и требовать смену пароля.</summary>
+    public const string SecurityOfficerRole = "security-officer";
+
     /// <summary>Scope/audience App API — самоуправление приложений своими пользователями и ролями.</summary>
     public const string AppApiScope = "tsl-auth-app";
 }

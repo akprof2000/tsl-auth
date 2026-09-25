@@ -91,6 +91,21 @@
             <label asp-for="TokensRetentionHours">Истёкшие/отозванные токены, часов</label>
             <input asp-for="TokensRetentionHours" type="number" min="1" max="2160" disabled="@disabled" />
             <label class="inline"><input asp-for="AuditLogTokenRefresh" disabled="@disabled" /> Писать в журнал каждое обновление токена (refresh)</label>
+
+            <h2>Журналирование</h2>
+            <p class="small muted mt0">Глубина логов сервиса (stdout, Loki, OTLP) на всех узлах, без перезапуска.
+                Пусто — значения из конфигурации: по умолчанию <code>@Model.ConfigLogLevel</code>@(Model.ConfigLogOverrides.Length > 0 ? ", переопределения: " : "")<code>@Model.ConfigLogOverrides.Replace("\n", ", ")</code>.</p>
+            <label asp-for="LogLevel">Уровень по умолчанию</label>
+            <select asp-for="LogLevel" disabled="@disabled">
+                <option value="">из конфигурации</option>
+                @foreach (var level in LoggingSettings.Levels)
+                {
+                    <option value="@level">@level</option>
+                }
+            </select>
+            <label asp-for="LogOverrides">Переопределения по категориям (по одному на строку: <code>Категория=Уровень</code>)</label>
+            <textarea asp-for="LogOverrides" rows="4" disabled="@disabled"
+                      placeholder="Microsoft.AspNetCore=Information&#10;Serilog.AspNetCore.RequestLoggingMiddleware=Information&#10;TslAuth=Debug"></textarea>
         </div>
 
         <div class="card">

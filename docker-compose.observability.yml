@@ -1,0 +1,117 @@
+# Эталонный стенд мониторинга: Prometheus (метрики), Loki (логи), Tempo (трассировки), OpenTelemetry Collector
+# и Grafana с готовым дашбордом «TSL Auth». Накладывается на любой режим:
+#   docker compose -f docker-compose.yml    -f docker-compose.observability.yml up -d
+#   docker compose -f docker-compose.ha.yml -f docker-compose.observability.yml up -d   (+ OBS_PROMETHEUS_CONFIG, см. ниже)
+# Сервис подключается к стенду переменными в .env (см. .env.example, блок «Мониторинг»):
+#   OBS_PROMETHEUS_ENABLED=true  OBS_OTLP_ENDPOINT=http://otel-collector:4317  OBS_OTLP_METRICS=false  OBS_OTLP_LOGS=false
+#   OBS_LOKI_URL=http://loki:3100
+# Grafana: http://localhost:3000 (admin / OBS_GRAFANA_PASSWORD, по умолчанию admin — смените; просмотр без входа разрешён).
+# Prometheus: http://localhost:9090. Порты привязаны к 127.0.0.1 — стенд для внутреннего использования.
+# Образы для закрытого контура: scripts/export-images.ps1 -Observability.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5", compress: "true" }
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging: *logging
+
+services:
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.15.0
+    container_name: tsl-auth-prometheus
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-remote-write-receiver     # метрики из коллектора и span-метрики из Tempo
+    ports:
+      - "127.0.0.1:${OBS_PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      # Одиночный режим — prometheus.yml (цель auth:8080); кластер — OBS_PROMETHEUS_CONFIG=deploy/observability/prometheus-ha.yml.
+      - ${OBS_PROMETHEUS_CONFIG:-./deploy/observability/prometheus.yml}:/etc/prometheus/prometheus.yml:ro
+      - prometheus-token:/etc/prometheus
+      - prometheus-data:/prometheus
+    depends_on:
+      prometheus-token:
+        condition: service_completed_successfully
+    mem_limit: 512m
+
+  # Токен для опроса /metrics (OBS_PROMETHEUS_TOKEN) попадает в Prometheus файлом, а не через окружение.
+  prometheus-token:
+    image: prom/prometheus:v3.15.0
+    container_name: tsl-auth-prometheus-token
+    user: "65534:65534"
+    entrypoint: ["/bin/sh", "-c", "printf '%s' \"$$TOKEN\" > /etc/prometheus/token"]
+    environment:
+      TOKEN: "${OBS_PROMETHEUS_TOKEN:-}"
+    volumes:
+      - prometheus-token:/etc/prometheus
+    logging: *logging
+
+  loki:
+    <<: *hardening
+    image: grafana/loki:3.7.8
+    container_name: tsl-auth-loki
+    user: "10001:10001"
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./deploy/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    mem_limit: 512m
+
+  tempo:
+    <<: *hardening
+    image: grafana/tempo:2.10.8
+    container_name: tsl-auth-tempo
+    user: "10001:10001"
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./deploy/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    mem_limit: 512m
+
+  otel-collector:
+    <<: *hardening
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    container_name: tsl-auth-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on: [tempo, loki, prometheus]
+    mem_limit: 384m
+
+  grafana:
+    <<: *hardening
+    image: grafana/grafana:13.2.2
+    container_name: tsl-auth-grafana
+    user: "472:472"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${OBS_GRAFANA_PASSWORD:-admin}"
+      # Просмотр дашбордов без входа (только чтение) — стенд на 127.0.0.1; для общего сервера выключите.
+      GF_AUTH_ANONYMOUS_ENABLED: "${OBS_GRAFANA_ANONYMOUS:-true}"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${OBS_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus, loki, tempo]
+    mem_limit: 512m
+
+volumes:
+  prometheus-data:
+  prometheus-token:
+  loki-data:
+  tempo-data:
+  grafana-data:

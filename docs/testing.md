@@ -5,8 +5,8 @@ flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
     L["Нагрузка — k6<br/>tests/load"]
     UI["UI-автотесты — Playwright, 11 сценариев<br/>tests/TslAuth.UiTests"]
-    I["Интеграционные — 118: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, регрессии ревизии<br/>tests/TslAuth.IntegrationTests"]
-    U["Unit — 86<br/>tests/TslAuth.UnitTests"]
+    I["Интеграционные — 128: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, регрессии ревизии, мониторинг<br/>tests/TslAuth.IntegrationTests"]
+    U["Unit — 105<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
 ```
 
@@ -44,8 +44,8 @@ dotnet test tests/TslAuth.UiTests                        # скриншоты ш
 
 | Набор | Результат |
 |---|---|
-| Unit | 86 / 86 |
-| Интеграционные (SQLite + PostgreSQL) | 118 / 118 |
+| Unit | 105 / 105 |
+| Интеграционные (SQLite + PostgreSQL) | 128 / 128 |
 | UI (Playwright) | 11 / 11 |
 
 ### Нагрузка

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Serilog;
 using TslAuth.Api;
 using TslAuth.Infrastructure;
 using TslAuth.Options;
@@ -14,11 +15,15 @@ var isCli = AdminCli.IsCliCommand(args);
 
 // В режиме CLI аргументы не передаются в конфигурацию, иначе "admin ..." разбирались бы как ключи настроек.
 var builder = WebApplication.CreateBuilder(isCli ? [] : args);
+// appsettings.json из APPSETTINGS_PATH или из каталогов выше каталога приложения (см. ConfigFiles).
+var configFiles = ConfigFiles.Attach(builder);
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 // Вся регистрация сервисов — в Infrastructure/ServiceSetup.cs.
 builder.AddTslAuth(cli: isCli);
 
 var app = builder.Build();
+foreach (var source in configFiles)
+    app.Logger.LogInformation("Настройки: {Source}.", source);
 
 // Миграции, ключи токенов и начальные данные — до приёма запросов (в кластере — под advisory-lock).
 await StartupInitializer.RunAsync(app.Services);
@@ -31,6 +36,8 @@ if (isCli)
 var server = app.Configuration.GetSection(AuthServerOptions.Section).Get<AuthServerOptions>() ?? new AuthServerOptions();
 if (server.TrustForwardedHeaders)
     app.UseForwardedHeaders();
+// /metrics для Prometheus — сразу после forwarded headers (проверка подсети по реальному адресу), до всего остального.
+app.UseTslObservability(app.Services.GetRequiredService<ObservabilityOptions>());
 
 if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
@@ -41,6 +48,17 @@ if (server.RequireHttps)
 app.UseSecurityHeaders();
 app.UseMiddleware<ClientCorsMiddleware>();
 app.UseStaticFiles();
+// Одна строка на запрос (метод, путь, код, время) — категория Serilog.AspNetCore.RequestLoggingMiddleware,
+// по умолчанию Warning (только ошибки сервера); Information включается в настройках логирования при разборе проблем.
+app.UseSerilogRequestLogging(o =>
+{
+    // Логгер хоста, а не статический Log.Logger (он не используется — см. LoggingSetup).
+    o.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
+    o.GetLevel = (ctx, _, ex) =>
+        ex is not null || ctx.Response.StatusCode >= 500 ? Serilog.Events.LogEventLevel.Warning
+        : ObservabilitySetup.IsInfrastructure(ctx.Request.Path, "/metrics") ? Serilog.Events.LogEventLevel.Verbose
+        : Serilog.Events.LogEventLevel.Information;
+});
 app.UseMiddleware<TslAuth.Localization.LanguageMiddleware>();
 app.UseRouting();
 // После UseRouting: политики лимитов привязаны к конкретным эндпоинтам (метаданные маршрута).

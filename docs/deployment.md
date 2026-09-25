@@ -208,6 +208,13 @@ docker compose -f docker-compose.ha.yml -f docker-compose.ha-secrets.yml up -d
 Указанный, но отсутствующий файл — ошибка старта сервиса. Если `.env` при этом ещё содержит `BOOTSTRAP_ADMIN_PASSWORD`
 или `ENCRYPTION_MASTER_KEY`, оверлеи их обнуляют — действуют только файлы.
 
+## Мониторинг
+
+Метрики Prometheus, трассировки и логи по OTLP, логи в Loki включаются переменными `OBS_*` в `.env` (см.
+[конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry-loki)) и работают в обоих режимах; в кластере
+Prometheus опрашивает узлы напрямую внутри docker-сети. Эталонный стенд (Prometheus + Loki + Tempo + OTel Collector +
+Grafana с дашбордом) — оверлей `docker-compose.observability.yml`, см. [эксплуатацию](operations.md#эталонный-стенд-grafana).
+
 ## Закрытый контур (без интернета)
 
 ```mermaid
@@ -232,7 +239,8 @@ sequenceDiagram
 `postgres` и `nginx` в compose указаны тегами (`17-alpine`, `1.29-alpine`), а не digest: ссылка по digest после
 `docker load` находится не на всех версиях Docker, и запуск в закрытом контуре сорвался бы попыткой скачать образ.
 Какие именно образы перенесены, фиксирует `dist/tsl-auth-images-<версия>.txt` (ID и digest каждого).
-Без PostgreSQL (внешняя БД) или nginx комплект собирается с ключами `-NoPostgres` / `-NoNginx`.
+Без PostgreSQL (внешняя БД) или nginx комплект собирается с ключами `-NoPostgres` / `-NoNginx`;
+`-Observability` добавляет образы стенда мониторинга (Prometheus, Loki, Tempo, OpenTelemetry Collector, Grafana).
 
 ## Первичная настройка после установки
 

@@ -49,7 +49,8 @@ public sealed record AuditQuery(
 /// Пишут в журнал AuthorizationController, страницы Account/*, Admin/App API (через AuditHooks);
 /// читают — страница Admin/Audit и Admin API; чистит по срокам хранения TokenPruningService.
 /// </summary>
-public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccessor http, ILogger<AuditService> logger)
+public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccessor http, ILogger<AuditService> logger,
+    Infrastructure.TslAuthMetrics metrics)
     : BackgroundService
 {
     private static readonly string Instance = Environment.MachineName;
@@ -142,11 +143,18 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
             Details = details is null ? null : JsonSerializer.Serialize(details)
         };
 
+        // Счётчик метрик и событие в трассировке — до записи: они отражают факт, а не успех записи в БД.
+        metrics.AuditEvent(type, severity, success, clientId);
+
         if (severity == AuditSeverity.Info)
         {
-            if (!_queue.Writer.TryWrite(entry) && Interlocked.Increment(ref _dropped) % 1000 == 1)
-                logger.LogWarning("Очередь журнала переполнена (БД журнала не успевает): отброшено информационных событий: {Dropped}.",
-                    Interlocked.Read(ref _dropped));
+            if (!_queue.Writer.TryWrite(entry))
+            {
+                metrics.AuditDropped();
+                if (Interlocked.Increment(ref _dropped) % 1000 == 1)
+                    logger.LogWarning("Очередь журнала переполнена (БД журнала не успевает): отброшено информационных событий: {Dropped}.",
+                        Interlocked.Read(ref _dropped));
+            }
             return;
         }
 

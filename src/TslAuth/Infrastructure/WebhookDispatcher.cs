@@ -12,7 +12,8 @@ namespace TslAuth.Infrastructure;
 /// блокировка истекает и доставку подхватывает другой. Повторы — с экспоненциальной задержкой.
 /// Записи WebhookDeliveries создаёт WebhookService при публикации события; здесь — только отправка.
 /// </summary>
-public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFactory http, ILogger<WebhookDispatcher> logger)
+public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFactory http, ILogger<WebhookDispatcher> logger,
+    TslAuthMetrics metrics)
     : BackgroundService
 {
     public const string HttpClientName = "webhooks";
@@ -112,6 +113,7 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
                 delivery.Status = WebhookDeliveryStatus.Succeeded;
                 delivery.DeliveredAt = DateTime.UtcNow;
                 delivery.LastError = null;
+                metrics.WebhookDelivery("succeeded");
                 return;
             }
             delivery.LastError = $"HTTP {(int)response.StatusCode}";
@@ -123,6 +125,7 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
             delivery.LastError = ex.Message[..Math.Min(ex.Message.Length, 1000)];
         }
 
+        metrics.WebhookDelivery(delivery.Attempts >= MaxAttempts ? "failed" : "retry");
         if (delivery.Attempts >= MaxAttempts)
         {
             delivery.Status = WebhookDeliveryStatus.Failed;

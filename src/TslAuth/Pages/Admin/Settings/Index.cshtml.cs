@@ -13,8 +13,17 @@ namespace TslAuth.Pages.Admin.Settings;
 /// UserManager (автор изменений) и IServiceScopeFactory (для разового запуска TokenPruningService).
 /// </summary>
 public sealed class IndexModel(SettingsService settings, AuditService audit, UserManager<AppUser> users,
-    IServiceScopeFactory scopes) : AdminPageModel
+    IServiceScopeFactory scopes, LogLevels logLevels) : AdminPageModel
 {
+    /// <summary>Уровень логирования по умолчанию; пусто — из конфигурации.</summary>
+    [BindProperty] public string? LogLevel { get; set; }
+
+    /// <summary>Переопределения по категориям, по одному на строку: <c>Категория=Уровень</c>.</summary>
+    [BindProperty] public string? LogOverrides { get; set; }
+
+    public string ConfigLogLevel => logLevels.ConfigDefault;
+    public string ConfigLogOverrides => string.Join("\n", logLevels.ConfigOverrides.Select(o => $"{o.Key}={o.Value}"));
+
     [BindProperty] public int AuditRetentionDays { get; set; }
     [BindProperty] public bool AuditLogTokenRefresh { get; set; }
     [BindProperty] public int EventsRetentionDays { get; set; }
@@ -40,6 +49,8 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
         (AuditRetentionDays, AuditLogTokenRefresh, EventsRetentionDays, TokensRetentionHours) =
             (s.AuditRetentionDays, s.AuditLogTokenRefresh, s.EventsRetentionDays, s.TokensRetentionHours);
         (Passwords, Tokens, Pats, Bot) = (s.Passwords, s.Tokens, s.Pats, s.BotReset);
+        LogLevel = s.LoggingPolicy?.DefaultLevel;
+        LogOverrides = string.Join("\n", (s.LoggingPolicy?.Overrides ?? []).Select(o => $"{o.Key}={o.Value}"));
         var rules = s.EffectiveRetentionByType;
         await LoadTypesAsync(rules.Keys, ct);
         Retention = Types.ToDictionary(t => t, t => rules.TryGetValue(t, out var d) ? d : (int?)null);
@@ -62,9 +73,26 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
         var rules = Retention.Where(r => r.Value is not null).ToDictionary(r => r.Key, r => r.Value!.Value);
         if (!string.IsNullOrWhiteSpace(NewType) && NewDays is { } days) rules[NewType.Trim()] = days;
 
+        // Строки «Категория=Уровень» из textarea; строка без «=» — ошибка формы. Пустые поля — только конфигурация (null).
+        var overrides = new Dictionary<string, string>();
+        foreach (var line in (LogOverrides ?? "").Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = line.IndexOf('=');
+            if (eq <= 0)
+            {
+                ModelState.AddModelError("", $"Переопределение уровня «{line}»: ожидается Категория=Уровень.");
+                await LoadTypesAsync(Retention.Keys, ct);
+                return Page();
+            }
+            overrides[line[..eq].Trim()] = line[(eq + 1)..].Trim();
+        }
+        var logging = string.IsNullOrWhiteSpace(LogLevel) && overrides.Count == 0
+            ? null
+            : new LoggingSettings(string.IsNullOrWhiteSpace(LogLevel) ? null : LogLevel, overrides.Count == 0 ? null : overrides);
+
         var ok = await TryAsync(() => settings.SetAsync(
             new RuntimeSettings(AuditRetentionDays, AuditLogTokenRefresh, EventsRetentionDays, TokensRetentionHours, rules,
-                Passwords, Pats, Tokens, Bot),
+                Passwords, Pats, Tokens, Bot, logging),
             $"user:{users.GetUserName(User)}", ct));
         if (!ok)
         {

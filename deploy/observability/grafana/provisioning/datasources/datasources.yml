@@ -1,0 +1,51 @@
+# Источники данных Grafana эталонного стенда. Связи: из строки лога — в трассировку (по trace_id),
+# из span'а — в логи узла и в метрики (span metrics из Tempo).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          datasourceUid: tempo
+          matcherType: regex
+          matcherRegex: '"_?TraceId":"(\w+)"'   # sink Loki добавляет к служебному имени префикс «_»
+          url: "$${__value.raw}"
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        tags: [{ key: service.name, value: service }]
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags: [{ key: service.name, value: service }]
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: loki

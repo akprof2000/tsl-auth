@@ -321,7 +321,8 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
             var delivery = await db.WebhookDeliveries.Include(d => d.Subscription).Include(d => d.Event)
                 .FirstAsync(d => d.SubscriptionId == subscriptionId);
             var dispatcher = new WebhookDispatcher(fx.Factory.Services.GetRequiredService<IServiceScopeFactory>(),
-                new StubHttpClientFactory(capture), Microsoft.Extensions.Logging.Abstractions.NullLogger<WebhookDispatcher>.Instance);
+                new StubHttpClientFactory(capture), Microsoft.Extensions.Logging.Abstractions.NullLogger<WebhookDispatcher>.Instance,
+                fx.Factory.Services.GetRequiredService<TslAuthMetrics>());
             await dispatcher.SendAsync(delivery, CancellationToken.None);
             Assert.Equal(WebhookDeliveryStatus.Succeeded, delivery.Status);
         }

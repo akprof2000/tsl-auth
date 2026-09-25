@@ -111,7 +111,7 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
 /// (неверный секрет клиента, недопустимый grant/scope, отозванный refresh-токен и т.п.).
 /// Встраивается в конвейер OpenIddict через <see cref="Descriptor"/> (AddEventHandler в ServiceSetup).
 /// </summary>
-public sealed class TokenErrorAuditHandler(AuditService audit) : IOpenIddictServerHandler<ApplyTokenResponseContext>
+public sealed class TokenErrorAuditHandler(AuditService audit, TslAuthMetrics metrics) : IOpenIddictServerHandler<ApplyTokenResponseContext>
 {
     // Самый ранний порядок: обработчик должен увидеть ответ до того, как встроенные обработчики его отправят.
     public static OpenIddictServerHandlerDescriptor Descriptor { get; } =
@@ -124,6 +124,7 @@ public sealed class TokenErrorAuditHandler(AuditService audit) : IOpenIddictServ
     public async ValueTask HandleAsync(ApplyTokenResponseContext context)
     {
         if (string.IsNullOrEmpty(context.Response.Error)) return;
+        metrics.TokenRejected(context.Request?.GrantType, context.Response.Error, context.Request?.ClientId);
 
         // Неверные учётные данные клиента — повод насторожиться (подбор секрета).
         var severity = context.Response.Error is Errors.InvalidClient ? AuditSeverity.Warning : AuditSeverity.Info;

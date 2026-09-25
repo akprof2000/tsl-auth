@@ -88,6 +88,68 @@
 значение заставляет Kestrel читать ключ как зашифрованный, и сервис не стартует. Для PFX, наоборот, не задавайте
 `KeyPath`. Готовые конфигурации — `docker-compose.https.yml` (PEM) и `docker-compose.https-pfx.yml` (PFX).
 
+### Файл настроек вместо переменных
+
+Все параметры запуска — те же ключи в `appsettings.json` (`Observability__Loki__Url` ≡ `"Observability": { "Loki": { "Url": … } }`).
+Файл можно держать отдельно от образа:
+
+* смонтировать поверх `/app/appsettings.Production.json` — он накладывается на встроенный `appsettings.json`, достаточно
+  перечислить изменяемые ключи (пример со всеми разделами — `deploy/appsettings.Production.example.json`;
+  строка монтирования закомментирована в `docker-compose.yml`);
+* `APPSETTINGS_PATH=/etc/tsl-auth/appsettings.json` — явный путь к файлу (или к каталогу с `appsettings.json`);
+  указан, но файла нет — сервис не стартует;
+* если в каталоге приложения нет `appsettings.json`, он ищется в родительских каталогах до корня диска (то же для
+  `appsettings.{Environment}.json`) — удобно при запуске из `bin/` вне контейнера.
+
+Приоритет прежний: файлы → переменные окружения → аргументы командной строки. Откуда взяты файлы, сервис пишет в лог при старте.
+
+### Журналирование
+
+Логи пишет Serilog: в stdout контейнера, при необходимости — в файл, в Grafana Loki и по OTLP (см. [мониторинг](#мониторинг-prometheus-opentelemetry-loki)).
+Уровни по категориям задаются здесь как значения по умолчанию, а меняются на лету в админке
+(«Настройки» → «Журналирование») или через `PUT /api/admin/settings` — на всех узлах, без перезапуска.
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `Logging__LogLevel__Default` | `Information` | Уровень по умолчанию: `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`, `None` |
+| `Logging__LogLevel__<Категория>` | `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore`, `OpenIddict`, `Serilog.AspNetCore.RequestLoggingMiddleware` — `Warning` | Уровень для категории или её префикса (самое длинное совпадение). `Serilog.AspNetCore.RequestLoggingMiddleware=Information` включает строку на каждый HTTP-запрос (метод, путь, код, время) |
+| `Logging__Format` | `Text` | Формат консоли: `Text` — для чтения глазами, `Json` — одна строка на запись со всеми полями (для драйверов Docker, Promtail/Alloy, SIEM) |
+| `Logging__File__Path` | — | Журнал на диске (для запуска вне контейнера; в контейнере ротацию делает Docker). Шаблон `logs/tsl-auth-.log` → `tsl-auth-20260925.log`, при переполнении `…_001.log` |
+| `Logging__File__SizeLimitMb` | `20` | Размер, при котором начинается новый файл |
+| `Logging__File__RetainedFiles` | `5` | Сколько файлов всего держать на диске (текущий + архивы); старые удаляются |
+| `Logging__File__Compress` | `true` | Ротированные файлы сжимаются в `.gz` |
+
+Секция `Serilog` в `appsettings.json` тоже читается ([Serilog.Settings.Configuration](https://github.com/serilog/serilog-settings-configuration)) —
+через неё подключаются дополнительные приёмники (Seq, syslog, Elasticsearch) без пересборки.
+
+### Мониторинг (Prometheus, OpenTelemetry, Loki)
+
+Каждая подсистема включается отдельно и только когда подключена: метрики собираются, если задан экспорт в Prometheus
+или OTLP, трассировки — если задан OTLP-адрес, логи в Loki — если задан его адрес. Ничего не задано — накладных
+расходов нет. Что именно отправляется — в [эксплуатации](operations.md#мониторинг).
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `Observability__ServiceName` | `tsl-auth` | `service.name` во всех сигналах, метка `service` в Loki |
+| `Observability__InstanceId` | имя хоста | `service.instance.id` / метка `instance`; в кластере — `auth1`…`auth3` (hostname контейнера) |
+| `Observability__ResourceAttributes` | — | Дополнительные атрибуты ресурса: `deployment.environment=prod,dc=msk` |
+| `Observability__Prometheus__Enabled` | `false` | Эндпоинт `/metrics` для опроса Prometheus (на каждом узле) |
+| `Observability__Prometheus__Path` | `/metrics` | Путь эндпоинта |
+| `Observability__Prometheus__AllowedNetworks` | loopback и частные сети | Подсети (CIDR через запятую), откуда разрешён опрос; из других — 403 |
+| `Observability__Prometheus__Token`, `...TokenFile` | — | Bearer-токен для опроса (в Prometheus — `authorization.credentials`); без него — 401 |
+| `Observability__OpenTelemetry__Endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | Адрес коллектора или бэкенда OTLP: `http://otel-collector:4317` (gRPC) или `:4318` (HTTP). Пусто — OTLP выключен |
+| `Observability__OpenTelemetry__Protocol` | `grpc` | `grpc` или `http` (http/protobuf; пути `/v1/traces`, `/v1/metrics`, `/v1/logs` добавляются сами) |
+| `Observability__OpenTelemetry__Headers`, `...HeadersFile` | — | Заголовки запросов к коллектору: `Authorization=Bearer …,X-Scope-OrgID=team` |
+| `Observability__OpenTelemetry__Traces` / `Metrics` / `Logs` | `true` | Какие сигналы отправлять по OTLP (например, `Metrics=false`, если их забирает Prometheus, `Logs=false`, если логи идут в Loki напрямую) |
+| `Observability__OpenTelemetry__TraceSamplingRatio` | `1.0` | Доля трассируемых запросов (0–1); решение вышестоящего сервиса (`traceparent`) уважается |
+| `Observability__OpenTelemetry__MetricsExportIntervalSeconds` | `30` | Период отправки метрик по OTLP |
+| `Observability__Loki__Url` | — | Адрес Loki (`http://loki:3100`, push API — любая версия Loki). Пусто — выключено |
+| `Observability__Loki__Labels` | — | Статические метки потока: `env=prod,dc=msk` (метки `service`, `instance`, `level` добавляются всегда) |
+| `Observability__Loki__Tenant` | — | `X-Scope-OrgID` для multi-tenant Loki |
+| `Observability__Loki__Username`, `Password`, `PasswordFile` | — | Basic-аутентификация |
+| `Observability__Loki__MinimumLevel` | `Information` | Минимальный уровень отправляемых записей |
+| `Observability__Loki__BatchSize`, `PeriodSeconds`, `QueueLimit` | `500`, `2`, `10000` | Пакетная отправка; при недоступности Loki записи копятся в очереди, старые отбрасываются |
+
 ## Настройки в БД
 
 `GET/PUT /api/admin/settings` (JSON) — те же поля, что на странице «Настройки».
@@ -108,7 +170,8 @@
     "patAccessTokenMinutes": 15, "identityTokenMinutes": 15, "authorizationCodeMinutes": 5, "maxSessionDays": 90
   },
   "patPolicy": { "enabled": true, "maxLifetimeDays": 365, "maxTokensPerUser": 20 },
-  "botResetPolicy": { "enabled": true, "mode": "link", "maxPerUserPerHour": 3 }
+  "botResetPolicy": { "enabled": true, "mode": "link", "maxPerUserPerHour": 3 },
+  "loggingPolicy": { "defaultLevel": "Information", "overrides": { "Serilog.AspNetCore.RequestLoggingMiddleware": "Information", "TslAuth": "Debug" } }
 }
 ```
 
@@ -119,6 +182,7 @@
 | `tokenPolicy` | **Максимальные** сроки жизни. Приложение может задать меньше в своей карточке, клиент — запросить меньше параметрами `expires_in` / `refresh_expires_in`; больше — нельзя. `maxSessionDays` — абсолютный срок сессии: refresh продлевает токены не дольше этого числа дней от входа, дальше нужен новый вход (`0` — без ограничения). Пока политика не сохранена, сроки берутся из `Auth__*LifetimeMinutes/Days` (см. выше) |
 | `patPolicy` | Разрешены ли персональные токены, их максимальный срок и число на пользователя |
 | `botResetPolicy` | Сброс пароля через бота: `link` (одноразовая ссылка, бот не видит пароль) или `temporary` (временный пароль), лимит сбросов в час |
+| `loggingPolicy` | Глубина логирования поверх конфигурации: уровень по умолчанию и переопределения по категориям/префиксам (`null` или отсутствие поля — только конфигурация). Применяется на всех узлах за ≤ 35 с без перезапуска |
 
 ### Настройки на уровне приложения (карточка приложения / Admin API)
 

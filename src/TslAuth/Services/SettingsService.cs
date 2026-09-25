@@ -14,6 +14,7 @@ namespace TslAuth.Services;
 /// Срок хранения по типу события (дней). Ключ — тип или префикс ("auth." — вся группа);
 /// применяется самое длинное совпадение, иначе <paramref name="AuditRetentionDays"/>.
 /// </param>
+/// <param name="LoggingPolicy">Уровни логирования (глубина логов) поверх конфигурации; null — только конфигурация.</param>
 public sealed record RuntimeSettings(
     int AuditRetentionDays = 365,
     bool AuditLogTokenRefresh = false,
@@ -23,7 +24,8 @@ public sealed record RuntimeSettings(
     PasswordPolicy? PasswordPolicy = null,
     PatPolicy? PatPolicy = null,
     TokenPolicy? TokenPolicy = null,
-    BotResetPolicy? BotResetPolicy = null)
+    BotResetPolicy? BotResetPolicy = null,
+    LoggingSettings? LoggingPolicy = null)
 {
     // Вложенные политики nullable, чтобы JSON, сохранённый старой версией (без этих секций), читался без ошибок;
     // свойства ниже подставляют значения по умолчанию. [JsonIgnore]: вычисляемые свойства не должны попадать
@@ -70,7 +72,32 @@ public sealed record RuntimeSettings(
         Pats.Validate();
         Tokens.Validate();
         BotReset.Validate();
+        LoggingPolicy?.Validate();
         return this;
+    }
+}
+
+/// <summary>
+/// Уровни логирования, изменяемые без перезапуска (применяет <see cref="Infrastructure.LogLevelSyncService"/>).
+/// Уровни — как в ASP.NET Core: Trace, Debug, Information, Warning, Error, Critical, None.
+/// </summary>
+/// <param name="DefaultLevel">Уровень по умолчанию; null — из конфигурации (Logging:LogLevel:Default).</param>
+/// <param name="Overrides">Категория (или её префикс, например "Microsoft.AspNetCore") → уровень; поверх конфигурации.</param>
+public sealed record LoggingSettings(string? DefaultLevel = null, Dictionary<string, string>? Overrides = null)
+{
+    public static readonly string[] Levels = ["Trace", "Debug", "Information", "Warning", "Error", "Critical", "None"];
+
+    public void Validate()
+    {
+        if (DefaultLevel is not null && !Levels.Contains(DefaultLevel, StringComparer.OrdinalIgnoreCase))
+            throw new AdminException($"Уровень логирования «{DefaultLevel}»: допустимы {string.Join(", ", Levels)}.");
+        foreach (var (category, level) in Overrides ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(category) || category.Length > 200 || category.Any(char.IsWhiteSpace))
+                throw new AdminException("Категория логирования не должна быть пустой и содержать пробелы.");
+            if (!Levels.Contains(level, StringComparer.OrdinalIgnoreCase))
+                throw new AdminException($"Уровень логирования для «{category}»: допустимы {string.Join(", ", Levels)}.");
+        }
     }
 }
 

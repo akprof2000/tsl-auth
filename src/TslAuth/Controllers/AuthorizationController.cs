@@ -36,7 +36,8 @@ public sealed class AuthorizationController(
     TokenLifetimeService lifetimes,
     PatService pats,
     TokenPrincipalFactory principals,
-    Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery) : Controller
+    Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery,
+    Infrastructure.TslAuthMetrics metrics) : Controller
 {
     private const string Scheme = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme;
 
@@ -44,6 +45,7 @@ public sealed class AuthorizationController(
     private async Task<IActionResult> IssueAsync(ClaimsIdentity identity, string grant, string clientId, Guid? userId, string? actorName,
         object? extra = null)
     {
+        metrics.TokenIssued(grant, clientId);
         // Обновления токенов очень частые — их аудит отключаемый, чтобы не раздувать журнал.
         if (grant != GrantTypes.RefreshToken || (await settings.GetAsync()).AuditLogTokenRefresh)
         {

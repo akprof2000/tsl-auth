@@ -26,6 +26,13 @@ public static class ServiceSetup
         var services = builder.Services;
         var config = builder.Configuration;
 
+        // Журналирование (Serilog) и мониторинг (Prometheus/OTLP/Loki) — по секции Observability; в режиме CLI
+        // экспортёры метрик и трассировок не поднимаются: команда отработает и завершится.
+        var observability = ObservabilitySetup.Read(config);
+        builder.AddTslLogging(observability);
+        if (!cli) builder.AddTslObservability(observability);
+        else services.AddSingleton<TslAuthMetrics>();
+
         services.Configure<DatabaseOptions>(config.GetSection(DatabaseOptions.Section));
         services.Configure<AuthServerOptions>(config.GetSection(AuthServerOptions.Section));
         services.Configure<BootstrapOptions>(config.GetSection(BootstrapOptions.Section));
@@ -328,14 +335,14 @@ public static class ServiceSetup
     private static readonly string[] DefaultProxyNetworks =
         ["127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"];
 
-    /// <summary>Разбирает Auth:KnownNetworks (CIDR через запятую/точку с запятой); ошибка формата — отказ старта.</summary>
-    internal static List<System.Net.IPNetwork> ParseKnownNetworks(string? value)
+    /// <summary>Разбирает список подсетей (CIDR через запятую/точку с запятой); пусто — частные сети; ошибка формата — отказ старта.</summary>
+    internal static List<System.Net.IPNetwork> ParseKnownNetworks(string? value, string setting = "Auth:KnownNetworks")
     {
         var items = string.IsNullOrWhiteSpace(value)
             ? DefaultProxyNetworks
             : value.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return items.Select(item => System.Net.IPNetwork.TryParse(item, out var network)
             ? network
-            : throw new InvalidOperationException($"Auth:KnownNetworks: '{item}' — не CIDR (пример: 10.0.0.0/8, 172.18.0.0/16).")).ToList();
+            : throw new InvalidOperationException($"{setting}: '{item}' — не CIDR (пример: 10.0.0.0/8, 172.18.0.0/16).")).ToList();
     }
 }

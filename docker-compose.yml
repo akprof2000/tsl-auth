@@ -14,8 +14,8 @@ x-hardening: &hardening
   mem_limit: 512m
   cpus: 2
   logging:                            # ротация логов: переполнение диска логами — вектор отказа в обслуживании
-    driver: json-file
-    options: { max-size: "20m", max-file: "5" }
+    driver: json-file                   # 5 файлов по 20 МБ, ротированные сжимаются (gzip) — не более ~100 МБ на контейнер
+    options: { max-size: "20m", max-file: "5", compress: "true" }
 
 services:
   auth:
@@ -45,8 +45,26 @@ services:
       Smtp__Port: "${SMTP_PORT:-25}"
       Smtp__Security: "${SMTP_SECURITY:-None}"
       Smtp__From: "${SMTP_FROM:-TSL Auth <no-reply@tsl.local>}"
+      # Журналирование: уровень и формат консоли (Text | Json); глубина по категориям меняется в админке без перезапуска.
+      Logging__LogLevel__Default: "${LOG_LEVEL:-Information}"
+      Logging__Format: "${LOG_FORMAT:-Text}"
+      # Мониторинг (см. docs/operations.md): Prometheus — эндпоинт /metrics, OTLP — коллектор (трассировки, метрики,
+      # логи), Loki — логи напрямую. Пустой адрес / false — подсистема выключена и ресурсов не потребляет.
+      Observability__Prometheus__Enabled: "${OBS_PROMETHEUS_ENABLED:-false}"
+      Observability__Prometheus__Token: "${OBS_PROMETHEUS_TOKEN:-}"
+      Observability__OpenTelemetry__Endpoint: "${OBS_OTLP_ENDPOINT:-}"
+      Observability__OpenTelemetry__Protocol: "${OBS_OTLP_PROTOCOL:-grpc}"
+      Observability__OpenTelemetry__Headers: "${OBS_OTLP_HEADERS:-}"
+      Observability__OpenTelemetry__Traces: "${OBS_OTLP_TRACES:-true}"
+      Observability__OpenTelemetry__Metrics: "${OBS_OTLP_METRICS:-true}"
+      Observability__OpenTelemetry__Logs: "${OBS_OTLP_LOGS:-true}"
+      Observability__Loki__Url: "${OBS_LOKI_URL:-}"
+      Observability__Loki__Labels: "${OBS_LOKI_LABELS:-}"
+      Observability__ResourceAttributes: "${OBS_RESOURCE_ATTRIBUTES:-}"
     volumes:
       - auth-data:/app/data
+      # Настройки файлом вместо переменных: смонтируйте свой appsettings.Production.json (пример — deploy/appsettings.Production.example.json).
+      # - ./appsettings.Production.json:/app/appsettings.Production.json:ro
 
 volumes:
   auth-data:

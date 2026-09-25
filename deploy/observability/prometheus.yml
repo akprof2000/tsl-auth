@@ -1,0 +1,27 @@
+# Prometheus для одиночного режима (docker-compose.yml + docker-compose.observability.yml).
+# Опрашивает /metrics сервиса внутри docker-сети; сервис отдаёт метрики только из частных сетей
+# и (если задан OBS_PROMETHEUS_TOKEN) по bearer-токену — см. authorization ниже.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: tsl-auth
+    metrics_path: /metrics
+    # Токен из OBS_PROMETHEUS_TOKEN (.env) пробрасывается файлом; при пустом токене файл пустой и не мешает.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/token
+    static_configs:
+      - targets: ["auth:8080"]
+        labels: { instance: auth }
+
+  # Компоненты стенда — чтобы видеть их состояние в Grafana.
+  - job_name: prometheus
+    static_configs: [{ targets: ["localhost:9090"] }]
+  - job_name: loki
+    static_configs: [{ targets: ["loki:3100"] }]
+  - job_name: tempo
+    static_configs: [{ targets: ["tempo:3200"] }]
+  - job_name: otel-collector
+    static_configs: [{ targets: ["otel-collector:8888"] }]

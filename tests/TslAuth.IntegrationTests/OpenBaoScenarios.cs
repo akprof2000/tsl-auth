@@ -18,8 +18,7 @@ public sealed class OpenBaoFixture : AuthFixture
     public const string RootToken = "it-root";
     public const string VaultAdminSecret = "admin-secret-from-openbao";
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "tslauth-bao-" + Guid.NewGuid().ToString("N"));
-    private readonly IContainer _bao = new ContainerBuilder()
-        .WithImage("openbao/openbao:2.4.1")
+    private readonly IContainer _bao = new ContainerBuilder("openbao/openbao:2.4.1")
         .WithCommand("server", "-dev", $"-dev-root-token-id={RootToken}", "-dev-listen-address=0.0.0.0:8200")
         .WithPortBinding(8200, true)
         .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPort(8200).ForPath("/v1/sys/health")))

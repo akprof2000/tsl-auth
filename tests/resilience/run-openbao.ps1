@@ -24,6 +24,17 @@ function WaitReady($url, $seconds = 120) {
     }
     throw "$url не ответил за $seconds с"
 }
+# Поднять стенд; при ошибке — понятное сообщение (конфликт имён контейнеров, порт занят).
+function Up($compose) {
+    $out = & docker compose @compose up -d --build 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "docker compose up: $($out | Select-Object -Last 5 | Out-String)" }
+}
+# Журналы всех контейнеров стенда до его удаления — для разбора в артефактах E2E.
+function SaveLogs($compose, $name) {
+    $dir = "tests/artifacts/openbao/$name"; New-Item -ItemType Directory -Force $dir | Out-Null
+    & docker compose @compose ps -a > "$dir/ps.txt" 2>&1
+    & docker compose @compose logs --no-color > "$dir/logs.txt" 2>&1
+}
 function AdminToken($compose) {
     $secret = (& docker compose @compose exec -T openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminApiClientSecret secret/tsl-auth | Out-String).Trim()
     (Invoke-RestMethod "http://localhost:$Port/connect/token" -Method Post -Body @{
@@ -34,7 +45,7 @@ $failed = $false
 # ---------- Одиночный режим ----------
 $single = @("-p", "tslbao-e2e", "-f", "docker-compose.yml", "-f", "docker-compose.openbao.yml")
 try {
-    docker compose @single up -d --build | Out-Null
+    Up $single
     Check "Одиночный режим: сервис готов с секретами из OpenBao" { WaitReady "http://localhost:$Port/health/ready" }
     Check "Секрет Admin API из хранилища принимается" { if (-not (AdminToken $single)) { throw "нет токена" } }
     Check "В окружении контейнера нет значений секретов" {
@@ -54,12 +65,12 @@ try {
         if (-not (AdminToken $single)) { throw "нет токена после перезапуска" }
     }
 }
-finally { docker compose @single down -v | Out-Null }
+finally { SaveLogs $single "single"; docker compose @single down -v | Out-Null }
 
 # ---------- Кластер ----------
 $ha = @("-p", "tslbao-e2e-ha", "-f", "docker-compose.ha.yml", "-f", "docker-compose.ha-openbao.yml")
 try {
-    docker compose @ha up -d --build | Out-Null
+    Up $ha
     Check "Кластер: PostgreSQL и три узла с секретами из OpenBao" {
         WaitReady "http://localhost:$Port/health/ready" 180
         # Балансировщик отвечает уже с первым узлом — ждём, пока здоровы все три.
@@ -73,7 +84,7 @@ try {
     }
     Check "Кластер: вход через балансировщик на всех узлах" { 1..6 | ForEach-Object { if (-not (AdminToken $ha)) { throw "нет токена" } } }
 }
-finally { docker compose @ha down -v | Out-Null }
+finally { SaveLogs $ha "cluster"; docker compose @ha down -v | Out-Null }
 
 New-Item -ItemType Directory -Force tests/artifacts/openbao | Out-Null
 @("# OpenBao: сквозная проверка", "", "| Сценарий | Результат |", "|---|---|") + $report | Set-Content tests/artifacts/openbao/report.md -Encoding utf8

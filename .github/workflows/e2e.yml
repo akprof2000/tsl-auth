@@ -102,7 +102,11 @@ jobs:
 
       - name: Секреты из OpenBao (одиночный режим и кластер)
         shell: pwsh
-        run: ./tests/resilience/run-openbao.ps1
+        run: |
+          # Стенды предыдущих шагов (одиночный режим и кластер) используют те же имена контейнеров — убираем их.
+          docker compose -f docker-compose.ha.yml down -v
+          docker compose down -v
+          ./tests/resilience/run-openbao.ps1
 
       # Журналы контейнеров на момент падения (какой бы режим — одиночный или кластер — ни был поднят).
       - name: Журналы контейнеров

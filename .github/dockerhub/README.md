@@ -34,6 +34,49 @@ docker logs tsl-auth | grep "временным паролем"
 
 Мастер-ключ шифрования генерируется в томе (`/app/data/master.key`) — **сохраните его резервную копию**.
 
+## Секреты в OpenBao — зависимый контейнер (рекомендуется)
+
+В проектах ТСЛ секреты хранятся в **OpenBao** (`openbao/openbao:2.4.1`, открытый форк HashiCorp Vault).
+TSL Auth при старте входит в OpenBao по AppRole и читает секреты из KV v2 (`secret/tsl-auth`).
+Хранилище содержит мастер-ключ, пароль первого администратора, секрет клиента Admin API и строку подключения к БД.
+В переменных окружения и `.env` значений секретов нет.
+
+| Контейнер | Образ | Роль |
+|---|---|---|
+| `openbao` | `openbao/openbao:2.4.1` | хранилище секретов (зависимый сервис, запускается первым) |
+| `openbao-init` | `openbao/openbao:2.4.1` | одноразовый: инициализирует и распечатывает хранилище, выдаёт AppRole, генерирует секреты |
+| `tsl-auth` | `akprof2000/tsl-auth` | стартует после `openbao-init` и читает секреты |
+
+Скрипты `openbao-init` и конфигурация лежат в репозитории в каталоге
+[`deploy/openbao`](https://github.com/akprof2000/tsl-auth/tree/main/deploy/openbao).
+Готовые оверлеи: `docker-compose.openbao.yml` для одного узла и `docker-compose.ha-openbao.yml` для кластера.
+
+```bash
+git clone https://github.com/akprof2000/tsl-auth && cd tsl-auth
+docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d
+# пароль администратора
+docker compose -f docker-compose.yml -f docker-compose.openbao.yml exec openbao   sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+```
+
+Подключение TSL Auth к уже работающему OpenBao контура:
+
+```bash
+-e OpenBao__Address=https://openbao.corp:8200
+-e OpenBao__Path=tsl-auth                          # secret/data/tsl-auth, ключи = имена настроек
+-e OpenBao__RoleIdFile=/run/secrets/role_id        # AppRole: role_id и secret_id файлами
+-e OpenBao__SecretIdFile=/run/secrets/secret_id
+-e OpenBao__CaFile=/run/secrets/openbao-ca.pem     # если OpenBao по HTTPS с корпоративным CA
+```
+
+Ключ секрета совпадает с именем настройки: `Encryption__MasterKey`, `Database__ConnectionString`,
+`Bootstrap__AdminApiClientSecret`, `Smtp__Password` и так далее. Если OpenBao недоступен или запечатан, сервис ждёт его
+до 30 попыток по 2 с. Неверный `secret_id` останавливает запуск сразу.
+
+**Без OpenBao сервис тоже работает.** Хранилище подключается, только если задан `OpenBao__Address`. Иначе секреты
+берутся из переменных окружения или файлов (`*File`, docker secrets), а в одиночном режиме мастер-ключ генерируется в томе.
+При переходе на OpenBao перенесите в него прежний мастер-ключ (`/app/data/master.key`). Если ключи не совпадут,
+сервис не стартует, и данные не пострадают.
+
 ## Кластер (PostgreSQL + несколько узлов)
 
 Готовые `docker-compose.ha.yml` и конфигурация nginx — в репозитории:
@@ -51,8 +94,8 @@ docker logs tsl-auth | grep "временным паролем"
 ```
 
 Узлы с `Auth__TrustForwardedHeaders=true` не должны быть доступны напрямую, в обход балансировщика: иначе клиент
-подделает `X-Forwarded-For` (обход лимитов по IP) и `X-Forwarded-Proto`. Секреты можно передавать файлами (docker secrets):
-`Encryption__MasterKeyFile`, `Database__ConnectionStringFile`, `Bootstrap__AdminPasswordFile`.
+подделает `X-Forwarded-For` (обход лимитов по IP) и `X-Forwarded-Proto`. Секреты — в OpenBao (см. выше) или файлами
+(docker secrets): `Encryption__MasterKeyFile`, `Database__ConnectionStringFile`, `Bootstrap__AdminPasswordFile`.
 
 ## Основные параметры
 

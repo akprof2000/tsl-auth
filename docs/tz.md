@@ -4,7 +4,7 @@
 Документ описывает требования, которым соответствует текущая версия. Отклонения фиксируются в журнале изменений.
 Версия для согласования в Word: [TZ-tsl-auth.docx](TZ-tsl-auth.docx).
 
-![Базовая архитектура ТСЛ: Авторизатор реализован сервисом TSL Auth](archimate/base-architecture.png)
+![Базовая архитектура ТСЛ: Авторизатор реализован сервисом TSL Auth](archimate/auth-architecture.png)
 
 ## 1. Общие сведения
 
@@ -16,7 +16,7 @@
 | Заказчик | Команда ТСЛ |
 | Исходный код | https://github.com/akprof2000/tsl-auth, лицензия MIT |
 | Поставка | Docker-образ `akprof2000/tsl-auth` (Docker Hub, GHCR), подписанный cosign |
-| Основание | Базовая архитектура ТСЛ ([ArchiMate-модель](archimate/base-architecture.drawio)): компонент «Авторизатор» |
+| Основание | Базовая архитектура ТСЛ ([ArchiMate-модель авторизации](archimate/auth-architecture.drawio)): компонент «Авторизатор» |
 
 ## 2. Назначение и цели
 
@@ -349,4 +349,4 @@ flowchart LR
 | Безопасность | [security.md](security.md) |
 | Тестирование | [testing.md](testing.md) |
 | Эксплуатация | [operations.md](operations.md) |
-| ArchiMate-модель | [archimate/base-architecture.drawio](archimate/base-architecture.drawio) |
+| ArchiMate-модель | [archimate/auth-architecture.drawio](archimate/auth-architecture.drawio) |

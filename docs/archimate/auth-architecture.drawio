@@ -52,7 +52,7 @@
         <mxCell id="c16" value="Обратный прокси (Traefik)" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.application;appType=sysSw;archiType=square;fillColor=#C9E7B7;" parent="1" vertex="1">
           <mxGeometry x="90" y="770" width="140" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="c19" value="Хранилище секретов (OpenBao)" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.application;appType=sysSw;archiType=square;fillColor=#C9E7B7;" parent="1" vertex="1">
+        <mxCell id="c19" value="Хранилище секретов (OpenBao): единое для всех сервисов" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.application;appType=sysSw;archiType=square;fillColor=#C9E7B7;" parent="1" vertex="1">
           <mxGeometry x="560" y="770" width="150" height="60" as="geometry" />
         </mxCell>
         <mxCell id="c20" value="Temporal (workflow engine)" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.application;appType=sysSw;archiType=square;fillColor=#C9E7B7;" parent="1" vertex="1">
@@ -149,6 +149,34 @@
             <Array as="points">
               <mxPoint x="635" y="590" />
               <mxPoint x="1175" y="590" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eb1" value="секреты (bao-env, AppRole)" style="html=1;endArrow=open;endFill=1;edgeStyle=none;rounded=0;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9333;exitY=0.0;exitDx=0;exitDy=0;entryX=0.8684;entryY=1.0;entryDx=0;entryDy=0;" parent="1" source="c19" target="c6" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="560" />
+              <mxPoint x="852" y="560" />
+              <mxPoint x="852" y="460" />
+              <mxPoint x="800" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eb2" value="секреты" style="html=1;endArrow=open;endFill=1;edgeStyle=none;rounded=0;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.8;entryY=1.0;entryDx=0;entryDy=0;" parent="1" source="c19" target="c5" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="815" />
+              <mxPoint x="460" y="460" />
+              <mxPoint x="250" y="460" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="eb3" value="секреты" style="html=1;endArrow=open;endFill=1;edgeStyle=none;rounded=0;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.0;exitY=0.3333;exitDx=0;exitDy=0;entryX=0.2667;entryY=1.0;entryDx=0;entryDy=0;" parent="1" source="c19" target="c4" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="505" y="790" />
+              <mxPoint x="505" y="440" />
+              <mxPoint x="300" y="440" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -335,8 +363,8 @@
         <mxCell id="c78" value="Вложенность = композиция (Бэкенд состоит из Workflow-бэкенда и Бизнес-сервисов; компоненты на узле). Голубой — прикладной слой, зелёный — технологический." style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;spacing=0;" parent="1" vertex="1">
           <mxGeometry x="50" y="1360" width="680" height="30" as="geometry" />
         </mxCell>
-        <mxCell id="c79" value="&lt;b&gt;Допущения и предложения по стеку&lt;/b&gt;&lt;br&gt;1. «Bacward Proxy» = обратный прокси; предложен Traefik (авто-обнаружение контейнеров, TLS).&lt;br&gt;2. «Менеджер сервисов → Бэкенд» переведено по правилу «A использует B». Если менеджер управляет сервисами — это assignment/triggering.&lt;br&gt;3. Мониторинг: OpenTelemetry Collector принимает телеметрию (flow) и раскладывает в Prometheus / Loki / Tempo; Grafana визуализирует.&lt;br&gt;4. Секреты — OpenBao (открытый форк Vault); Workflow-бэкенд — на движке Temporal; S3-совместимое хранилище (облако, Garage, SeaweedFS).&lt;br&gt;5. Авторизатор реализован сервисом &lt;b&gt;TSL Auth&lt;/b&gt; (образ akprof2000/tsl-auth, OAuth 2.0 / OIDC, RBAC, App/Bot API) — детализация на листах «TSL Auth: прикладной уровень» и «TSL Auth: развёртывание». PostgreSQL, ClickHouse, S3 — внешние хранилища, как на исходной схеме." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacing=6;size=20;" parent="1" vertex="1">
-          <mxGeometry x="780" y="1230" width="900" height="150" as="geometry" />
+        <mxCell id="c79" value="&lt;b&gt;Допущения и предложения по стеку&lt;/b&gt;&lt;br&gt;1. «Bacward Proxy» = обратный прокси; предложен Traefik (авто-обнаружение контейнеров, TLS).&lt;br&gt;2. «Менеджер сервисов → Бэкенд» переведено по правилу «A использует B». Если менеджер управляет сервисами — это assignment/triggering.&lt;br&gt;3. Мониторинг: OpenTelemetry Collector принимает телеметрию (flow) и раскладывает в Prometheus / Loki / Tempo; Grafana визуализирует.&lt;br&gt;4. Секреты — только OpenBao (открытый форк Vault): единое хранилище секретов всех сервисов платформы; в .env, compose-файлах, файлах docker secrets и собственных хранилищах сервисов секретов нет. Сервис стартует через загрузчик bao-env: вход по своей роли AppRole, чтение KV v2 по пути secret/&amp;lt;проект&amp;gt;/&amp;lt;сервис&amp;gt;, подстановка ссылок {{bao:путь#ключ}} в переменные окружения. На стенде OpenBao распечатывается автоматически (seal «static»), в целевой среде — кластер raft (3+ узла, TLS, авто-распечатывание через KMS/HSM). Workflow-бэкенд — на движке Temporal; S3-совместимое хранилище (облако, Garage, SeaweedFS).&lt;br&gt;5. Авторизатор реализован сервисом &lt;b&gt;TSL Auth&lt;/b&gt; (образ akprof2000/tsl-auth, OAuth 2.0 / OIDC, RBAC, App/Bot API) — детализация на листах «TSL Auth: прикладной уровень» и «TSL Auth: развёртывание». PostgreSQL, ClickHouse, S3 — внешние хранилища, как на исходной схеме." style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacing=6;size=20;" parent="1" vertex="1">
+          <mxGeometry x="780" y="1230" width="900" height="190" as="geometry" />
         </mxCell>
       <mxCell id="tav1" value="&lt;table cellpadding=&quot;2&quot; cellspacing=&quot;0&quot; border=&quot;0&quot; style=&quot;font-size:1em;width:100%;height:100%;&quot;&gt;&lt;tr style=&quot;height:24px&quot;&gt;&lt;th align=&quot;center&quot; style=&quot;font-size:10px&quot;&gt;Учётные записи и права&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td align=&quot;center&quot;&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.businessObject;overflow=fill;fillColor=#99FFFF;" parent="1" vertex="1"><mxGeometry x="45" y="420" width="105" height="60" as="geometry" /></mxCell><mxCell id="tav2" value="TSL Auth&#xa;(1…N узлов)" style="html=1;outlineConnect=0;whiteSpace=wrap;shape=mxgraph.archimate3.application;appType=sysSw;archiType=square;fillColor=#C9E7B7;" parent="1" vertex="1"><mxGeometry x="250" y="770" width="130" height="60" as="geometry" /></mxCell><mxCell id="tae3" value="" style="html=1;endArrow=open;endFill=1;dashed=1;dashPattern=1 4;rounded=0;edgeStyle=none;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="c5" target="tav1" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="tae4" value="реализует" style="html=1;endArrow=block;endFill=0;dashed=1;rounded=0;edgeStyle=none;exitX=0.1;exitY=0;exitDx=0;exitDy=0;entryX=0.9;entryY=1;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="tav2" target="c5" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="tae5" value="" style="html=1;endArrow=block;endFill=0;dashed=1;rounded=0;edgeStyle=none;exitX=0.125;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="c23" target="tav1" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="800" y="740" /><mxPoint x="97" y="740" /></Array></mxGeometry></mxCell><mxCell id="tae6" value="секреты" style="html=1;endArrow=open;endFill=1;rounded=0;edgeStyle=none;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="c19" target="tav2" edge="1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="tae7" value="" style="html=1;endArrow=open;endFill=1;rounded=0;edgeStyle=none;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="c26" target="tav2" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="760" y="945" /><mxPoint x="315" y="945" /></Array></mxGeometry></mxCell><mxCell id="tae8" value="OTLP, /metrics" style="html=1;endArrow=block;endFill=1;dashed=1;rounded=0;edgeStyle=none;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontSize=10;" parent="1" source="tav2" target="c30" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="355" y="1045" /><mxPoint x="1365" y="1045" /><mxPoint x="1365" y="800" /></Array></mxGeometry></mxCell></root>
     </mxGraphModel>

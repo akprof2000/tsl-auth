@@ -168,7 +168,7 @@ docker compose -f docker-compose.ha.yml up -d --build
 
 | Документ | Содержание |
 |---|---|
-| [Техническое задание](docs/tz.md) | ТЗ по ГОСТ 34.602 со схемами ([Word](docs/TZ-tsl-auth.docx)), ArchiMate-модель ([draw.io](docs/archimate/base-architecture.drawio)) |
+| [Техническое задание](docs/tz.md) | ТЗ по ГОСТ 34.602 со схемами ([Word](docs/TZ-tsl-auth.docx)), ArchiMate-модель модуля авторизации ([draw.io](docs/archimate/auth-architecture.drawio)) |
 | [Архитектура](docs/architecture.md) | Компоненты, модель данных, кластер, хранение ключей, схемы |
 | [Развёртывание](docs/deployment.md) | Одиночный режим, кластер, внешний PostgreSQL, HTTPS, закрытый контур, обновление, резервное копирование |
 | [Конфигурация](docs/configuration.md) | Все параметры окружения и настройки в БД |

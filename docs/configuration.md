@@ -16,6 +16,8 @@
 | `Database__Provider` | `Sqlite` | `Sqlite` или `Postgres` |
 | `Database__ConnectionString` | `Data Source=data/tsl-auth.db` | Строка подключения. PostgreSQL: `Host=...;Database=...;Username=...;Password=...` |
 | `Database__ConnectionStringFile` | — | Путь к файлу со строкой подключения (docker secrets: `/run/secrets/db_connection_string`) — пароль БД не попадает в переменные окружения |
+| `Database__SchemaRepair` | `Auto` | Самовосстановление схемы при старте: `Auto` — пересобрать схему с переносом данных, если БД повреждена или её схема не та ([эксплуатация](operations.md#самовосстановление-бд)); `Off` — остановить запуск с ошибкой |
+| `Database__AllowDowngrade` | `false` | Разрешить запуск на схеме новее версии сервиса (откат образа): схема пересобирается под эту версию, данные новых столбцов теряются |
 
 ### Шифрование
 

@@ -16,6 +16,17 @@ public sealed class DatabaseOptions
     /// <summary>Файл со строкой подключения (docker secrets); если задан, имеет приоритет над <see cref="ConnectionString"/>.</summary>
     public string? ConnectionStringFile { get; set; }
 
+    /// <summary>
+    /// Самовосстановление схемы при старте (см. SchemaRepair): Auto — пересобрать схему с переносом данных,
+    /// если БД повреждена, история миграций неизвестна или схема не совпадает с моделью; Off — остановить запуск с ошибкой.
+    /// </summary>
+    public string SchemaRepair { get; set; } = "Auto";
+
+    /// <summary>Разрешить запуск на схеме НОВЕЕ версии сервиса (откат образа) с пересборкой под старую версию.</summary>
+    public bool AllowDowngrade { get; set; }
+
+    public bool AutoRepair => !SchemaRepair.Equals("Off", StringComparison.OrdinalIgnoreCase);
+
     public bool IsPostgres => Provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)
                               || Provider.Equals("PostgreSQL", StringComparison.OrdinalIgnoreCase);
 }

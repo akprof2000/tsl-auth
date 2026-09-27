@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace TslAuth.Infrastructure;
 
 /// <summary>
@@ -6,6 +8,8 @@ namespace TslAuth.Infrastructure;
 /// (в контейнере: docker exec -it tsl-auth dotnet /app/TslAuth.dll admin reset-password admin)
 ///   dotnet /app/TslAuth.dll admin migrate-to-postgres --target "Host=...;Database=..." [--overwrite]
 /// Переносит все данные одиночного режима (SQLite) в PostgreSQL — см. <see cref="PostgresMigration"/>.
+///   dotnet /app/TslAuth.dll admin db-check     — проверка схемы БД (версия, повреждения, отличия от модели)
+///   dotnet /app/TslAuth.dll admin db-repair    — принудительная пересборка схемы с переносом данных (<see cref="SchemaRepair"/>)
 /// Восстанавливает доступ администратора: создаёт/активирует пользователя, разблокирует,
 /// задаёт пароль (или генерирует), назначает роль administrator и отзывает его сессии.
 /// Program.cs вызывает команду после StartupInitializer (схема и данные уже готовы) вместо запуска веб-сервера.
@@ -80,6 +84,38 @@ public static class AdminCli
                 }
             }
 
+            case "db-check":
+            {
+                using var scope = services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<Data.AuthDbContext>();
+                var d = await SchemaRepair.DiagnoseAsync(db);
+                Console.WriteLine($"Версия схемы: {d.Applied.LastOrDefault() ?? "—"} (сервис: {db.Database.GetMigrations().LastOrDefault()})");
+                var problems = d.Describe().ToList();
+                if (problems.Count == 0) Console.WriteLine("Схема исправна.");
+                foreach (var p in problems) Console.WriteLine("  • " + p);
+                return problems.Count == 0 ? 0 : 2;
+            }
+
+            case "db-repair":
+            {
+                using var scope = services.CreateScope();
+                var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("TslAuth.Startup");
+                var db = scope.ServiceProvider.GetRequiredService<Data.AuthDbContext>();
+                try
+                {
+                    await db.Database.CloseConnectionAsync();
+                    var (backup, tables) = await SchemaRepair.RebuildAsync(db, logger, "ручной запуск admin db-repair");
+                    Console.WriteLine($"Схема пересобрана: {tables.Count} таблиц, {tables.Sum(t => t.Copied)} записей, пропущено {tables.Sum(t => t.Skipped)}.");
+                    Console.WriteLine($"Резервная копия: {backup}");
+                    return 0;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Ошибка: {ex.Message}");
+                    return 1;
+                }
+            }
+
             default:
                 Console.WriteLine("""
                     Команды:
@@ -90,6 +126,10 @@ public static class AdminCli
                           Перенести все данные из SQLite (одиночный режим) в PostgreSQL со сверкой
                           числа записей и содержимого каждой таблицы. Строку подключения можно задать
                           переменной TARGET_DB_CONNECTION_STRING. --overwrite очищает непустой приёмник.
+                      admin db-check
+                          Проверить схему БД: версия, повреждение файла, неизвестная история, отличия от модели.
+                      admin db-repair
+                          Пересобрать схему с переносом данных (резервная копия сохраняется).
                     """);
                 return command == "help" ? 0 : 1;
         }

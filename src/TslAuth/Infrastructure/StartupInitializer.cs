@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -39,7 +40,7 @@ public static class StartupInitializer
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
         }
 
-        await MigrateAsync(db, logger, ct);
+        await MigrateAsync(db, logger, ct, dbOptions.AutoRepair, dbOptions.AllowDowngrade);
         if (!dbOptions.IsPostgres)
         {
             // WAL: чтения не блокируются записью (важно при параллельной выдаче токенов). Режим сохраняется в файле БД.
@@ -53,36 +54,65 @@ public static class StartupInitializer
 
     /// <summary>
     /// Автоматическое обновление схемы БД до версии, с которой собран сервис.
-    /// Миграции применяются последовательно, каждая в своей транзакции; повторный запуск безопасен.
+    /// Обычный путь — штатные миграции (каждая в своей транзакции; повторный запуск безопасен).
+    /// Если БД повреждена, история миграций чужая/отсутствует, миграция упала или схема после неё не совпадает
+    /// с моделью — схема пересобирается с переносом данных (<see cref="SchemaRepair"/>), если это не выключено.
     /// </summary>
-    internal static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct)
+    internal static async Task MigrateAsync(AuthDbContext db, ILogger logger, CancellationToken ct, bool autoRepair = true,
+        bool allowDowngrade = false)
     {
-        var known = db.Database.GetMigrations().ToList();
-        // На пустой БД таблицы истории ещё нет — не запрашиваем её (иначе EF пишет в лог ложную ошибку).
-        var history = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository>(db);
-        var applied = await history.ExistsAsync(ct) ? (await db.Database.GetAppliedMigrationsAsync(ct)).ToList() : [];
-        var pending = known.Except(applied).ToList();
-        var target = known.LastOrDefault() ?? "—";
-        var current = applied.LastOrDefault() ?? "пустая БД";
+        var target = db.Database.GetMigrations().LastOrDefault() ?? "—";
+        var diagnosis = await SchemaRepair.DiagnoseAsync(db, ct);
+        var current = diagnosis.Applied.LastOrDefault() ?? "пустая БД";
 
-        // Защита от отката образа на старую версию: схема новее, чем знает этот сервис.
-        var unknown = applied.Except(known).ToList();
-        if (unknown.Count > 0)
+        // Схема новее сервиса: откат образа. По умолчанию не трогаем — иначе старый узел испортил бы данные новых.
+        if (diagnosis.UnknownAreNewer && !allowDowngrade)
             throw new InvalidOperationException(
-                $"Версия БД ({current}) новее версии сервиса ({target}). Неизвестные миграции: {string.Join(", ", unknown)}. " +
-                "Запустите более новую версию сервиса.");
+                $"Версия БД ({current}) новее версии сервиса ({target}). Неизвестные миграции: {string.Join(", ", diagnosis.Unknown)}. " +
+                "Запустите более новую версию сервиса (или Database__AllowDowngrade=true — пересобрать схему под эту версию, " +
+                "данные новых столбцов будут потеряны; резервная копия сохраняется).");
 
-        if (pending.Count == 0)
+        var reason = diagnosis.Healthy || diagnosis is { Unknown.Count: 0, HistoryMissing: true, HasTables: false }
+            ? null
+            : string.Join("; ", diagnosis.Describe().Where(d => !d.StartsWith("не применены", StringComparison.Ordinal)));
+
+        if (reason is null)
         {
-            logger.LogInformation("Схема БД актуальна: {Version}.", current);
-            return;
+            if (diagnosis.Pending.Count == 0)
+            {
+                logger.LogInformation("Схема БД актуальна: {Version}.", current);
+                return;
+            }
+            logger.LogWarning("Обновление схемы БД: {Current} → {Target} (миграций: {Count}: {List}).",
+                current, target, diagnosis.Pending.Count, string.Join(", ", diagnosis.Pending));
+            try
+            {
+                await db.Database.MigrateAsync(ct);
+                var problems = await SchemaRepair.CompareWithModelAsync(db, ct: ct);
+                if (problems.Count == 0)
+                {
+                    logger.LogInformation("Схема БД обновлена до {Target}.", target);
+                    return;
+                }
+                reason = "после миграций схема не совпадает с моделью: " + string.Join("; ", problems);
+            }
+            catch (Exception ex) when (ex is DbException or InvalidOperationException && autoRepair)
+            {
+                reason = "миграция завершилась ошибкой: " + ex.Message;
+            }
         }
 
-        logger.LogWarning("Обновление схемы БД: {Current} → {Target} (миграций: {Count}: {List}).",
-            current, target, pending.Count, string.Join(", ", pending));
-        await db.Database.MigrateAsync(ct);
-        logger.LogInformation("Схема БД обновлена до {Target}.", target);
+        if (!autoRepair)
+            throw new InvalidOperationException($"Схема БД неисправна ({reason}). Автопочинка выключена (Database__SchemaRepair=Off): " +
+                                                "восстановите БД из резервной копии или выполните `admin db-repair`.");
+
+        // Соединение контекста закрываем: SQLite-файл будет заменён.
+        await db.Database.CloseConnectionAsync();
+        await SchemaRepair.RebuildAsync(db, logger, reason!, ct);
+        var after = await SchemaRepair.CompareWithModelAsync(db, ct: ct);
+        if (after.Count > 0)
+            throw new InvalidOperationException("Пересборка схемы не дала рабочую схему: " + string.Join("; ", after));
+        logger.LogWarning("Схема БД восстановлена, версия {Target}.", target);
     }
 
     /// <summary>

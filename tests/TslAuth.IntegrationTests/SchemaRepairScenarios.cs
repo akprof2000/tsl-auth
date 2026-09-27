@@ -14,6 +14,9 @@ public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixtur
 {
     private const string Password = "Rep4ir-Passw0rd!";
 
+    /// <summary>Фикстура для сценариев наследников (без повторного захвата параметра конструктора).</summary>
+    protected TFixture Fixture => fx;
+
     [Fact]
     public async Task PartiallyBrokenSchema_IsRebuilt_DataKept()
     {
@@ -131,27 +134,27 @@ public sealed class SqliteSchemaRepairScenarios(SqliteFixture fx) : SchemaRepair
     [Fact]
     public async Task CorruptedSqliteFile_IsSalvaged()
     {
-        var admin = await fx.Factory.AdminAsync();
+        var admin = await Fixture.Factory.AdminAsync();
         for (var i = 0; i < 40; i++)
             await admin.PostJsonAsync("/api/admin/users", new { userName = TestApi.Unique("bulk"), password = "Bulk-Passw0rd!1" });
 
-        await fx.RestartAsync(async () =>
+        await Fixture.RestartAsync(async () =>
         {
-            await using var db = fx.CreateDbContext();
+            await using var db = Fixture.CreateDbContext();
             await db.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(TRUNCATE)");
             await db.Database.CloseConnectionAsync();
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            await using var file = File.Open(fx.DatabasePath, FileMode.Open, FileAccess.ReadWrite);
+            await using var file = File.Open(Fixture.DatabasePath, FileMode.Open, FileAccess.ReadWrite);
             var garbage = new byte[16 * 1024];
             Random.Shared.NextBytes(garbage);
             file.Position = file.Length / 2;
             await file.WriteAsync(garbage);
         });
 
-        Assert.Equal(HttpStatusCode.OK, (await fx.Factory.CreateClient().GetAsync("/health/ready")).StatusCode);
-        Assert.NotEmpty(Directory.GetFiles(Path.GetDirectoryName(fx.DatabasePath)!, "auth.db.backup-*"));
+        Assert.Equal(HttpStatusCode.OK, (await Fixture.Factory.CreateClient().GetAsync("/health/ready")).StatusCode);
+        Assert.NotEmpty(Directory.GetFiles(Path.GetDirectoryName(Fixture.DatabasePath)!, "auth.db.backup-*"));
         // Администратор есть в любом случае: если его строка была на испорченной странице, сид создаст его заново.
-        Assert.Equal(HttpStatusCode.OK, (await (await fx.Factory.AdminAsync()).GetAsync("/api/admin/users")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await (await Fixture.Factory.AdminAsync()).GetAsync("/api/admin/users")).StatusCode);
     }
 }
 

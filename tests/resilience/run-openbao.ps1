@@ -68,6 +68,9 @@ try {
 finally { SaveLogs $single "single"; docker compose @single down -v | Out-Null }
 
 # ---------- Кластер ----------
+# Кластер — на соседнем порту: Docker Desktop освобождает порт остановленного стенда не сразу.
+$Port = $Port + 1
+$env:AUTH_PORT = "$Port"
 $ha = @("-p", "tslbao-e2e-ha", "-f", "docker-compose.ha.yml", "-f", "docker-compose.ha-openbao.yml")
 try {
     Up $ha

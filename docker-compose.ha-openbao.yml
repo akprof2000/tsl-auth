@@ -26,6 +26,11 @@ x-auth-openbao: &auth-openbao
     OpenBao__RoleIdFile: /run/openbao/tsl-auth/role_id
     OpenBao__SecretIdFile: /run/openbao/tsl-auth/secret_id
     Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-admin-cli}"
+    # Пустые значения отменяют секреты из .env/docker-compose.ha.yml: действуют значения OpenBao.
+    Bootstrap__AdminPassword: ""
+    Bootstrap__AdminApiClientSecret: ""
+    Encryption__MasterKey: ""
+    Database__ConnectionString: ""
   volumes:
     - openbao-approle:/run/openbao:ro
 

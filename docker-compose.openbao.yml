@@ -62,6 +62,10 @@ services:
       OpenBao__SecretIdFile: /run/openbao/tsl-auth/secret_id
       # Клиент Admin API включается именем; его секрет — в OpenBao.
       Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-admin-cli}"
+      # Пустые значения отменяют секреты из .env/docker-compose.yml: в окружении их быть не должно, действуют значения OpenBao.
+      Bootstrap__AdminPassword: ""
+      Bootstrap__AdminApiClientSecret: ""
+      Encryption__MasterKey: ""
     volumes:
       - openbao-approle:/run/openbao:ro
 

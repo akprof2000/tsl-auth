@@ -13,16 +13,18 @@
 # (перенос в закрытый контур — scripts/export-images.*).
 
 # ---------- Сборка ----------
+# publish выполняет restore повторно (без --no-restore): пакеты NuGet лежат в cache mount, который не входит в кэш
+# слоёв CI. Если слой restore взят из кэша, а cache mount на новом раннере пуст, publish --no-restore не нашёл бы пакеты.
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:35d40304542c8689331f8cab17c65926cdf48fe711e289321d71924b230a7d29 AS build
 WORKDIR /src
 COPY src/TslAuth/TslAuth.csproj src/TslAuth/
 # Кэш пакетов NuGet — в cache mount BuildKit: при изменении csproj пакеты не скачиваются заново,
-# а в слои образа кэш не попадает. publish монтирует тот же кэш, т.к. идёт с --no-restore.
+# а в слои образа кэш не попадает. publish монтирует тот же кэш и восстанавливает пакеты повторно (см. выше).
 RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
     dotnet restore src/TslAuth/TslAuth.csproj -r linux-x64
 COPY src/TslAuth/ src/TslAuth/
 RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
-    dotnet publish src/TslAuth/TslAuth.csproj -c Release -r linux-x64 --self-contained false --no-restore -o /out \
+    dotnet publish src/TslAuth/TslAuth.csproj -c Release -r linux-x64 --self-contained false -o /out \
     && rm -f /out/appsettings.Development.json \
     && mkdir -p /data
 

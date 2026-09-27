@@ -28,6 +28,9 @@ public abstract class AuthFixture : IAsyncLifetime
     public string ConnectionString => _database["Database__ConnectionString"];
 
     protected abstract Task<Dictionary<string, string>> DatabaseSettingsAsync();
+
+    /// <summary>Дополнительные настройки фикстуры (перекрывают базовые), например подключение к OpenBao.</summary>
+    protected virtual Dictionary<string, string> ExtraSettings() => [];
     public abstract string ProviderName { get; }
 
     public async Task InitializeAsync()
@@ -61,7 +64,7 @@ public abstract class AuthFixture : IAsyncLifetime
         return new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing");
-            foreach (var (k, v) in settings.Concat(_database)) b.UseSetting(k.Replace("__", ":"), v);
+            foreach (var (k, v) in settings.Concat(_database).Concat(ExtraSettings())) b.UseSetting(k.Replace("__", ":"), v);
         });
     }
 

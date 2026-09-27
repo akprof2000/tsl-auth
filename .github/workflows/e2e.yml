@@ -100,6 +100,10 @@ jobs:
           ) | Set-Content .env
           ./tests/resilience/run-resilience.ps1 -Mode all
 
+      - name: Секреты из OpenBao (одиночный режим и кластер)
+        shell: pwsh
+        run: ./tests/resilience/run-openbao.ps1
+
       # Журналы контейнеров на момент падения (какой бы режим — одиночный или кластер — ни был поднят).
       - name: Журналы контейнеров
         if: failure()

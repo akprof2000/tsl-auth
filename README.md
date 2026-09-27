@@ -100,6 +100,13 @@ docker logs tsl-auth | grep "временным паролем"
 compose задайте `Auth__Issuer` явно ([развёртывание](docs/deployment.md#одиночный-режим)).
 Руководство по интеграции: http://localhost:8080/docs, справочник API: http://localhost:8080/docs/api.
 
+Секреты в OpenBao — едином хранилище секретов ТСЛ (рекомендуется; [подробнее](docs/deployment.md#секреты-в-openbao-рекомендуется)):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.openbao.yml exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+```
+
 Кластер (PostgreSQL + 3 узла + nginx):
 
 ```bash

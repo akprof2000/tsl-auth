@@ -16,7 +16,21 @@ public static class MasterKeyResolver
     public static byte[] Resolve(EncryptionOptions encryption, DatabaseOptions database, string contentRoot, ILogger logger)
     {
         if (!string.IsNullOrWhiteSpace(encryption.MasterKey))
-            return Decode(encryption.MasterKey, "Encryption:MasterKey");
+        {
+            var configured = Decode(encryption.MasterKey, "Encryption:MasterKey");
+            // Переход на внешний ключ (OpenBao, переменная): в томе SQLite остался прежний сгенерированный master.key.
+            // Если ключи разные, данные, зашифрованные прежним ключом, стали бы нечитаемыми — не стартуем.
+            if (!database.IsPostgres)
+            {
+                var local = Path.Combine(DataDirectory(database, contentRoot), "master.key");
+                if (File.Exists(local) && !CryptographicOperations.FixedTimeEquals(Decode(File.ReadAllText(local), local), configured))
+                    throw new InvalidOperationException(
+                        $"Encryption:MasterKey не совпадает с ключом '{local}', которым зашифрованы данные этой БД. " +
+                        "Перенесите прежний ключ в хранилище: bao kv patch secret/tsl-auth Encryption__MasterKey=<содержимое master.key>, " +
+                        "затем удалите master.key из тома. Новый ключ к существующим данным не применяется.");
+            }
+            return configured;
+        }
 
         if (!string.IsNullOrWhiteSpace(encryption.MasterKeyFile) && File.Exists(encryption.MasterKeyFile))
             return Decode(File.ReadAllText(encryption.MasterKeyFile), encryption.MasterKeyFile);

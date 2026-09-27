@@ -21,6 +21,8 @@ if (args is ["healthcheck", ..])
 }
 
 var builder = WebApplication.CreateBuilder(args);
+// Секреты (секрет клиента TSL Auth) — из OpenBao, если задан OpenBao__Address.
+Docflow.Shared.OpenBaoConfiguration.Attach(builder.Configuration);
 var options = builder.Configuration.GetSection("Auth").Get<BotOptions>() ?? new BotOptions();
 builder.Services.AddSingleton(options);
 builder.Services.AddHttpClient();

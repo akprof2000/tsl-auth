@@ -16,7 +16,9 @@ var isCli = AdminCli.IsCliCommand(args);
 // В режиме CLI аргументы не передаются в конфигурацию, иначе "admin ..." разбирались бы как ключи настроек.
 var builder = WebApplication.CreateBuilder(isCli ? [] : args);
 // appsettings.json из APPSETTINGS_PATH или из каталогов выше каталога приложения (см. ConfigFiles).
-var configFiles = ConfigFiles.Attach(builder);
+var configFiles = ConfigFiles.Attach(builder).ToList();
+// Секреты из OpenBao — последним источником: перекрывают переменные окружения и appsettings (см. OpenBaoConfiguration).
+if (OpenBaoConfiguration.Attach(builder.Configuration) is { } vault) configFiles.Add(vault);
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
 // Вся регистрация сервисов — в Infrastructure/ServiceSetup.cs.
 builder.AddTslAuth(cli: isCli);

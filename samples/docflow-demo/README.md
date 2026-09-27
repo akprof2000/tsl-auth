@@ -69,6 +69,19 @@ flowchart LR
 
 ## Запуск в Docker
 
+Все секреты стенда лежат в OpenBao — едином хранилище секретов ТСЛ:
+
+- мастер-ключ, пароль администратора и секрет Admin API TSL Auth — в `secret/tsl-auth`;
+- секреты клиентов демо — в `secret/docflow-api` и `secret/docflow-bot`.
+
+TSL Auth, API и бот читают их при старте по AppRole. В `.env` и в окружении контейнеров секретов нет. Пароль администратора TSL Auth можно посмотреть так:
+
+```powershell
+docker compose exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+```
+
+Порты задаются переменными `DOCFLOW_AUTH_PORT` (8080) и `DOCFLOW_WEB_PORT` (5200), если стандартные заняты.
+
 Проще всего — двойным щелчком из корня репозитория: `demo-start.cmd` запускает всё и открывает браузер,
 `demo-stop.cmd` останавливает (данные сохраняются; `demo-stop.cmd clean` удаляет их).
 
@@ -77,7 +90,7 @@ flowchart LR
 ```powershell
 cd samples/docflow-demo
 docker compose up -d tsl-auth
-./seed.ps1                       # приложения, роли, сотрудники; секреты → .env
+./seed.ps1                       # приложения, роли, сотрудники; секреты клиентов → OpenBao
 docker compose up -d --build     # http://localhost:5200
 ```
 

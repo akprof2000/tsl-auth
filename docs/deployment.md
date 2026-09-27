@@ -11,6 +11,7 @@ flowchart LR
         LB[nginx :8080] --> N1[auth1] & N2[auth2] & N3[auth3]
         N1 & N2 & N3 --> PG[(PostgreSQL)]
     end
+    BAO[(OpenBao<br/>секреты)] -. "AppRole, при старте" .-> S1 & N1 & N2 & N3
 ```
 
 | | Одиночный | Кластер |
@@ -181,7 +182,62 @@ nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, пере�
 > При TLS на вашем прокси задайте `AUTH_REQUIRE_HTTPS=true`: сервис будет отклонять OAuth-запросы по HTTP и включит HSTS.
 > `docker-compose.https*.yml` и `docker-compose.ha-https.yml` включают это сами.
 
+## Секреты в OpenBao (рекомендуется)
+
+OpenBao — единое хранилище секретов проектов ТСЛ. Сервис при старте входит в OpenBao по AppRole и читает секреты
+из KV v2 (`secret/tsl-auth`). В окружении контейнеров, в `.env` и в compose-файлах значений секретов нет.
+
+```mermaid
+flowchart LR
+    INIT[openbao-init<br/>одноразовый контейнер] -- "инициализация, распечатывание,<br/>политики, AppRole, генерация секретов" --> BAO[(OpenBao<br/>KV v2: secret/tsl-auth)]
+    INIT -- "role_id + secret_id<br/>том openbao-approle" --> AUTH[TSL Auth]
+    AUTH -- "AppRole login → чтение<br/>secret/tsl-auth при старте" --> BAO
+    INIT -. "пароль файлом" .-> PG[(PostgreSQL)]
+    AUTH --> PG
+```
+
+```bash
+# одиночный режим
+docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
+# кластер
+docker compose -f docker-compose.ha.yml -f docker-compose.ha-openbao.yml up -d --build
+# пароль администратора
+docker compose exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+```
+
+| Что | Где в OpenBao |
+|---|---|
+| Мастер-ключ | `secret/tsl-auth` → `Encryption__MasterKey` |
+| Пароль первого администратора | `secret/tsl-auth` → `Bootstrap__AdminPassword` |
+| Секрет клиента Admin API | `secret/tsl-auth` → `Bootstrap__AdminApiClientSecret` |
+| Кластер: пароль и строка подключения PostgreSQL | `secret/tsl-auth` → `Postgres__Password`, `Database__ConnectionString` |
+| Любая другая настройка (SMTP, токены мониторинга) | `secret/tsl-auth` → имя настройки, например `Smtp__Password` |
+
+Как это устроено:
+
+- **openbao-init.** Скрипт `deploy/openbao/init.sh` запускается при каждом `up` и безопасен повторно. Он инициализирует хранилище один раз и распечатывает его. Затем включает KV v2 и AppRole, выдаёт каждому сервису политику «только чтение своего пути» и генерирует недостающие секреты. Существующие секреты он не перезаписывает.
+- **Доступ сервиса.** Сервис получает `role_id` и `secret_id` файлами из тома, смонтированного только для чтения. Токен OpenBao живёт 10 минут: он нужен лишь для чтения при старте.
+- **PostgreSQL.** Он не умеет ходить в OpenBao, поэтому пароль ему отдаётся файлом из отдельного тома.
+- **Порядок источников.** Значения из OpenBao перекрывают переменные окружения и `appsettings`.
+
+**Режим стенда.** Ключ распечатывания и root-токен лежат в томе `openbao-init`, чтобы стенд поднимался сам. Для продуктива:
+
+1. Инициализируйте OpenBao вручную с несколькими держателями ключей (`bao operator init -key-shares=5 -key-threshold=3`) или настройте auto-unseal.
+2. Включите TLS на листенере (`deploy/openbao/openbao.hcl`) и задайте сервису `OpenBao__CaFile`.
+3. Выдавайте `secret_id` с ограниченным сроком (`secret_id_ttl`) и доставляйте его при развёртывании. Используйте персональные учётные записи операторов вместо root-токена.
+4. Делайте резервную копию тома `openbao-data` вместе с ключами распечатывания.
+
+**Переход существующей установки.** Перенесите текущие секреты в OpenBao **до** первого запуска с ним. Сначала мастер-ключ: содержимое `master.key` из тома одиночного режима или значение `ENCRYPTION_MASTER_KEY` кластера.
+
+```bash
+docker compose exec openbao sh /openbao/scripts/bao.sh kv patch secret/tsl-auth Encryption__MasterKey="$(cat master.key)"
+```
+
+Если ключ в OpenBao не совпадает с `master.key` в томе SQLite, сервис не стартует и подсказывает, что сделать. Данные при этом не портятся.
+
 ## Секреты файлами (docker secrets)
+
+Вариант для контуров без OpenBao.
 
 По умолчанию секреты передаются переменными из `.env` — их видно в `docker inspect` и в окружении процесса.
 Оверлеи `docker-compose.secrets.yml` (одиночный режим) и `docker-compose.ha-secrets.yml` (кластер) передают их файлами

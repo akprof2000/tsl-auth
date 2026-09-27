@@ -1,0 +1,89 @@
+# Секреты кластера из OpenBao (рекомендуемый вариант):
+#   docker compose -f docker-compose.ha.yml -f docker-compose.ha-openbao.yml up -d --build
+#
+# openbao-init генерирует в secret/tsl-auth мастер-ключ, пароль администратора, секрет Admin API, пароль PostgreSQL и
+# строку подключения. Узлы читают их из OpenBao по AppRole; PostgreSQL (он не умеет ходить в OpenBao) получает пароль
+# файлом из тома openbao-postgres. ENCRYPTION_MASTER_KEY и POSTGRES_PASSWORD в .env больше не нужны.
+# ВНИМАНИЕ: ключ распечатывания и root-токен лежат в томе openbao-init — режим стенда. Продуктив: см. docs/deployment.md.
+
+x-openbao-hardening: &openbao-hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 128
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+x-auth-openbao: &auth-openbao
+  depends_on:
+    postgres:
+      condition: service_healthy
+    openbao-init:
+      condition: service_completed_successfully
+  environment:
+    OpenBao__Address: http://openbao:8200
+    OpenBao__Path: tsl-auth
+    OpenBao__RoleIdFile: /run/openbao/tsl-auth/role_id
+    OpenBao__SecretIdFile: /run/openbao/tsl-auth/secret_id
+    Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-admin-cli}"
+  volumes:
+    - openbao-approle:/run/openbao:ro
+
+services:
+  openbao:
+    <<: *openbao-hardening
+    image: openbao/openbao:2.4.1
+    container_name: tsl-openbao
+    restart: unless-stopped
+    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    cap_add: [SETUID, SETGID]
+    volumes:
+      - ./deploy/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ./deploy/openbao:/openbao/scripts:ro
+      - openbao-data:/openbao/file
+      - openbao-init:/openbao/init:ro
+    healthcheck:
+      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  openbao-init:
+    <<: *openbao-hardening
+    image: openbao/openbao:2.4.1
+    restart: "no"
+    entrypoint: ["sh", "/openbao/scripts/init.sh"]
+    environment:
+      OPENBAO_APPS: "tsl-auth"
+      TSL_AUTH_POSTGRES: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: tsl_auth
+      POSTGRES_USER: tsl_auth
+    depends_on:
+      openbao:
+        condition: service_healthy
+    volumes:
+      - ./deploy/openbao:/openbao/scripts:ro
+      - openbao-init:/openbao/init
+      - openbao-approle:/openbao/approle
+      - openbao-postgres:/openbao/postgres
+
+  postgres:
+    depends_on:
+      openbao-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_PASSWORD: ""
+      POSTGRES_PASSWORD_FILE: /run/openbao-postgres/password
+    volumes:
+      - openbao-postgres:/run/openbao-postgres:ro
+
+  auth1: *auth-openbao
+  auth2: *auth-openbao
+  auth3: *auth-openbao
+
+volumes:
+  openbao-data:
+  openbao-init:
+  openbao-approle:
+  openbao-postgres:

@@ -13,4 +13,9 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Секреты из OpenBao: общий для API и бота источник конфигурации. -->
+    <Compile Include="../shared/OpenBaoConfiguration.cs" Link="Shared/OpenBaoConfiguration.cs" />
+  </ItemGroup>
+
 </Project>

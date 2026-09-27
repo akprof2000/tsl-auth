@@ -5,6 +5,7 @@ WORKDIR /src
 COPY bot/Docflow.Bot.csproj bot/
 RUN dotnet restore bot/Docflow.Bot.csproj
 COPY bot/ bot/
+COPY shared/ shared/
 RUN dotnet publish bot/Docflow.Bot.csproj -c Release --no-restore -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-azurelinux3.0-distroless AS runtime

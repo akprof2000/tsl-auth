@@ -1,11 +1,13 @@
 # Упаковка образов для закрытого контура (выполняется на машине с доступом в интернет).
 # Результат: dist/tsl-auth-images-<версия>.tar.gz + SHA256 — перенесите на целевой сервер и выполните import-images.
-# PostgreSQL и nginx входят в комплект по умолчанию; исключить: -NoPostgres (внешняя БД), -NoNginx.
+# PostgreSQL, nginx и OpenBao (хранилище секретов) входят в комплект по умолчанию; исключить: -NoPostgres (внешняя БД),
+# -NoNginx, -NoOpenBao (используется уже развёрнутый OpenBao контура).
 # -Observability — добавить образы стенда мониторинга (Prometheus, Loki, Tempo, OpenTelemetry Collector, Grafana).
 param(
     [string]$Version = "latest",
     [switch]$NoPostgres,
     [switch]$NoNginx,
+    [switch]$NoOpenBao,
     [switch]$Observability
 )
 $ErrorActionPreference = "Stop"
@@ -16,6 +18,7 @@ docker build -t "tsl-auth:$Version" .
 $images = @("tsl-auth:$Version")
 if (-not $NoPostgres) { docker pull postgres:17-alpine; $images += "postgres:17-alpine" }
 if (-not $NoNginx) { docker pull nginx:1.29-alpine; $images += "nginx:1.29-alpine" }
+if (-not $NoOpenBao) { docker pull openbao/openbao:2.4.1; $images += "openbao/openbao:2.4.1" }
 if ($Observability) {
     # Версии — те же, что в docker-compose.observability.yml.
     $stack = Select-String -Path docker-compose.observability.yml -Pattern '^\s*image:\s*(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }

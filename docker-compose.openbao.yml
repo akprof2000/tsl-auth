@@ -1,0 +1,71 @@
+# Секреты одиночного режима из OpenBao — единого хранилища секретов ТСЛ (рекомендуемый вариант).
+#   docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
+#
+# openbao-init при каждом запуске: инициализирует (однажды) и распечатывает хранилище, выдаёт сервису AppRole
+# (role_id + secret_id в томе openbao-approle), генерирует недостающие секреты в secret/tsl-auth:
+# Encryption__MasterKey, Bootstrap__AdminPassword, Bootstrap__AdminApiClientSecret.
+# Сервис читает их при старте (OpenBao__*), переменные окружения с секретами не нужны.
+#   Пароль администратора:  docker compose exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+# ВНИМАНИЕ: ключ распечатывания и root-токен лежат в томе openbao-init — режим стенда. Продуктив: см. docs/deployment.md.
+
+x-openbao-hardening: &openbao-hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 128
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  openbao:
+    <<: *openbao-hardening
+    image: openbao/openbao:2.4.1
+    container_name: tsl-openbao
+    restart: unless-stopped
+    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    cap_add: [SETUID, SETGID]          # образ переключается на пользователя openbao при старте
+    volumes:
+      - ./deploy/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ./deploy/openbao:/openbao/scripts:ro
+      - openbao-data:/openbao/file
+      - openbao-init:/openbao/init:ro
+    healthcheck:
+      # 0 — распечатан, 2 — запечатан (openbao-init распечатает): оба значат «процесс жив».
+      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  openbao-init:
+    <<: *openbao-hardening
+    image: openbao/openbao:2.4.1
+    restart: "no"
+    entrypoint: ["sh", "/openbao/scripts/init.sh"]
+    environment:
+      OPENBAO_APPS: "tsl-auth"
+    depends_on:
+      openbao:
+        condition: service_healthy
+    volumes:
+      - ./deploy/openbao:/openbao/scripts:ro
+      - openbao-init:/openbao/init
+      - openbao-approle:/openbao/approle
+
+  auth:
+    depends_on:
+      openbao-init:
+        condition: service_completed_successfully
+    environment:
+      OpenBao__Address: http://openbao:8200
+      OpenBao__Path: tsl-auth
+      OpenBao__RoleIdFile: /run/openbao/tsl-auth/role_id
+      OpenBao__SecretIdFile: /run/openbao/tsl-auth/secret_id
+      # Клиент Admin API включается именем; его секрет — в OpenBao.
+      Bootstrap__AdminApiClientId: "${BOOTSTRAP_API_CLIENT_ID:-admin-cli}"
+    volumes:
+      - openbao-approle:/run/openbao:ro
+
+volumes:
+  openbao-data:
+  openbao-init:
+  openbao-approle:

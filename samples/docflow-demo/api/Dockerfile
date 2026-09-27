@@ -16,6 +16,7 @@ WORKDIR /src
 COPY api/Docflow.Api.csproj api/
 RUN dotnet restore api/Docflow.Api.csproj
 COPY api/ api/
+COPY shared/ shared/
 RUN dotnet publish api/Docflow.Api.csproj -c Release --no-restore -o /out && rm -rf /out/wwwroot && mkdir -p /data
 COPY --from=web /webout /out/wwwroot
 

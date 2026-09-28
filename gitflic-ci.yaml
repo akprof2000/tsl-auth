@@ -1,0 +1,135 @@
+# Конвейер GitFlic (https://gitflic.ru/project/akprof2000/tsl-auth). Что собирается на GitFlic, остаётся на GitFlic:
+# образ публикуется только в реестр GitFlic ($CI_REGISTRY_IMAGE). GitHub собирает независимо и публикует
+# в Docker Hub и GHCR (.github/workflows). Исходники приходят зеркалом с GitHub (mirror-gitflic.yml),
+# каждый push в main и тег v* запускает этот конвейер.
+#
+# Агента на gitflic.ru нужно подключить свой (общих агентов нет): Docker-агент с PRIVILEGED=true для docker:dind —
+# инструкция в docs/gitflic-ci.md. Задания помечены тегом tsl-auth, чтобы попадать только на этот агент.
+#
+# Этапы: сборка и unit → интеграционные (SQLite и PostgreSQL/OpenBao в Testcontainers через docker:dind)
+# и проверка документации → образ, затем проверка Trivy → публикация (main — latest и sha, тег — X.Y.Z) → релиз.
+
+stages:
+  - build
+  - test
+  - image
+  - scan
+  - publish
+  - release
+
+variables:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  SDK_IMAGE: mcr.microsoft.com/dotnet/sdk:10.0
+  # Docker внутри заданий — сервис docker:dind (alias docker) без TLS: он доступен только внутри задания.
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  # Testcontainers запускает PostgreSQL и OpenBao в том же dind и обращается к ним по имени сервиса.
+  TESTCONTAINERS_HOST_OVERRIDE: docker
+  TESTCONTAINERS_RYUK_DISABLED: "true"
+  IMAGE_SHA: $CI_REGISTRY_IMAGE:sha-$CI_COMMIT_SHA
+
+# Конвейер — только для main и тегов v*: ветки-черновики агента не занимают.
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+
+build:
+  stage: build
+  image: $SDK_IMAGE
+  tags: [tsl-auth]
+  script:
+    - dotnet restore TslAuth.sln
+    - dotnet build TslAuth.sln -c Release --no-restore -warnaserror
+    - dotnet test tests/TslAuth.UnitTests -c Release --no-build --logger "trx;LogFileName=unit.trx" --results-directory TestResults
+  artifacts:
+    paths: [TestResults/]
+    when: always
+    expire_in: 14 days
+
+integration:
+  stage: test
+  image: $SDK_IMAGE
+  tags: [tsl-auth]
+  services:
+    - name: docker:28-dind
+      alias: docker
+      command: ["--tls=false"]
+  script:
+    - dotnet test tests/TslAuth.IntegrationTests -c Release --logger "trx;LogFileName=integration.trx" --results-directory TestResults
+  artifacts:
+    paths: [TestResults/]
+    when: always
+    expire_in: 14 days
+
+docs:
+  stage: test
+  image: $SDK_IMAGE
+  tags: [tsl-auth]
+  script:
+    # Ссылки, якоря, таблицы и актуальность картинок схем; синтаксис Mermaid проверяет CI на GitHub
+    # (ему нужен Docker с mermaid-cli), здесь — без него.
+    - pwsh -NoProfile -File scripts/validate-docs.ps1 -SkipMermaid
+
+image:
+  stage: image
+  image: docker:28
+  tags: [tsl-auth]
+  services:
+    - name: docker:28-dind
+      alias: docker
+      command: ["--tls=false"]
+  script:
+    - docker build --pull -t "$IMAGE_SHA" --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" .
+    - docker save "$IMAGE_SHA" -o image.tar
+  artifacts:
+    paths: [image.tar]
+    expire_in: 1 day
+
+# Уязвимости HIGH/CRITICAL с исправлением — ошибка сборки (как Trivy в CI на GitHub). Сканируется архив образа,
+# поэтому Docker для проверки не нужен.
+scan:
+  stage: scan
+  image:
+    name: aquasec/trivy:0.74.0
+    entrypoint: [""]
+  tags: [tsl-auth]
+  script:
+    - trivy image --input image.tar --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL --no-progress
+
+publish:
+  stage: publish
+  image: docker:28
+  tags: [tsl-auth]
+  services:
+    - name: docker:28-dind
+      alias: docker
+      command: ["--tls=false"]
+  script:
+    - docker load -i image.tar
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker push "$IMAGE_SHA"
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        version="${CI_COMMIT_TAG#v}"
+        docker tag "$IMAGE_SHA" "$CI_REGISTRY_IMAGE:$version"
+        docker push "$CI_REGISTRY_IMAGE:$version"
+      else
+        docker tag "$IMAGE_SHA" "$CI_REGISTRY_IMAGE:latest"
+        docker push "$CI_REGISTRY_IMAGE:latest"
+      fi
+
+# Релиз GitFlic на тег vX.Y.Z: страница релиза со ссылкой на образ в реестре GitFlic.
+release:
+  stage: release
+  image: registry.gitflic.ru/company/gitflic/gcli:latest
+  tags: [tsl-auth]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  release:
+    name: "$CI_COMMIT_TAG"
+    description: "TSL Auth $CI_COMMIT_TAG. Образ: $CI_REGISTRY_IMAGE (тег без «v»). Заметки о выпуске — в CHANGELOG релиза на GitHub."
+    tag_name: "$CI_COMMIT_TAG"
+  script:
+    - echo "Релиз $CI_COMMIT_TAG"

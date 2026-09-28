@@ -12,6 +12,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 $env:MSYS_NO_PATHCONV = "1"
+# docker compose берёт переменные окружения процесса раньше --env-file: убираем унаследованные (в CI они заданы на уровне job).
+foreach ($v in "AUTH_PORT", "ENCRYPTION_MASTER_KEY", "BOOTSTRAP_ADMIN_PASSWORD", "BOOTSTRAP_API_CLIENT_ID", "BOOTSTRAP_API_CLIENT_SECRET", "SMTP_USER", "SMTP_PASSWORD") {
+    Remove-Item "Env:$v" -ErrorAction SilentlyContinue
+}
 $work = Join-Path ([IO.Path]::GetTempPath()) ("tsl-env-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $work | Out-Null
 $report = [System.Collections.Generic.List[string]]::new()

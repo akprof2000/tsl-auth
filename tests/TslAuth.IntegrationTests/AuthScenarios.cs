@@ -16,7 +16,7 @@ namespace TslAuth.IntegrationTests;
 public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
     protected TFixture Fx => fx;
-    private const string Password = "Str0ng-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
 
     // ---------- Подготовка данных ----------
 
@@ -49,12 +49,12 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         return (created.GetProperty("user").GetProperty("id").GetGuid(), name);
     }
 
-    private Task<JsonElement> PasswordGrantAsync(HttpClient http, string client, string api, string user, string password = Password,
+    private Task<JsonElement> PasswordGrantAsync(HttpClient http, string client, string api, string user, string? password = null,
         bool expectSuccess = true, Dictionary<string, string>? extra = null)
     {
         var form = new Dictionary<string, string>
         {
-            ["grant_type"] = "password", ["client_id"] = client, ["username"] = user, ["password"] = password,
+            ["grant_type"] = "password", ["client_id"] = client, ["username"] = user, ["password"] = password ?? Password,
             ["scope"] = $"openid offline_access {api}"
         };
         foreach (var (k, v) in extra ?? []) form[k] = v;

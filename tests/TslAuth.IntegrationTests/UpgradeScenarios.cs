@@ -24,7 +24,7 @@ namespace TslAuth.IntegrationTests;
 public abstract class UpgradeScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
     private const string FirstVersion = "InitialCreate";
-    private const string Password = "Upgr4de-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
 
     [Fact]
     public async Task OldDatabase_IsUpgraded_AndUsersKeepWorking()
@@ -150,10 +150,10 @@ public abstract class UpgradeScenarios<TFixture>(TFixture fx) where TFixture : A
         return (created.GetProperty("user").GetProperty("id").GetGuid(), name);
     }
 
-    private static Task<JsonElement> PasswordGrantAsync(HttpClient http, string client, string api, string user, string password = Password) =>
+    private static Task<JsonElement> PasswordGrantAsync(HttpClient http, string client, string api, string user, string? password = null) =>
         http.TokenAsync(new()
         {
-            ["grant_type"] = "password", ["client_id"] = client, ["username"] = user, ["password"] = password,
+            ["grant_type"] = "password", ["client_id"] = client, ["username"] = user, ["password"] = password ?? Password,
             ["scope"] = $"openid offline_access {api}"
         });
 

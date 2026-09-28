@@ -45,7 +45,7 @@ $key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::
 $apiSecret = "env-" + [guid]::NewGuid().ToString("N")
 @(
     "AUTH_PORT=$Port", "ENCRYPTION_MASTER_KEY=$key", "BOOTSTRAP_ADMIN_PASSWORD=Env-Adm1n-$([guid]::NewGuid().ToString('N').Substring(0,8))!",
-    "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=$apiSecret", "SMTP_USER=tsl", "SMTP_PASSWORD=smtp-secret"
+    "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=$apiSecret", "SMTP_USER=tsl", "SMTP_PASSWORD=$([guid]::NewGuid().ToString("N"))"
 ) | Set-Content "$work/.env"
 $envCompose = @("-p", "tslenv-e2e", "--env-file", "$work/.env", "-f", "docker-compose.yml")
 try {
@@ -74,8 +74,8 @@ finally { SaveLogs $envCompose "env"; docker compose @envCompose down -v | Out-N
 $fileSecret = "file-" + [guid]::NewGuid().ToString("N")
 $settings = @{
     Encryption = @{ MasterKey = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
-    Bootstrap  = @{ AdminApiClientId = "admin-cli"; AdminApiClientSecret = $fileSecret; AdminPassword = "File-Adm1n-Passw0rd!" }
-    Smtp       = @{ UserName = "tsl"; Password = "smtp-from-file" }
+    Bootstrap  = @{ AdminApiClientId = "admin-cli"; AdminApiClientSecret = $fileSecret; AdminPassword = "Fa1-$([guid]::NewGuid().ToString("N"))!" }
+    Smtp       = @{ UserName = "tsl"; Password = [guid]::NewGuid().ToString("N") }
 } | ConvertTo-Json -Depth 5
 [IO.File]::WriteAllText("$work/appsettings.json", $settings, [Text.UTF8Encoding]::new($false))
 @"

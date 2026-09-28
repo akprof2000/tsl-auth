@@ -12,7 +12,7 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
-    private const string Password = "Rep4ir-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
 
     /// <summary>Фикстура для сценариев наследников (без повторного захвата параметра конструктора).</summary>
     protected TFixture Fixture => fx;
@@ -136,7 +136,7 @@ public sealed class SqliteSchemaRepairScenarios(SqliteFixture fx) : SchemaRepair
     {
         var admin = await Fixture.Factory.AdminAsync();
         for (var i = 0; i < 40; i++)
-            await admin.PostJsonAsync("/api/admin/users", new { userName = TestApi.Unique("bulk"), password = "Bulk-Passw0rd!1" });
+            await admin.PostJsonAsync("/api/admin/users", new { userName = TestApi.Unique("bulk"), password = TestApi.NewPassword() });
 
         await Fixture.RestartAsync(async () =>
         {

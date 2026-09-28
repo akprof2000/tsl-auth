@@ -17,9 +17,9 @@ public abstract class AuthFixture : IAsyncLifetime
 {
     public const string MasterKey = "dGVzdC1tYXN0ZXIta2V5LTMyLWJ5dGVzLWxvbmctISE="; // 32 байта, только для тестов
     public const string AdminClientId = "it-admin";
-    public const string AdminClientSecret = "it-admin-secret";
+    public static readonly string AdminClientSecret = TestApi.NewPassword();
     public const string AdminUser = "admin";
-    public const string AdminPassword = "Boot-Str4p-Secret!";
+    public static readonly string AdminPassword = TestApi.NewPassword();
 
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     private Dictionary<string, string> _database = [];

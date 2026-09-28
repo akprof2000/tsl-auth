@@ -17,7 +17,7 @@ namespace TslAuth.IntegrationTests;
 [Collection("postgres-migration")]
 public sealed class PostgresMigrationScenarios(SqliteFixture sqlite) : IClassFixture<SqliteFixture>, IAsyncLifetime
 {
-    private const string Password = "M1grate-Passw0rd!";
+    private static readonly string Password = TestApi.NewPassword();
     private readonly PostgresFixture _pg = new();
 
     // Кластер на PostgreSQL уже стартовал и создал свои начальные данные — приёмник непустой.

@@ -42,7 +42,7 @@ docker logs tsl-auth | grep "временным паролем"
 -e Encryption__MasterKey=<base64, 32 байта>               # одиночный режим: можно не задавать — сгенерируется в томе
 -e Bootstrap__AdminPassword=<пароль первого администратора>
 -e Bootstrap__AdminApiClientId=admin-cli -e Bootstrap__AdminApiClientSecret=<секрет>
--e Database__ConnectionString="Host=db;Database=tsl_auth;Username=tsl_auth;Password=<пароль>"
+-e Database__ConnectionString="<строка подключения PostgreSQL>"
 -e Smtp__UserName=... -e Smtp__Password=...
 ```
 

@@ -98,8 +98,8 @@ jobs:
           docker compose down -v
           $key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
           @(
-            "ENCRYPTION_MASTER_KEY=$key", "POSTGRES_PASSWORD=ci-pg-password", "BOOTSTRAP_ADMIN_PASSWORD=Ci-Bootstr4p-Secret!",
-            "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=demo-admin-cli-secret-2026"
+            "ENCRYPTION_MASTER_KEY=$key", "POSTGRES_PASSWORD=$([guid]::NewGuid().ToString('N'))", "BOOTSTRAP_ADMIN_PASSWORD=Ci-$([guid]::NewGuid().ToString('N'))!",
+            "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=$env:BOOTSTRAP_API_CLIENT_SECRET"
           ) | Set-Content .env
           ./tests/resilience/run-resilience.ps1 -Mode all
 

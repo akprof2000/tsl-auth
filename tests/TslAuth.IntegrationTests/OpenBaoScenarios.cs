@@ -15,8 +15,8 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public sealed class OpenBaoFixture : AuthFixture
 {
-    public const string RootToken = "it-root";
-    public const string VaultAdminSecret = "admin-secret-from-openbao";
+    public static readonly string RootToken = Guid.NewGuid().ToString("N");
+    public static readonly string VaultAdminSecret = Guid.NewGuid().ToString("N");
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "tslauth-bao-" + Guid.NewGuid().ToString("N"));
     private readonly IContainer _bao = new ContainerBuilder("openbao/openbao:2.4.1")
         .WithCommand("server", "-dev", $"-dev-root-token-id={RootToken}", "-dev-listen-address=0.0.0.0:8200")

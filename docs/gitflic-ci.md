@@ -14,12 +14,13 @@
 
 | Этап | Задания |
 |---|---|
-| build | Сборка решения с `-warnaserror`, unit-тесты |
-| test | Интеграционные тесты (SQLite, PostgreSQL и OpenBao в Testcontainers через `docker:dind`), проверка документации |
-| image | Сборка образа из `Dockerfile` |
-| scan | Trivy: уязвимости HIGH/CRITICAL с исправлением прерывают конвейер |
+| build | Параллельно: сборка решения с `-warnaserror` и unit-тесты; сборка образа из `Dockerfile`; проверка документации |
+| test | Параллельно: интеграционные тесты (SQLite, PostgreSQL и OpenBao в Testcontainers через `docker:dind`, без пересборки — бинарники из артефакта build); Trivy — уязвимости HIGH/CRITICAL с исправлением прерывают конвейер |
 | publish | `main` — теги `latest` и `sha-<коммит>`; тег `vX.Y.Z` — тег `X.Y.Z` в реестре GitFlic. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
 | release | Релиз GitFlic для тега `vX.Y.Z` |
+
+Пакеты NuGet кэшируются между конвейерами (`cache: nuget`), поэтому `restore` после первого прогона занимает секунды.
+Агент выполняет до трёх заданий одновременно, так что стадия занимает столько, сколько самое долгое задание в ней.
 
 Результаты тестов (`TestResults/*.trx`) сохраняются артефактами на 14 дней.
 

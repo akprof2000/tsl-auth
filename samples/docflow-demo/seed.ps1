@@ -2,13 +2,16 @@
 #   • приложения docflow-api (API + App API), docflow-web (PWA, PKCE), docflow-security-bot (бот);
 #   • матрицу доступа docflow-api — ЕДИНСТВЕННОЕ место, где определяются роли и их права;
 #   • демо-сотрудников с ролями и офицера безопасности.
-# Секреты — только в OpenBao (единое хранилище ТСЛ): секрет клиента Admin API читается из secret/tsl-auth,
-# секреты клиентов демо пишутся в secret/docflow-api и secret/docflow-bot. В .env остаётся лишь адрес TSL Auth.
-# Повторный запуск безопасен: существующее обновляется, секреты перевыпускаются, только если их нет в OpenBao.
+# Секреты (два режима, выбирается автоматически):
+#   • MVP, по умолчанию — переменные контейнеров: секреты клиентов пишутся в samples/docflow-demo/.env
+#     (DOCFLOW_API_SECRET, DOCFLOW_BOT_SECRET), его читает docker compose; секрет Admin API — BOOTSTRAP_API_CLIENT_SECRET;
+#   • если запущен контейнер OpenBao (оверлей docker-compose.openbao.yml) — секреты в OpenBao: secret/tsl-auth,
+#     secret/docflow-api, secret/docflow-bot.
+# Повторный запуск безопасен: существующее обновляется, секреты перевыпускаются, только если их ещё нет.
 param(
     [string]$Issuer = "http://localhost:8080",
     [string]$AdminClientId = "admin-cli",
-    # Пусто — берётся из OpenBao (secret/tsl-auth, Bootstrap__AdminApiClientSecret).
+    # Пусто — из .env (BOOTSTRAP_API_CLIENT_SECRET, по умолчанию как в docker-compose.yml) или из OpenBao.
     [string]$AdminClientSecret = "",
     [string]$UserPassword = "Demo-Passw0rd!",
     # Адреса PWA: собранная (раздаёт API) и dev-сервер Vite.
@@ -17,24 +20,33 @@ param(
 $ErrorActionPreference = "Stop"
 $Issuer = $Issuer.TrimEnd("/")
 
-# bao в контейнере OpenBao стенда (root-токен из тома openbao-init — режим стенда).
 $compose = Join-Path $PSScriptRoot "docker-compose.yml"
+$envFile = Join-Path $PSScriptRoot ".env"
+$dotenv = [ordered]@{}
+if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $k, $v = $_ -split "=", 2; if ($k -and -not $k.StartsWith("#")) { $dotenv[$k] = $v } } }
+
+# OpenBao используется, только если его контейнер запущен (оверлей docker-compose.openbao.yml).
+$useVault = [bool](& docker ps -q --filter "name=^docflow-openbao$" 2>$null)
 function Bao {
-    $out = & docker compose -f $compose exec -T openbao sh /openbao/scripts/bao.sh @args 2>&1
+    $out = & docker exec docflow-openbao sh /openbao/scripts/bao.sh @args 2>&1
     if ($LASTEXITCODE -ne 0) { throw "bao $($args -join ' '): $out" }
     ($out | Out-String).Trim()
 }
-function Get-VaultSecret($path, $field) {
-    $out = & docker compose -f $compose exec -T openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path" 2>$null
+# Секрет: (путь OpenBao, ключ настройки, переменная .env).
+function Get-Secret($path, $field, $envName) {
+    if (-not $useVault) { return $dotenv[$envName] }
+    $out = & docker exec docflow-openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path" 2>$null
     if ($LASTEXITCODE -eq 0) { ($out | Out-String).Trim() } else { $null }
 }
-function Set-VaultSecret($path, $field, $value) {
-    # patch сохраняет остальные ключи пути; если пути ещё нет — put.
-    & docker compose -f $compose exec -T openbao sh /openbao/scripts/bao.sh kv patch "secret/$path" "$field=$value" 2>$null | Out-Null
+function Set-Secret($path, $field, $envName, $value) {
+    if (-not $useVault) { $dotenv[$envName] = $value; return }
+    & docker exec docflow-openbao sh /openbao/scripts/bao.sh kv patch "secret/$path" "$field=$value" 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) { Bao kv put "secret/$path" "$field=$value" | Out-Null }
 }
-if (-not $AdminClientSecret) { $AdminClientSecret = Get-VaultSecret "tsl-auth" "Bootstrap__AdminApiClientSecret" }
+if (-not $AdminClientSecret) { $AdminClientSecret = Get-Secret "tsl-auth" "Bootstrap__AdminApiClientSecret" "BOOTSTRAP_API_CLIENT_SECRET" }
+if (-not $AdminClientSecret -and -not $useVault) { $AdminClientSecret = "demo-admin-cli-secret-2026" }   # значение по умолчанию docker-compose.yml
 if (-not $AdminClientSecret) { throw "Нет секрета Admin API в OpenBao (secret/tsl-auth) — запущен ли openbao-init?" }
+Write-Host "Секреты: $(if ($useVault) { 'OpenBao' } else { '.env (переменные контейнеров)' })"
 $tok = Invoke-RestMethod "$Issuer/connect/token" -Method Post -Body @{
     grant_type = "client_credentials"; client_id = $AdminClientId; client_secret = $AdminClientSecret; scope = "tsl-auth-admin" }
 $H = @{ Authorization = "Bearer $($tok.access_token)" }
@@ -53,22 +65,23 @@ function Api($method, $path, $body) {
     }
 }
 
-# Где лежит секрет каждого клиента демо в OpenBao: путь и имя настройки сервиса.
-$vault = @{ "docflow-api" = @("docflow-api", "Auth__ClientSecret"); "docflow-security-bot" = @("docflow-bot", "Auth__BotClientSecret") }
+# Где лежит секрет каждого клиента демо: путь OpenBao, имя настройки сервиса, переменная .env.
+$vault = @{ "docflow-api" = @("docflow-api", "Auth__ClientSecret", "DOCFLOW_API_SECRET");
+            "docflow-security-bot" = @("docflow-bot", "Auth__BotClientSecret", "DOCFLOW_BOT_SECRET") }
 
-# Создаёт или обновляет приложение; секрет confidential-клиента — новый, если в OpenBao его нет.
+# Создаёт или обновляет приложение; секрет confidential-клиента — новый, если его ещё нет.
 function Upsert-App($app) {
     $target = $vault[$app.clientId]
     $exists = $true
     try { Api GET "/applications/$($app.clientId)" | Out-Null } catch { $exists = $false }
     if (-not $exists) {
         $secret = (Api POST "/applications" $app).clientSecret
-        if ($target) { Set-VaultSecret $target[0] $target[1] $secret }
+        if ($target) { Set-Secret $target[0] $target[1] $target[2] $secret }
         return
     }
     Api PUT "/applications/$($app.clientId)" $app | Out-Null
-    if ($target -and -not (Get-VaultSecret $target[0] $target[1])) {
-        Set-VaultSecret $target[0] $target[1] (Api POST "/applications/$($app.clientId)/secret").clientSecret
+    if ($target -and -not (Get-Secret $target[0] $target[1] $target[2])) {
+        Set-Secret $target[0] $target[1] $target[2] (Api POST "/applications/$($app.clientId)/secret").clientSecret
     }
 }
 
@@ -137,6 +150,7 @@ $officer = @((& $d "docflow-admin"))
 if ($hasSecurityBot) { $officer += @{ clientId = "tsl-auth-admin"; role = "security-officer" } }
 Upsert-User "admin-doc" "Орлова Екатерина" $officer
 
-# В .env — только несекретный адрес TSL Auth (для run-local.ps1).
-"DOCFLOW_ISSUER=$Issuer/" | Set-Content (Join-Path $PSScriptRoot ".env")
-Write-Host "Готово. Сотрудники ivanova, petrov, sidorova, kozlov, admin-doc — пароль $UserPassword. Секреты клиентов — в OpenBao (secret/docflow-api, secret/docflow-bot)."
+# .env: адрес TSL Auth и (без OpenBao) секреты клиентов — их подставит docker compose в переменные контейнеров.
+$dotenv["DOCFLOW_ISSUER"] = "$Issuer/"
+$dotenv.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } | Set-Content $envFile
+Write-Host "Готово. Сотрудники ivanova, petrov, sidorova, kozlov, admin-doc — пароль $UserPassword. Секреты клиентов — $(if ($useVault) { 'в OpenBao (secret/docflow-api, secret/docflow-bot)' } else { "в $envFile" })."

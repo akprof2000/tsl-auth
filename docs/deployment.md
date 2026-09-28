@@ -182,7 +182,33 @@ nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, пере�
 > При TLS на вашем прокси задайте `AUTH_REQUIRE_HTTPS=true`: сервис будет отклонять OAuth-запросы по HTTP и включит HSTS.
 > `docker-compose.https*.yml` и `docker-compose.ha-https.yml` включают это сами.
 
-## Секреты в OpenBao (рекомендуется)
+## Секреты в переменных и конфиге (MVP, по умолчанию)
+
+На этапе MVP OpenBao не разворачивается. Все настройки, включая секреты, передаются так:
+
+- переменными контейнера — через `.env` для compose (полный список в [`.env.example`](../.env.example));
+- файлом настроек — смонтируйте его поверх `/app/appsettings.Production.json` или укажите путь в `APPSETTINGS_PATH`.
+  Пример со значениями секретов — [`deploy/appsettings.mvp.example.json`](../deploy/appsettings.mvp.example.json).
+
+| Секрет | Переменная `.env` | Ключ настройки |
+|---|---|---|
+| Мастер-ключ | `ENCRYPTION_MASTER_KEY` (в одиночном режиме можно не задавать) | `Encryption:MasterKey` |
+| Пароль первого администратора | `BOOTSTRAP_ADMIN_PASSWORD` | `Bootstrap:AdminPassword` |
+| Секрет клиента Admin API | `BOOTSTRAP_API_CLIENT_SECRET` | `Bootstrap:AdminApiClientSecret` |
+| Пароль PostgreSQL и строка подключения | `POSTGRES_PASSWORD`, `DB_CONNECTION_STRING` | `Database:ConnectionString` |
+| SMTP | `SMTP_USER`, `SMTP_PASSWORD` | `Smtp:UserName`, `Smtp:Password` |
+| Мониторинг | `OBS_PROMETHEUS_TOKEN`, `OBS_OTLP_HEADERS`, `OBS_LOKI_USER`, `OBS_LOKI_PASSWORD` | `Observability:*` |
+
+Правила для MVP:
+
+- `.env` и файл настроек лежат вне репозитория, права `0600`. Доступ к `docker inspect` есть только у администраторов хоста.
+- Переменные окружения перекрывают файл настроек.
+- Мастер-ключ в одиночном режиме можно не задавать: он сгенерируется в томе. Если потом задать `ENCRYPTION_MASTER_KEY`, он должен совпадать с `master.key` в томе, иначе сервис не стартует. Данные при этом не пострадают.
+- Переход на OpenBao после MVP ключей не меняет. Значения переносятся в `secret/tsl-auth` под теми же именами.
+
+## Секреты в OpenBao (после MVP)
+
+Необязательный режим. Сервис переходит на OpenBao, только если задан `OpenBao__Address`.
 
 OpenBao — единое хранилище секретов проектов ТСЛ. Сервис при старте входит в OpenBao по AppRole и читает секреты
 из KV v2 (`secret/tsl-auth`). В окружении контейнеров, в `.env` и в compose-файлах значений секретов нет.
@@ -237,7 +263,7 @@ docker compose exec openbao sh /openbao/scripts/bao.sh kv patch secret/tsl-auth 
 
 ## Секреты файлами (docker secrets)
 
-Вариант для контуров без OpenBao.
+Вариант для контуров без OpenBao, если секреты нельзя держать в переменных окружения.
 
 По умолчанию секреты передаются переменными из `.env` — их видно в `docker inspect` и в окружении процесса.
 Оверлеи `docker-compose.secrets.yml` (одиночный режим) и `docker-compose.ha-secrets.yml` (кластер) передают их файлами

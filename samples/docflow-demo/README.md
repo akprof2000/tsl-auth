@@ -69,16 +69,14 @@ flowchart LR
 
 ## Запуск в Docker
 
-Все секреты стенда лежат в OpenBao — едином хранилище секретов ТСЛ:
+MVP: все секреты стенда — переменные контейнеров из `.env`. Его заполняет `seed.ps1`:
 
-- мастер-ключ, пароль администратора и секрет Admin API TSL Auth — в `secret/tsl-auth`;
-- секреты клиентов демо — в `secret/docflow-api` и `secret/docflow-bot`.
+- `DOCFLOW_API_SECRET` и `DOCFLOW_BOT_SECRET` — секреты клиентов демо;
+- `BOOTSTRAP_API_CLIENT_SECRET` — секрет клиента Admin API (по умолчанию демо-значение);
+- `BOOTSTRAP_ADMIN_PASSWORD` — пароль администратора TSL Auth. Если не задан, он генерируется и выводится в журнал.
 
-TSL Auth, API и бот читают их при старте по AppRole. В `.env` и в окружении контейнеров секретов нет. Пароль администратора TSL Auth можно посмотреть так:
-
-```powershell
-docker compose exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
-```
+После MVP секреты можно перенести в OpenBao: добавьте `-f docker-compose.openbao.yml` ко всем командам compose.
+`seed.ps1` сам увидит OpenBao и запишет секреты в `secret/docflow-api` и `secret/docflow-bot`.
 
 Порты задаются переменными `DOCFLOW_AUTH_PORT` (8080) и `DOCFLOW_WEB_PORT` (5200), если стандартные заняты.
 
@@ -90,7 +88,7 @@ docker compose exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__
 ```powershell
 cd samples/docflow-demo
 docker compose up -d tsl-auth
-./seed.ps1                       # приложения, роли, сотрудники; секреты клиентов → OpenBao
+./seed.ps1                       # приложения, роли, сотрудники; секреты клиентов → .env
 docker compose up -d --build     # http://localhost:5200
 ```
 

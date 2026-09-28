@@ -34,7 +34,24 @@ docker logs tsl-auth | grep "временным паролем"
 
 Мастер-ключ шифрования генерируется в томе (`/app/data/master.key`) — **сохраните его резервную копию**.
 
-## Секреты в OpenBao — зависимый контейнер (рекомендуется)
+## Секреты: переменные контейнера и конфиг (MVP)
+
+Все настройки, включая секреты, задаются переменными окружения контейнера или файлом настроек:
+
+```bash
+-e Encryption__MasterKey=<base64, 32 байта>               # одиночный режим: можно не задавать — сгенерируется в томе
+-e Bootstrap__AdminPassword=<пароль первого администратора>
+-e Bootstrap__AdminApiClientId=admin-cli -e Bootstrap__AdminApiClientSecret=<секрет>
+-e Database__ConnectionString="Host=db;Database=tsl_auth;Username=tsl_auth;Password=<пароль>"
+-e Smtp__UserName=... -e Smtp__Password=...
+```
+
+Тот же набор можно положить в JSON-файл и смонтировать его:
+`-v /etc/tsl-auth/appsettings.json:/app/appsettings.Production.json:ro`.
+Пример — [`deploy/appsettings.mvp.example.json`](https://github.com/akprof2000/tsl-auth/blob/main/deploy/appsettings.mvp.example.json).
+Переменные окружения перекрывают файл.
+
+## Секреты в OpenBao — зависимый контейнер (после MVP, необязательно)
 
 В проектах ТСЛ секреты хранятся в **OpenBao** (`openbao/openbao:2.4.1`, открытый форк HashiCorp Vault).
 TSL Auth при старте входит в OpenBao по AppRole и читает секреты из KV v2 (`secret/tsl-auth`).

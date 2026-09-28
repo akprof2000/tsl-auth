@@ -58,6 +58,8 @@ x-auth: &auth
     Smtp__Port: "${SMTP_PORT:-25}"
     Smtp__Security: "${SMTP_SECURITY:-None}"
     Smtp__From: "${SMTP_FROM:-TSL Auth <no-reply@tsl.local>}"
+    Smtp__UserName: "${SMTP_USER:-}"
+    Smtp__Password: "${SMTP_PASSWORD:-}"
     # Журналирование: уровень и формат консоли (Text | Json); глубина по категориям меняется в админке без перезапуска.
     Logging__LogLevel__Default: "${LOG_LEVEL:-Information}"
     Logging__Format: "${LOG_FORMAT:-Text}"
@@ -73,6 +75,8 @@ x-auth: &auth
     Observability__OpenTelemetry__Logs: "${OBS_OTLP_LOGS:-true}"
     Observability__Loki__Url: "${OBS_LOKI_URL:-}"
     Observability__Loki__Labels: "${OBS_LOKI_LABELS:-}"
+    Observability__Loki__Username: "${OBS_LOKI_USER:-}"
+    Observability__Loki__Password: "${OBS_LOKI_PASSWORD:-}"
     Observability__ResourceAttributes: "${OBS_RESOURCE_ATTRIBUTES:-}"
 
 services:

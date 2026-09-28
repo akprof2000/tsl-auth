@@ -1,0 +1,84 @@
+# Необязательно (после MVP): секреты демо в OpenBao вместо переменных .env.
+#   docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d tsl-auth
+#   ./seed.ps1                    — сам увидит OpenBao и запишет секреты клиентов в secret/docflow-api и secret/docflow-bot
+#   docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
+# Пароль администратора TSL Auth:
+#   docker exec docflow-openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+
+x-openbao: &openbao-client
+  OpenBao__Address: http://openbao:8200
+
+services:
+  openbao:
+    image: openbao/openbao:2.4.1
+    container_name: docflow-openbao
+    restart: unless-stopped
+    command: ["server", "-config=/openbao/config/openbao.hcl"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ../../deploy/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - ../../deploy/openbao:/openbao/scripts:ro
+      - openbao-data:/openbao/file
+      - openbao-init:/openbao/init:ro
+    healthcheck:
+      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Инициализация и распечатывание хранилища, AppRole для трёх сервисов, секреты TSL Auth.
+  openbao-init:
+    image: openbao/openbao:2.4.1
+    restart: "no"
+    entrypoint: ["sh", "/openbao/scripts/init.sh"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      OPENBAO_APPS: "tsl-auth docflow-api docflow-bot"
+    depends_on:
+      openbao: { condition: service_healthy }
+    volumes:
+      - ../../deploy/openbao:/openbao/scripts:ro
+      - openbao-init:/openbao/init
+      - openbao-approle:/openbao/approle
+
+  tsl-auth:
+    depends_on:
+      openbao-init: { condition: service_completed_successfully }
+    environment:
+      <<: *openbao-client
+      OpenBao__Path: tsl-auth
+      OpenBao__RoleIdFile: /run/openbao/tsl-auth/role_id
+      OpenBao__SecretIdFile: /run/openbao/tsl-auth/secret_id
+      # Секреты из переменных отменены: действуют значения OpenBao.
+      Bootstrap__AdminPassword: ""
+      Bootstrap__AdminApiClientSecret: ""
+    volumes:
+      - openbao-approle:/run/openbao:ro
+
+  docflow-api:
+    environment:
+      <<: *openbao-client
+      OpenBao__Path: docflow-api
+      OpenBao__RoleIdFile: /run/openbao/docflow-api/role_id
+      OpenBao__SecretIdFile: /run/openbao/docflow-api/secret_id
+      Auth__ClientSecret: ""
+    volumes:
+      - openbao-approle:/run/openbao:ro
+
+  docflow-bot:
+    environment:
+      <<: *openbao-client
+      OpenBao__Path: docflow-bot
+      OpenBao__RoleIdFile: /run/openbao/docflow-bot/role_id
+      OpenBao__SecretIdFile: /run/openbao/docflow-bot/secret_id
+      Auth__BotClientSecret: ""
+    volumes:
+      - openbao-approle:/run/openbao:ro
+
+volumes:
+  openbao-data:
+  openbao-init:
+  openbao-approle:

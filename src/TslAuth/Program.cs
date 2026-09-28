@@ -17,6 +17,8 @@ var isCli = AdminCli.IsCliCommand(args);
 var builder = WebApplication.CreateBuilder(isCli ? [] : args);
 // appsettings.json из APPSETTINGS_PATH или из каталогов выше каталога приложения (см. ConfigFiles).
 var configFiles = ConfigFiles.Attach(builder).ToList();
+// Пустые переменные окружения (compose передаёт и их) не перекрывают значения из файла настроек.
+EmptyEnvironmentVariables.Ignore(builder.Configuration);
 // Секреты из OpenBao — последним источником: перекрывают переменные окружения и appsettings (см. OpenBaoConfiguration).
 if (OpenBaoConfiguration.Attach(builder.Configuration) is { } vault) configFiles.Add(vault);
 builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);

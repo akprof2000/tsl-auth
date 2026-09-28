@@ -63,6 +63,15 @@ public static class ConfigFiles
     {
         var sources = builder.Configuration.Sources;
         var index = sources.Select((s, i) => (s, i)).LastOrDefault(x => x.s is JsonConfigurationSource).i;
-        sources.Insert(index + 1, new JsonConfigurationSource { Path = path, Optional = false, ReloadOnChange = true });
+        // Провайдер файлов — от каталога самого файла. Без него путь резолвится относительно каталога приложения
+        // (ContentRoot): абсолютный /etc/tsl-auth/appsettings.json в Linux превращался в /app/etc/tsl-auth/appsettings.json.
+        var full = Path.GetFullPath(path);
+        sources.Insert(index + 1, new JsonConfigurationSource
+        {
+            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(Path.GetDirectoryName(full)!),
+            Path = Path.GetFileName(full),
+            Optional = false,
+            ReloadOnChange = true
+        });
     }
 }

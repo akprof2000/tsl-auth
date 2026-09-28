@@ -100,21 +100,19 @@ docker logs tsl-auth | grep "временным паролем"
 compose задайте `Auth__Issuer` явно ([развёртывание](docs/deployment.md#одиночный-режим)).
 Руководство по интеграции: http://localhost:8080/docs, справочник API: http://localhost:8080/docs/api.
 
-### Секреты: OpenBao (рекомендуется) или без него
+### Секреты: переменные и конфиг (MVP), OpenBao — позже
 
-Для хранения секретов TSL Auth использует зависимый контейнер **OpenBao** (`openbao/openbao:2.4.1`) — единое хранилище секретов ТСЛ.
-Одноразовый контейнер `openbao-init` инициализирует и распечатывает хранилище, выдаёт сервису AppRole и генерирует секреты.
-Сервис стартует после него и читает секреты из `secret/tsl-auth`. В окружении и `.env` значений секретов нет
-([подробнее](docs/deployment.md#секреты-в-openbao-рекомендуется)).
+**MVP.** Все настройки, включая секреты, задаются переменными контейнера (`.env`, см. [`.env.example`](.env.example))
+или файлом настроек ([`deploy/appsettings.mvp.example.json`](deploy/appsettings.mvp.example.json)). Это касается
+мастер-ключа, пароля администратора, секрета Admin API, строки подключения к БД, паролей SMTP и Loki, токенов мониторинга.
+Команды выше работают именно так. Держите `.env` и файл настроек вне репозитория с правами `0600`.
 
-**Без OpenBao сервис тоже работает.** Хранилище подключается, только если задан `OpenBao__Address`. Команды выше запускают
-сервис без него: секреты берутся из переменных или файлов, а мастер-ключ одиночного режима генерируется в томе.
-
-С OpenBao:
+**После MVP — OpenBao.** Секреты переносятся в OpenBao без изменения ключей: ключ секрета совпадает с именем
+настройки. Хранилище подключается, только если задан `OpenBao__Address`
+([подробнее](docs/deployment.md#секреты-в-openbao-после-mvp)).
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.openbao.yml exec openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
 ```
 
 Кластер (PostgreSQL + 3 узла + nginx):

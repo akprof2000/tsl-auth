@@ -93,12 +93,22 @@ jobs:
       - name: Сценарии отказов (одиночный режим и кластер)
         shell: pwsh
         run: |
+          # Ключ из .env теперь доходит и до одиночного режима: том предыдущих шагов с сгенерированным master.key
+          # несовместим с новым ключом (сервис откажется стартовать) — начинаем с чистых томов.
+          docker compose down -v
           $key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
           @(
             "ENCRYPTION_MASTER_KEY=$key", "POSTGRES_PASSWORD=ci-pg-password", "BOOTSTRAP_ADMIN_PASSWORD=Ci-Bootstr4p-Secret!",
             "BOOTSTRAP_API_CLIENT_ID=admin-cli", "BOOTSTRAP_API_CLIENT_SECRET=demo-admin-cli-secret-2026"
           ) | Set-Content .env
           ./tests/resilience/run-resilience.ps1 -Mode all
+
+      - name: Секреты в переменных и файле настроек (MVP)
+        shell: pwsh
+        run: |
+          docker compose -f docker-compose.ha.yml down -v
+          docker compose down -v
+          ./tests/resilience/run-env-secrets.ps1
 
       - name: Секреты из OpenBao (одиночный режим и кластер)
         shell: pwsh

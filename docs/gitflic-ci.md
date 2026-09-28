@@ -6,7 +6,7 @@
 | Площадка | Конвейер | Куда публикуется образ |
 |---|---|---|
 | GitHub | `.github/workflows/*.yml` | Docker Hub `akprof2000/tsl-auth`, GHCR `ghcr.io/akprof2000/tsl-auth` |
-| GitFlic | [`gitflic-ci.yaml`](../gitflic-ci.yaml) | Реестр GitFlic проекта (`$CI_REGISTRY_IMAGE`) |
+| GitFlic | [`gitflic-ci.yaml`](../gitflic-ci.yaml) | Реестр GitFlic проекта: `registry.gitflic.ru/project/akprof2000/tsl-auth/tsl-auth` |
 
 ## Конвейер GitFlic
 
@@ -87,8 +87,9 @@ docker login registry.gitflic.ru
 ```
 
 ```bash
-docker pull registry.gitflic.ru/project/akprof2000/tsl-auth:latest
+docker pull registry.gitflic.ru/project/akprof2000/tsl-auth/tsl-auth:latest
 ```
 
-Точный путь образа показан на странице проекта «Реестр контейнеров и пакетов». В закрытый контур образ
+Путь образа в реестре GitFlic — `registry.gitflic.ru/project/<владелец>/<проект>/<имя образа>:<тег>`; для входа
+с рабочей машины нужен транспортный токен профиля GitFlic (пароль в `docker login`). В закрытый контур образ
 переносится через `docker save` / `docker load`, как описано в [развёртывании](deployment.md).

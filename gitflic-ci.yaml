@@ -32,7 +32,10 @@ variables:
   # Testcontainers запускает PostgreSQL и OpenBao в том же dind и обращается к ним по имени сервиса.
   TESTCONTAINERS_HOST_OVERRIDE: docker
   TESTCONTAINERS_RYUK_DISABLED: "true"
-  IMAGE_SHA: $CI_REGISTRY_IMAGE:sha-$CI_COMMIT_SHA
+  # Путь образа в реестре GitFlic: registry.gitflic.ru/project/<владелец>/<проект>/<имя образа>:<тег>.
+  # $CI_REGISTRY_IMAGE даёт только .../project/<владелец>/<проект> — имя образа добавляется здесь.
+  IMAGE_REPO: $CI_REGISTRY_IMAGE/tsl-auth
+  IMAGE_SHA: $CI_REGISTRY_IMAGE/tsl-auth:sha-$CI_COMMIT_SHA
 
 # Кэш NuGet общий для всех заданий и конвейеров: restore из кэша — секунды вместо ~2 минут на задание.
 cache:

@@ -101,24 +101,20 @@ scan-image:
 
 publish-image:
   stage: publish
-  image: docker:28
+  # crane — клиент реестра без демона Docker: демон dind на агенте не дожидается ответа registry.gitflic.ru
+  # (curl, Go и crane из того же контейнера отвечают за 0,2 с), а crane грузит image.tar напрямую.
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
   tags: [tsl-auth]
-  services:
-    - name: docker:28-dind
-      alias: docker
-      command: ["--tls=false"]
   script:
-    - docker load -i image.tar
-    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
-    - docker push "$IMAGE_SHA"
+    - crane auth login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
+    - crane push image.tar "$IMAGE_SHA"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
-        version="${CI_COMMIT_TAG#v}"
-        docker tag "$IMAGE_SHA" "$CI_REGISTRY_IMAGE:$version"
-        docker push "$CI_REGISTRY_IMAGE:$version"
+        crane tag "$IMAGE_SHA" "${CI_COMMIT_TAG#v}"
       else
-        docker tag "$IMAGE_SHA" "$CI_REGISTRY_IMAGE:latest"
-        docker push "$CI_REGISTRY_IMAGE:latest"
+        crane tag "$IMAGE_SHA" latest
       fi
 
 # Релиз GitFlic на тег vX.Y.Z: страница релиза со ссылкой на образ в реестре GitFlic.

@@ -1,0 +1,44 @@
+# Зеркало репозитория на GitFlic (https://gitflic.ru/project/akprof2000/tsl-auth): после каждого push в main,
+# каждого тега и по кнопке CI отправляет на GitFlic все ветки и теги с полной историей.
+# Учётные данные — секреты репозитория GITFLIC_USER и GITFLIC_TOKEN (токен GitFlic с правом записи);
+# в журнале шага они маскируются, в .git/config не сохраняются.
+name: mirror-gitflic
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-gitflic
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Полная история, все ветки и теги: зеркалу нужна не только последняя ревизия.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Отправка на GitFlic
+        env:
+          GITFLIC_USER: ${{ secrets.GITFLIC_USER }}
+          GITFLIC_TOKEN: ${{ secrets.GITFLIC_TOKEN }}
+        run: |
+          set -euo pipefail
+          # origin/HEAD — символическая ссылка, а не ветка: в зеркало её не отправляем.
+          git update-ref -d refs/remotes/origin/HEAD || true
+          # Токен передаётся заголовком Basic только этой команде и не попадает в конфигурацию git.
+          auth=$(printf '%s:%s' "$GITFLIC_USER" "$GITFLIC_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git -c http.extraHeader="Authorization: Basic $auth" push --force --prune \
+            https://gitflic.ru/project/akprof2000/tsl-auth.git \
+            "+refs/remotes/origin/*:refs/heads/*" "+refs/tags/*:refs/tags/*"

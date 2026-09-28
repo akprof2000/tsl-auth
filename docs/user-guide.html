@@ -1,0 +1,314 @@
+<title>Вход и учётная запись TSL Auth</title>
+<meta name="description" content="Руководство пользователя TSL Auth: вход, код подтверждения, пароль, мессенджер, заявки на доступ, токены.">
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --ink: #1c2430;
+    --muted: #586476;
+    --line: #dbe0e7;
+    --accent: #2c5b87;
+    --accent-soft: #e6eef6;
+    --ok: #2d7a4d;
+    --warn: #9a6400;
+    --warn-soft: #fbf3e2;
+    --code-bg: #eef1f5;
+    --shadow: 0 1px 2px rgba(28, 36, 48, .06);
+    --font: "Segoe UI", "PT Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: Consolas, "PT Mono", "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #11151b; --surface: #19202a; --ink: #e5e9ef; --muted: #9ba6b5; --line: #2a333f;
+      --accent: #86b4e0; --accent-soft: #1d2b3a; --ok: #6cc28f; --warn: #e0ad4f; --warn-soft: #2c2415;
+      --code-bg: #212a35; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #11151b; --surface: #19202a; --ink: #e5e9ef; --muted: #9ba6b5; --line: #2a333f;
+    --accent: #86b4e0; --accent-soft: #1d2b3a; --ok: #6cc28f; --warn: #e0ad4f; --warn-soft: #2c2415;
+    --code-bg: #212a35; --shadow: none;
+  }
+
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--font); }
+  .page { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 64px;
+          display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; }
+  @media (max-width: 860px) { .page { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-inline: 16px; } }
+
+  /* Оглавление */
+  nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start;
+            font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
+  nav.toc .label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  nav.toc a { color: var(--ink); text-decoration: none; padding: 4px 10px; border-left: 2px solid var(--line); }
+  nav.toc a:hover, nav.toc a:focus-visible { border-left-color: var(--accent); color: var(--accent); }
+  @media (max-width: 860px) {
+    nav.toc { position: static; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    nav.toc .label { width: 100%; }
+    nav.toc a { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
+  }
+
+  main { min-width: 0; max-width: 72ch; }
+  header.intro { display: flex; flex-direction: column; gap: 10px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; margin: 0; text-wrap: balance; font-weight: 700; }
+  header.intro p { margin: 0; color: var(--muted); font-size: 17px; }
+  h2 { font-size: 23px; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
+  h3 { font-size: 17px; margin: 20px 0 6px; }
+  section { padding-block: 32px 8px; scroll-margin-top: 16px; }
+  p { margin: 0 0 12px; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Быстрые ответы */
+  .quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 20px; }
+  .quick a { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--surface);
+             border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--ink); box-shadow: var(--shadow); }
+  .quick a b { font-weight: 600; }
+  .quick a span { font-size: 13px; color: var(--muted); }
+  .quick a:hover { border-color: var(--accent); }
+
+  /* Шаги: порядок действий важен */
+  ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 12px 0 16px; display: flex; flex-direction: column; gap: 10px; }
+  ol.steps > li { counter-increment: step; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+  ol.steps > li::before { content: counter(step); width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft);
+                          color: var(--accent); font-weight: 700; font-size: 13px; display: grid; place-items: center;
+                          font-variant-numeric: tabular-nums; margin-top: 1px; }
+  ul { padding-left: 20px; margin: 0 0 12px; }
+  li { margin: 3px 0; }
+
+  /* Элементы интерфейса — так, как они подписаны на экране */
+  .ui { font-family: var(--font); font-size: .92em; padding: 1px 8px; border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 5px; background: var(--surface); white-space: nowrap; }
+  .field { font-size: .92em; padding: 1px 6px; border-bottom: 1px dashed var(--muted); }
+  code, kbd { font-family: var(--mono); font-size: .9em; background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+  .msg { display: block; margin: 8px 0 12px; padding: 10px 14px; border-radius: 6px; background: var(--accent-soft); font-size: 15px; }
+  .note { margin: 14px 0; padding: 12px 16px; border-radius: 6px; background: var(--warn-soft); border-left: 3px solid var(--warn); font-size: 15px; }
+  .note b { color: var(--warn); }
+
+  .table-wrap { overflow-x: auto; margin: 12px 0 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--bg); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { width: 38%; }
+  td code, td .ui { white-space: nowrap; }
+
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="page">
+  <nav class="toc" aria-label="Содержание">
+    <span class="label">Содержание</span>
+    <a href="#login">Вход</a>
+    <a href="#first">Первый вход</a>
+    <a href="#code">Код подтверждения</a>
+    <a href="#forgot">Забыли пароль</a>
+    <a href="#password">Смена пароля</a>
+    <a href="#register">Регистрация и доступ</a>
+    <a href="#cabinet">Личный кабинет</a>
+    <a href="#messenger">Мессенджер</a>
+    <a href="#tokens">Токены для скриптов</a>
+    <a href="#safety">Блокировки</a>
+    <a href="#trouble">Если не получается</a>
+  </nav>
+
+  <main>
+    <header class="intro">
+      <span class="eyebrow">Руководство пользователя</span>
+      <h1>Вход и учётная запись TSL Auth</h1>
+      <p>TSL Auth — единый вход во все приложения организации. Одна учётная запись и один пароль:
+        приложение само открывает страницу входа TSL Auth и возвращает вас обратно.</p>
+      <div class="quick">
+        <a href="#code"><b>Просят код после пароля</b><span>почта или бот, команда /code</span></a>
+        <a href="#forgot"><b>Забыл пароль</b><span>ссылка на почту или бот, /reset</span></a>
+        <a href="#register"><b>Нужен доступ к приложению</b><span>регистрация или заявка</span></a>
+        <a href="#trouble"><b>Не пускает</b><span>сообщения и что делать</span></a>
+      </div>
+    </header>
+
+    <section id="login">
+      <h2>Вход в приложение</h2>
+      <p>Откройте приложение, с которым работаете. Если вы ещё не вошли, оно перенаправит вас на страницу входа TSL Auth.
+        На ней может быть логотип и название приложения: вход общий, но оформлен под приложение.</p>
+      <ol class="steps">
+        <li><span>Введите логин или email в поле <span class="field">Логин или email</span>.</span></li>
+        <li><span>Введите пароль в поле <span class="field">Пароль</span>.</span></li>
+        <li><span>Отметьте <span class="ui">Запомнить меня</span>, если это ваш компьютер: браузер не будет спрашивать пароль при каждом открытии.</span></li>
+        <li><span>Нажмите <span class="ui">Войти</span>. Если для вашей роли нужен код подтверждения, откроется ещё один шаг — см. <a href="#code">Код подтверждения</a>.</span></li>
+      </ol>
+      <p>Язык страниц переключается вверху: русский или английский.</p>
+      <p>Выход — ссылка <span class="ui">Выйти</span> в личном кабинете или команда выхода в самом приложении.
+        На общем компьютере выходите всегда.</p>
+    </section>
+
+    <section id="first">
+      <h2>Первый вход</h2>
+      <h3>По приглашению</h3>
+      <p>Администратор может прислать ссылку-приглашение. Откройте её: страница <span class="ui">Активация учётной записи</span>
+        покажет ваш логин и попросит задать пароль. Нажмите <span class="ui">Активировать</span> и входите с этим паролем.
+        Ссылка одноразовая и действует ограниченное время; если она устарела, попросите новую.</p>
+      <h3>С временным паролем</h3>
+      <p>Если администратор выдал временный пароль, войдите с ним. Сразу откроется страница смены пароля с сообщением:</p>
+      <span class="msg">Вы вошли с временным или просроченным паролем. Чтобы продолжить, задайте новый.</span>
+      <p>Пока пароль не сменён, приложения и личный кабинет недоступны. То же происходит, когда истёк срок действия пароля.</p>
+    </section>
+
+    <section id="code">
+      <h2>Код подтверждения при входе</h2>
+      <p>Для некоторых ролей администратор включает двухфакторный вход. Тогда после пароля открывается страница
+        <span class="ui">Подтверждение входа</span>: нужен одноразовый код. Код действует несколько минут и подходит один раз.</p>
+      <h3>Код на почту</h3>
+      <ol class="steps">
+        <li><span>Выберите <span class="ui">Код на почту</span>, если на странице несколько вариантов.</span></li>
+        <li><span>Нажмите <span class="ui">Отправить код на почту</span>. Письмо «Код для входа» придёт на email учётной записи.</span></li>
+        <li><span>Введите код в поле <span class="field">Код</span> и нажмите <span class="ui">Подтвердить</span>.</span></li>
+      </ol>
+      <h3>Код в мессенджере</h3>
+      <ol class="steps">
+        <li><span>Выберите <span class="ui">Код в мессенджере</span>. Мессенджер должен быть заранее привязан — см. <a href="#messenger">Мессенджер</a>.</span></li>
+        <li><span>Отправьте боту команду <code>/code</code>. Бот ответит кодом для входа.</span></li>
+        <li><span>Введите код и нажмите <span class="ui">Подтвердить</span>.</span></li>
+      </ol>
+      <div class="note"><b>Никому не сообщайте код.</b> Сотрудники поддержки и администраторы его не спрашивают.
+        Если код пришёл, а вы не входили, значит ваш пароль знает кто-то ещё: сразу смените пароль.</div>
+      <p>Если нет ни email, ни привязанного мессенджера, войти с такой ролью нельзя: страница входа об этом скажет.
+        Обратитесь к администратору, чтобы он указал email.</p>
+    </section>
+
+    <section id="forgot">
+      <h2>Забыли пароль</h2>
+      <h3>Через почту</h3>
+      <ol class="steps">
+        <li><span>На странице входа нажмите <span class="ui">Забыли пароль?</span>.</span></li>
+        <li><span>Введите логин или email и нажмите <span class="ui">Отправить ссылку</span>.</span></li>
+        <li><span>Откройте письмо и перейдите по ссылке. На странице <span class="ui">Новый пароль</span> задайте пароль и нажмите <span class="ui">Сохранить</span>.</span></li>
+      </ol>
+      <p>После сброса все прежние сеансы завершаются: войдите заново на всех устройствах.
+        Если почта в организации не настроена, страница скажет об этом — временный пароль выдаст администратор.</p>
+      <h3>Через бота</h3>
+      <p>Если мессенджер привязан, отправьте боту <code>/reset</code>. Бот пришлёт одноразовую ссылку для нового пароля
+        (или временный пароль — так решает администратор). Число сбросов в час ограничено.</p>
+    </section>
+
+    <section id="password">
+      <h2>Смена пароля</h2>
+      <p>Личный кабинет → <span class="ui">Сменить пароль</span>. Введите текущий пароль, новый пароль и подтверждение,
+        нажмите <span class="ui">Сменить пароль</span>.</p>
+      <p>Требования к паролю задаёт администратор; на странице они показаны текстом. Обычно это:</p>
+      <ul>
+        <li>не короче 8 символов;</li>
+        <li>строчные и заглавные буквы, цифры;</li>
+        <li>пароль не содержит логин и не совпадает с недавними паролями.</li>
+      </ul>
+      <p>Если пароль не подходит, страница назовёт, какое требование не выполнено.</p>
+    </section>
+
+    <section id="register">
+      <h2>Регистрация и доступ к приложению</h2>
+      <p>Права в приложениях дают роли. Их назначает администратор или одобряет по вашей заявке.</p>
+      <h3>Регистрация</h3>
+      <p>Если приложение разрешает регистрацию, на странице входа есть ссылка <span class="ui">Зарегистрироваться</span>.</p>
+      <ol class="steps">
+        <li><span>Заполните <span class="field">Логин</span>, <span class="field">Email</span>, <span class="field">Имя</span> и пароль.</span></li>
+        <li><span>В блоке <span class="field">Запрашиваемый доступ</span> отметьте нужные роли и напишите, зачем нужен доступ.</span></li>
+        <li><span>Нажмите <span class="ui">Зарегистрироваться</span>. Права появятся после одобрения заявки.</span></li>
+      </ol>
+      <h3>Заявка на дополнительную роль</h3>
+      <p>Если учётная запись уже есть: личный кабинет → <span class="ui">Запросить доступ</span>. Лучше открыть эту страницу
+        из самого приложения, тогда сразу видны его роли. Отметьте роли, добавьте комментарий и нажмите
+        <span class="ui">Отправить заявку</span>. Статус заявок — в таблице <span class="ui">Мои заявки</span>.</p>
+      <p>Новые права применяются при следующем входе или в течение 15 минут, когда приложение обновит вход.</p>
+    </section>
+
+    <section id="cabinet">
+      <h2>Личный кабинет</h2>
+      <p>Открывается ссылкой внизу страниц входа или в приложении. Разделы:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Раздел</th><th>Для чего</th></tr></thead>
+          <tbody>
+            <tr><td><span class="ui">Мои токены</span></td><td>Токены для скриптов и сервисов</td></tr>
+            <tr><td><span class="ui">Мессенджер</span></td><td>Привязка бота: сброс пароля и код подтверждения</td></tr>
+            <tr><td><span class="ui">Запросить доступ</span></td><td>Дополнительные роли в приложениях</td></tr>
+            <tr><td><span class="ui">Сменить пароль</span></td><td>Новый пароль для входа</td></tr>
+            <tr><td><span class="ui">Администрирование</span></td><td>Управление сервисом; видно только администраторам</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="messenger">
+      <h2>Мессенджер</h2>
+      <p>Привязанный мессенджер нужен для входа с кодом, сброса пароля и срочной блокировки своей учётной записи.</p>
+      <ol class="steps">
+        <li><span>Личный кабинет → <span class="ui">Мессенджер</span> → <span class="ui">Получить код привязки</span>.</span></li>
+        <li><span>Отправьте боту организации строку, которую покажет страница, например <code>/link K7Q2M9XA</code>. Код действует ограниченное время.</span></li>
+        <li><span>Бот ответит, что чат привязан. Привязка появится в таблице на той же странице; отвязать можно кнопкой <span class="ui">Отвязать</span>.</span></li>
+      </ol>
+      <h3>Команды бота</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td><code>/code</code></td><td>Код подтверждения для входа</td></tr>
+            <tr><td><code>/reset</code></td><td>Одноразовая ссылка для нового пароля</td></tr>
+            <tr><td><code>/whoami</code></td><td>К какой учётной записи привязан чат</td></tr>
+            <tr><td><code>/forcepwd</code></td><td>Потребовать смену своего пароля и завершить все сеансы</td></tr>
+            <tr><td><code>/lock</code></td><td>Срочно заблокировать свою учётную запись, например если украли телефон</td></tr>
+            <tr><td><code>/unlink</code></td><td>Отвязать чат</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Команды могут отличаться у бота вашей организации: список покажет команда <code>/help</code>.
+        Разблокировать свою учётную запись после <code>/lock</code> может только администратор.</p>
+    </section>
+
+    <section id="tokens">
+      <h2>Токены для скриптов</h2>
+      <p>Нужны, если вы запускаете скрипты или сервисы от своего имени. Токен даёт не больше прав, чем у вас сейчас.</p>
+      <ol class="steps">
+        <li><span>Личный кабинет → <span class="ui">Мои токены</span>.</span></li>
+        <li><span>Укажите название (например, «ночная выгрузка отчётов»), приложения и срок действия в днях.</span></li>
+        <li><span>Нажмите <span class="ui">Создать токен</span> и сразу скопируйте его: показать его ещё раз нельзя.</span></li>
+      </ol>
+      <p>Храните токен как пароль. Ненужный или раскрытый токен отзовите кнопкой <span class="ui">Отозвать</span>:
+        сервисы с ним сразу перестанут работать. Как обменять токен на доступ для API, знает разработчик скрипта.</p>
+    </section>
+
+    <section id="safety">
+      <h2>Блокировки и безопасность</h2>
+      <ul>
+        <li><b>Неверный пароль несколько раз подряд.</b> Учётная запись временно блокируется (обычно после 5 попыток на 15 минут).
+          Подождите или обратитесь к администратору. Неверные коды подтверждения считаются так же.</li>
+        <li><b>Долго не входили.</b> Учётная запись без входа больше 90 дней отключается автоматически. Включить её снова может администратор.</li>
+        <li><b>Смена пароля завершает сеансы.</b> После сброса или принудительной смены пароля войдите заново на всех устройствах.</li>
+        <li><b>Подозрительный вход.</b> Если пришёл код, а вы не входили, смените пароль. Потеряли телефон с мессенджером — отправьте боту <code>/lock</code> с другого устройства или позвоните администратору.</li>
+      </ul>
+    </section>
+
+    <section id="trouble">
+      <h2>Если не получается</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Сообщение</th><th>Что делать</th></tr></thead>
+          <tbody>
+            <tr><td>Неверный логин или пароль</td><td>Проверьте раскладку и Caps Lock. После нескольких попыток вход временно блокируется: подождите или сбросьте пароль.</td></tr>
+            <tr><td>Неверный или устаревший код</td><td>Запросите новый код (<span class="ui">Отправить код на почту</span> или <code>/code</code>) и введите его сразу.</td></tr>
+            <tr><td>Сеанс подтверждения истёк</td><td>Войдите заново с паролем: шаг с кодом ограничен по времени.</td></tr>
+            <tr><td>Нужен двухфакторный вход, но нет email и мессенджера</td><td>Попросите администратора указать email в вашей учётной записи.</td></tr>
+            <tr><td>Ссылка недействительна или устарела</td><td>Запросите новую ссылку сброса пароля или новое приглашение.</td></tr>
+            <tr><td>Самостоятельная регистрация недоступна</td><td>Приложение не принимает регистрацию: учётную запись создаёт администратор.</td></tr>
+            <tr><td>Вход прошёл, но в приложении «нет доступа»</td><td>У вас нет роли в этом приложении: отправьте заявку через <span class="ui">Запросить доступ</span>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Администратору пригодятся ваш логин, время попытки и текст сообщения: по ним он найдёт запись в журнале безопасности.</p>
+    </section>
+
+    <footer>TSL Auth — сервис аутентификации и авторизации. Руководство описывает стандартные настройки;
+      сроки, требования к паролю и команды бота в вашей организации могут отличаться.</footer>
+  </main>
+</div>

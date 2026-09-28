@@ -8,6 +8,7 @@
 #
 # Этапы: сборка+unit, образ и проверка документации параллельно → интеграционные (SQLite и PostgreSQL/OpenBao
 # в Testcontainers через docker:dind) и Trivy параллельно → публикация (main — latest и sha, тег — X.Y.Z) → релиз.
+# После каждого dotnet test — scripts/ci-check-trx.sh: без выполненных тестов задание красное.
 # Агент выполняет до 3 заданий одновременно (см. docs/gitflic-ci.md), кэш NuGet общий между конвейерами.
 
 # Стадии: build — сборка решения и образа, проверка документации (все три параллельно);
@@ -53,17 +54,17 @@ build-and-unit:
     - dotnet restore TslAuth.sln
     - dotnet build TslAuth.sln -c Release --no-restore -warnaserror
     - dotnet test tests/TslAuth.UnitTests -c Release --no-build --logger "trx;LogFileName=unit.trx" --results-directory TestResults
+    # dotnet test без собранных бинарников или без найденных тестов молча выходит с кодом 0 — проверяем .trx.
+    - sh scripts/ci-check-trx.sh TestResults/unit.trx 100
   artifacts:
-    # Собранные бинарники — интеграционным тестам, чтобы не собирать решение второй раз.
-    paths: [TestResults/, "src/**/bin/Release/", "src/**/obj/", "tests/**/bin/Release/", "tests/**/obj/"]
+    paths: [TestResults/]
     when: always
-    expire_in: 1 day
+    expire_in: 14 days
 
 integration-tests:
   stage: test
   image: $SDK_IMAGE
   tags: [tsl-auth]
-  needs: [build-and-unit]
   services:
     - name: docker:28-dind
       alias: docker
@@ -71,7 +72,9 @@ integration-tests:
   script:
     # Сервис docker:dind стартует вместе с заданием: ждём демон до 60 с, иначе первая же команда падает.
     - for i in $(seq 1 60); do wget -q -O /dev/null http://docker:2375/_ping 2>/dev/null && break; sleep 1; done; wget -q -O - http://docker:2375/_ping; echo
-    - dotnet test tests/TslAuth.IntegrationTests -c Release --no-build --logger "trx;LogFileName=integration.trx" --results-directory TestResults
+    # Сборка здесь же: артефакты с glob-путями bin/obj GitFlic не переносит, а restore идёт из кэша NuGet за секунды.
+    - dotnet test tests/TslAuth.IntegrationTests -c Release --logger "trx;LogFileName=integration.trx" --results-directory TestResults
+    - sh scripts/ci-check-trx.sh TestResults/integration.trx 100
   artifacts:
     paths: [TestResults/]
     when: always

@@ -92,6 +92,7 @@ public static class OpenBaoConfiguration
     /// <summary>"Encryption__MasterKey" → "Encryption:MasterKey" (как у переменных окружения).</summary>
     public static string NormalizeKey(string key) => key.Replace("__", ":", StringComparison.Ordinal);
 
+    /// <summary>HTTP-клиент к OpenBao; при заданном CaFile сертификат сервера проверяется по указанному центру сертификации.</summary>
     private static HttpClient CreateClient(OpenBaoOptions options)
     {
         var handler = new HttpClientHandler();
@@ -111,6 +112,7 @@ public static class OpenBaoConfiguration
         return new HttpClient(handler) { BaseAddress = new Uri(options.Address!.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(10) };
     }
 
+    /// <summary>Токен доступа: готовый токен из файла, иначе вход по AppRole.</summary>
     private static async Task<string> LoginAsync(HttpClient http, OpenBaoOptions options, CancellationToken ct)
     {
         var token = SecretFile.Read(options.TokenFile, "OpenBao:TokenFile");
@@ -129,6 +131,7 @@ public static class OpenBaoConfiguration
                ?? throw new InvalidOperationException("OpenBao: вход по AppRole не вернул токен.");
     }
 
+    /// <summary>Читает секрет KV v2 и превращает его поля в пары конфигурации.</summary>
     private static async Task<List<KeyValuePair<string, string?>>> ReadAsync(HttpClient http, string mount, string path, string token,
         CancellationToken ct)
     {
@@ -168,6 +171,7 @@ public static class OpenBaoConfiguration
         }
     }
 
+    /// <summary>Текст ошибки OpenBao из поля errors ответа (для сообщения при старте).</summary>
     private static string Errors(string body)
     {
         try

@@ -13,6 +13,7 @@ Set-Location $root
 $env:MSYS_NO_PATHCONV = "1"
 $env:AUTH_PORT = "$Port"
 $report = [System.Collections.Generic.List[string]]::new()
+# Выполнить проверку: ошибка не прерывает прогон, а фиксируется в отчёте и выставляет общий признак провала.
 function Check($name, [scriptblock]$test) {
     try { & $test; $report.Add("| $name | ✅ |"); Write-Host "OK   $name" -ForegroundColor Green }
     catch { $report.Add("| $name | ❌ $($_.Exception.Message) |"); Write-Host "FAIL $name — $($_.Exception.Message)" -ForegroundColor Red; $script:failed = $true }
@@ -35,6 +36,8 @@ function SaveLogs($compose, $name) {
     & docker compose @compose ps -a > "$dir/ps.txt" 2>&1
     & docker compose @compose logs --no-color > "$dir/logs.txt" 2>&1
 }
+# Секрет Admin API читается прямо из OpenBao (в скрипте не хранится), затем по нему запрашивается токен:
+# успешная выдача подтверждает, что сервис использует тот же секрет из хранилища.
 function AdminToken($compose) {
     $secret = (& docker compose @compose exec -T openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminApiClientSecret secret/tsl-auth | Out-String).Trim()
     (Invoke-RestMethod "http://localhost:$Port/connect/token" -Method Post -Body @{

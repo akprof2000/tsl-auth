@@ -17,8 +17,11 @@ public sealed record RoleInput(string Name, string? Description, List<string>? P
 
 /// <summary>Изменение роли: название для пользователей и описание (техническое имя не меняется).</summary>
 public sealed record RoleUpdateInput(string? DisplayName, string? Description);
+/// <summary>Решение по заявке на доступ: необязательный комментарий, который получит заявитель.</summary>
 public sealed record DecisionInput(string? Comment);
+/// <summary>Языковой пакет: название, словарь «ключ → перевод» и признак доступности языка в интерфейсе.</summary>
 public sealed record LanguagePackInput(string? Name, Dictionary<string, string> Strings, bool IsEnabled = true);
+/// <summary>Установка пароля администратором; MustChangePassword заставит пользователя сменить его при следующем входе.</summary>
 public sealed record PasswordInput(string Password, bool MustChangePassword = false);
 
 /// <summary>
@@ -295,6 +298,7 @@ public static class AdminApi
             ? $"client:{me.GetClaim(OpenIddictConstants.Claims.Subject)}"
             : $"user:{me.GetClaim(OpenIddictConstants.Claims.PreferredUsername) ?? me.GetClaim(OpenIddictConstants.Claims.Subject)}";
 
+    /// <summary>Проверяет существование приложения; иначе 404 — чтобы операции над ролями не шли по несуществующему client_id.</summary>
     private static async Task EnsureAppAsync(ApplicationService apps, string clientId, CancellationToken ct)
     {
         if (await apps.GetAsync(clientId, ct) is null)

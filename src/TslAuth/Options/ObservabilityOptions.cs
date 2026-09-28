@@ -78,6 +78,7 @@ public sealed class OpenTelemetryOptions
 
     public bool Enabled => !string.IsNullOrWhiteSpace(Endpoint);
 
+    /// <summary>HTTP/protobuf вместо gRPC — для коллекторов и прокси без поддержки HTTP/2.</summary>
     public bool IsHttp => Protocol.Equals("http", StringComparison.OrdinalIgnoreCase)
                           || Protocol.Equals("http/protobuf", StringComparison.OrdinalIgnoreCase);
 }

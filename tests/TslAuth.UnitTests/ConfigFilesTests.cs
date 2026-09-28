@@ -1,3 +1,7 @@
+// Unit-тесты загрузки файла настроек по APPSETTINGS_PATH.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using Microsoft.AspNetCore.Builder;
 using TslAuth.Infrastructure;
 
@@ -9,6 +13,7 @@ namespace TslAuth.UnitTests;
 /// </summary>
 public class ConfigFilesTests
 {
+    /// <summary>Абсолютный APPSETTINGS_PATH вне ContentRoot читается; переменные окружения имеют приоритет.</summary>
     [Fact]
     public void AppSettingsPath_OutsideContentRoot_IsLoaded_AndEnvironmentWins()
     {
@@ -39,6 +44,7 @@ public class ConfigFilesTests
         }
     }
 
+    /// <summary>Указанный, но отсутствующий файл настроек останавливает старт.</summary>
     [Fact]
     public void AppSettingsPath_Missing_StopsStart()
     {

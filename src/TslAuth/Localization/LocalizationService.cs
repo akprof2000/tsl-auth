@@ -86,9 +86,11 @@ public sealed class LocalizationService(IServiceScopeFactory scopes, ILogger<Loc
             .Where(l => includeDisabled || l.IsEnabled).ToList();
     }
 
+    /// <summary>Доступен ли язык для выбора пользователем.</summary>
     public async Task<bool> IsAvailableAsync(string culture) =>
         (await ListAsync()).Any(l => l.Culture.Equals(culture, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Языковой пакет, сохранённый в БД, или null.</summary>
     public async Task<LanguagePack?> GetPackAsync(string culture)
     {
         await EnsureLoadedAsync();

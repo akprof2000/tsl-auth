@@ -13,6 +13,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public sealed class WebhookTargetPolicy(IReadOnlyList<IPNetwork> allowed)
 {
+    /// <summary>Читает Webhooks:AllowedNetworks (CIDR через запятую/пробел); ошибка в записи сети останавливает старт.</summary>
     public static WebhookTargetPolicy FromConfig(IConfiguration config)
     {
         var value = config["Webhooks:AllowedNetworks"];
@@ -24,6 +25,10 @@ public sealed class WebhookTargetPolicy(IReadOnlyList<IPNetwork> allowed)
         return new WebhookTargetPolicy(networks);
     }
 
+    /// <summary>
+    /// Можно ли соединяться с адресом. Loopback, link-local (в т.ч. метаданные облака 169.254.x.x), multicast и
+    /// «любой адрес» запрещены всегда; остальное — если список сетей пуст или адрес входит в одну из них.
+    /// </summary>
     public bool IsAllowed(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();

@@ -1,3 +1,5 @@
+// Экран до входа. Кнопки ведут на TSL Auth (authorization code + PKCE) — вход и регистрация
+// происходят на стороне сервиса авторизации, приложение пароли не видит.
 import { ArrowRight, FileCheck2, KeyRound, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { registerRedirect, userManager } from "../auth";
 

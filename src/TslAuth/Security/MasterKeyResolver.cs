@@ -78,6 +78,7 @@ public static class MasterKeyResolver
         return string.IsNullOrEmpty(dir) ? contentRoot : Path.GetFullPath(dir, contentRoot);
     }
 
+    /// <summary>Декодирует ключ из Base64 и проверяет его длину; source — источник ключа для текста ошибки.</summary>
     private static byte[] Decode(string value, string source)
     {
         try

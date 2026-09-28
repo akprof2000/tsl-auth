@@ -9,6 +9,10 @@ namespace TslAuth.UiTests;
 /// UI-автотесты работают против запущенного стенда: сервис в Docker (compose) + демо-приложения из samples/.
 /// Адреса и учётные данные можно переопределить переменными окружения.
 /// Скриншоты каждого шага сохраняются в tests/artifacts/ui.
+/// Фикстура один раз поднимает Playwright и Chromium (без окна; UI_HEADED=1 — с окном),
+/// получает токен Admin API и готовит отдельного администратора для тестов.
+/// Запуск: сначала поднять стенд (demo-start), затем <c>dotnet test tests/TslAuth.UiTests</c>;
+/// браузеры Playwright должны быть установлены заранее (playwright.ps1 install chromium).
 /// </summary>
 public sealed class UiFixture : IAsyncLifetime
 {
@@ -56,6 +60,10 @@ public sealed class UiFixture : IAsyncLifetime
         await EnsureUserAsync(UiAdmin, UiAdminPassword, [new { clientId = "tsl-auth-admin", role = "administrator" }]);
     }
 
+    /// <summary>
+    /// Идемпотентно приводит пользователя к нужному состоянию: создаёт, если его нет, иначе
+    /// перезаписывает роли и пароль. Так повторные прогоны на том же стенде дают одинаковый результат.
+    /// </summary>
     public async Task<Guid> EnsureUserAsync(string name, string password, object[] roles, bool temporary = false)
     {
         var found = await Admin.GetFromJsonAsync<JsonElement>($"/api/admin/users?search={name}");
@@ -74,10 +82,12 @@ public sealed class UiFixture : IAsyncLifetime
             await Admin.PutAsJsonAsync($"/api/admin/users/{id}", new { userName = name, email = $"{name}@tsl.local", isActive = true, roles });
             (await Admin.PostAsJsonAsync($"/api/admin/users/{id}/password", new { password, mustChangePassword = temporary })).EnsureSuccessStatusCode();
         }
+        // Снимаем возможную блокировку после неудачных входов в прошлых прогонах (тест с неверным паролем).
         await Admin.PostAsync($"/api/admin/users/{id}/unlock", null);
         return id;
     }
 
+    /// <summary>Новая страница в отдельном контексте браузера: свои cookie, поэтому тесты не делят сессии.</summary>
     public async Task<IPage> NewPageAsync(string? locale = "ru-RU")
     {
         var context = await Browser.NewContextAsync(new() { Locale = locale, ViewportSize = new() { Width = 1280, Height = 900 } });

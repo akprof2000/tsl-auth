@@ -20,6 +20,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public static class LoggingSetup
 {
+    /// <summary>Подключает Serilog: приёмники по настройкам, динамические уровни (LogLevels) и их синхронизацию из БД.</summary>
     public static void AddTslLogging(this WebApplicationBuilder builder, ObservabilityOptions observability)
     {
         var levels = new LogLevels(builder.Configuration.GetSection("Logging:LogLevel"));
@@ -145,6 +146,7 @@ public static class LoggingSetup
 /// <summary>Добавляет в запись TraceId и SpanId текущей операции (Serilog берёт их из Activity.Current).</summary>
 public sealed class TraceEnricher : ILogEventEnricher
 {
+    /// <summary>Добавляет TraceId/SpanId текущей активности, чтобы связать логи с трассировкой.</summary>
     public void Enrich(LogEvent logEvent, ILogEventPropertyFactory factory)
     {
         if (logEvent.TraceId is { } trace) logEvent.AddPropertyIfAbsent(factory.CreateProperty("TraceId", trace.ToHexString()));
@@ -175,6 +177,7 @@ public sealed class FileLogOptions
 /// </summary>
 public sealed class GzipArchiveHooks(int retainedArchives) : Serilog.Sinks.File.FileLifecycleHooks
 {
+    /// <summary>Вызывается при ротации перед удалением старого файла лога: при включённом хранении архивов сжимает его в .gz.</summary>
     public override void OnFileDeleting(string path)
     {
         try
@@ -218,6 +221,7 @@ public sealed class LogLevels : ILogEventFilter
     private readonly Dictionary<string, LogEventLevel> _configOverrides;
     private volatile Rules _rules;
 
+    /// <summary>Базовые уровни берутся из Logging:LogLevel; настройки из БД накладываются поверх них.</summary>
     public LogLevels(IConfiguration logLevelSection)
     {
         _configDefault = LoggingSetup.ParseLevel(logLevelSection["Default"]) ?? LogEventLevel.Information;
@@ -253,12 +257,14 @@ public sealed class LogLevels : ILogEventFilter
         return rules.Default;
     }
 
+    /// <summary>Фильтр Serilog: уровень события сравнивается с уровнем его категории (SourceContext).</summary>
     public bool IsEnabled(LogEvent logEvent)
     {
         var category = logEvent.Properties.TryGetValue("SourceContext", out var v) && v is ScalarValue { Value: string s } ? s : null;
         return logEvent.Level >= LevelFor(category);
     }
 
+    /// <summary>Собирает правила: уровень по умолчанию и переопределения по категориям-префиксам.</summary>
     private Rules Build(LoggingSettings? settings)
     {
         var @default = LoggingSetup.ParseLevel(settings?.DefaultLevel) ?? _configDefault;
@@ -271,6 +277,7 @@ public sealed class LogLevels : ILogEventFilter
         return new Rules(@default, ordered, minimum);
     }
 
+    /// <summary>Имя уровня в терминах Microsoft.Extensions.Logging для UI и настроек.</summary>
     public static string Describe(LogEventLevel level) => level switch
     {
         LogEventLevel.Verbose => "Trace",

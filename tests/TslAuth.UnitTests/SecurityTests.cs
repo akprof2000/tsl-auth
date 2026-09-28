@@ -1,3 +1,7 @@
+// Unit-тесты безопасности: шифрование полей, валидация имён, генерация паролей, подпись, экспорт CSV.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using System.Security.Cryptography;
 using TslAuth.Infrastructure;
 using TslAuth.Security;
@@ -10,6 +14,7 @@ public sealed class FieldCryptoTests
 {
     static FieldCryptoTests() => FieldCrypto.Initialize(RandomNumberGenerator.GetBytes(32));
 
+    /// <summary>Зашифрованное значение расшифровывается в исходное.</summary>
     [Fact]
     public void Encrypt_Decrypt_Roundtrip()
     {
@@ -19,6 +24,7 @@ public sealed class FieldCryptoTests
         Assert.Equal("ivan@tsl.local", FieldCrypto.Decrypt(cipher));
     }
 
+    /// <summary>Два шифрования одного значения дают разный шифртекст (случайный nonce).</summary>
     [Fact]
     public void Encrypt_UsesRandomNonce()
     {
@@ -26,6 +32,7 @@ public sealed class FieldCryptoTests
         Assert.NotEqual(FieldCrypto.Encrypt("same"), FieldCrypto.Encrypt("same"));
     }
 
+    /// <summary>Изменённый шифртекст не проходит проверку тега AES-GCM.</summary>
     [Fact]
     public void Decrypt_TamperedCiphertext_Throws()
     {
@@ -39,6 +46,7 @@ public sealed class FieldCryptoTests
     public void Decrypt_UnencryptedValue_IsRejected() =>
         Assert.Throws<CryptographicException>(() => FieldCrypto.Decrypt("attacker@evil.example"));
 
+    /// <summary>null остаётся null при шифровании и расшифровке.</summary>
     [Fact]
     public void Null_IsPreserved()
     {
@@ -47,6 +55,7 @@ public sealed class FieldCryptoTests
         Assert.Null(FieldCrypto.BlindIndex(null));
     }
 
+    /// <summary>Слепой индекс детерминирован и не меняется при повторном применении.</summary>
     [Fact]
     public void BlindIndex_IsDeterministic_AndIdempotent()
     {
@@ -57,6 +66,7 @@ public sealed class FieldCryptoTests
         Assert.NotEqual(index, FieldCrypto.BlindIndex("PETR"));
     }
 
+    /// <summary>Шифрование массива байт обратимо.</summary>
     [Fact]
     public void EncryptBytes_Roundtrip()
     {
@@ -135,6 +145,7 @@ public sealed class RoleNameTests
 /// <summary>Генератор временных паролей: длина, все классы символов, уникальность.</summary>
 public sealed class PasswordGeneratorTests
 {
+    /// <summary>Сгенерированный пароль содержит символы всех классов.</summary>
     [Fact]
     public void Generated_ContainsAllClasses()
     {
@@ -157,6 +168,7 @@ public sealed class PasswordGeneratorTests
 /// <summary>Подпись тела вебхука: HMAC-SHA256 в формате "sha256=&lt;hex&gt;", зависит от секрета.</summary>
 public sealed class WebhookSignatureTests
 {
+    /// <summary>Подпись вебхука — HMAC-SHA256 в hex, сверяется с эталоном.</summary>
     [Fact]
     public void Sign_IsHmacSha256Hex()
     {
@@ -172,6 +184,7 @@ public sealed class WebhookSignatureTests
 /// <summary>Экспорт журнала в CSV: экранирование кавычек и защита от CSV/формульных инъекций.</summary>
 public sealed class AuditCsvTests
 {
+    /// <summary>CSV-экспорт экранирует кавычки и формулы (защита от CSV-инъекций).</summary>
     [Fact]
     public void Csv_EscapesFormulaInjection_AndQuotes()
     {

@@ -10,6 +10,7 @@ on:
     - cron: "37 3 * * 1"
   workflow_dispatch:
 
+# contents: write нужен для удаления релизов (и тегов).
 permissions:
   contents: write
 
@@ -25,6 +26,8 @@ jobs:
           DELETE_TAGS: "false"
         run: |
           set -e
+          # Список опубликованных релизов "дата<TAB>id<TAB>тег", сортировка от новых к старым;
+          # tail пропускает первые KEEP строк — остальные удаляются.
           gh api "repos/$REPO/releases?per_page=100" --paginate \
             --jq '.[] | select(.draft | not) | "\(.published_at // .created_at)\t\(.id)\t\(.tag_name)"' \
           | sort -r | tail -n +$((KEEP + 1)) \

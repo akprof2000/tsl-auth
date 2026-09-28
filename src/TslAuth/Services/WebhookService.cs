@@ -123,6 +123,7 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
     public async Task<List<SubscriptionDto>> ListSubscriptionsAsync(CancellationToken ct = default) =>
         (await db.WebhookSubscriptions.AsNoTracking().OrderBy(s => s.CreatedAt).ToListAsync(ct)).Select(ToDto).ToList();
 
+    /// <summary>Создаёт подписку на вебхуки; проверка полей — в Apply.</summary>
     public async Task<SubscriptionDto> CreateSubscriptionAsync(SubscriptionInput input, string createdBy, CancellationToken ct = default)
     {
         var entity = new WebhookSubscription { Name = "", Url = "", CreatedBy = createdBy };
@@ -132,6 +133,7 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
         return ToDto(entity);
     }
 
+    /// <summary>Изменяет подписку; если секрет подписи не передан, остаётся прежний.</summary>
     public async Task<SubscriptionDto> UpdateSubscriptionAsync(Guid id, SubscriptionInput input, CancellationToken ct = default)
     {
         var entity = await db.WebhookSubscriptions.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw AdminException.NotFound("Подписка");
@@ -142,6 +144,7 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
         return ToDto(entity);
     }
 
+    /// <summary>Удаляет подписку одним запросом к БД; 404, если её нет.</summary>
     public async Task DeleteSubscriptionAsync(Guid id, CancellationToken ct = default)
     {
         if (await db.WebhookSubscriptions.Where(s => s.Id == id).ExecuteDeleteAsync(ct) == 0)
@@ -163,12 +166,15 @@ public sealed class WebhookService(AuthDbContext db, IServiceScopeFactory scopes
     public static string Sign(string secret, string body) =>
         "sha256=" + Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(body)));
 
+    /// <summary>DTO события для API/SSE; данные события хранятся как JSON-строка.</summary>
     public static EventDto ToDto(WebhookEvent e) =>
         new(e.Id, e.Type, e.OccurredAt, e.Text, JsonSerializer.Deserialize<JsonElement>(e.Data));
 
+    /// <summary>Подписан ли фильтр событий на тип: "*" — на все, иначе список через запятую.</summary>
     private static bool Matches(string events, string type) =>
         events == "*" || events.Split(',', StringSplitOptions.TrimEntries).Contains(type);
 
+    /// <summary>Проверяет поля подписки и переносит их в сущность.</summary>
     private void Apply(WebhookSubscription entity, SubscriptionInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name)) throw new AdminException("Укажите название подписки.");

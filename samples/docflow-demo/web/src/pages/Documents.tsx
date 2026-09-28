@@ -1,3 +1,5 @@
+// Список документов с фильтрами и поиском; в режиме scope="tasks" — «Мои задачи» (документы, ждущие моего решения).
+// Фильтры хранятся в query-строке, чтобы список можно было открыть по ссылке.
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import clsx from "clsx";

@@ -54,6 +54,7 @@ public sealed class AccountLinks(
         return BuildUrl("/Account/AcceptInvite", user.Id, token);
     }
 
+    /// <summary>Проверяет токен приглашения (срок жизни — 7 дней).</summary>
     public Task<bool> ValidateInviteAsync(AppUser user, string token) =>
         users.VerifyUserTokenAsync(user, InviteTokenProvider.ProviderName, InviteTokenProvider.Purpose, token);
 
@@ -64,6 +65,7 @@ public sealed class AccountLinks(
         return BuildUrl("/Account/ResetPassword", user.Id, token);
     }
 
+    /// <summary>Отправляет письмо-приглашение со ссылкой установки пароля.</summary>
     public async Task SendInviteAsync(AppUser user, string link, CancellationToken ct = default)
     {
         var address = user.Email ?? throw new AdminException("У пользователя не указан email.");
@@ -90,6 +92,7 @@ public sealed class AccountLinks(
         });
     }
 
+    /// <summary>Отправляет письмо со ссылкой сброса пароля.</summary>
     public async Task SendPasswordResetAsync(AppUser user, string link, CancellationToken ct = default)
     {
         var address = user.Email ?? throw new AdminException("У пользователя не указан email.");
@@ -97,6 +100,7 @@ public sealed class AccountLinks(
             WebUtility.HtmlEncode(user.UserName), WebUtility.HtmlEncode(link)), ct);
     }
 
+    /// <summary>Абсолютная ссылка на страницу с userId и токеном от адреса Issuer.</summary>
     private string BuildUrl(string path, Guid userId, string token)
     {
         // Только настроенный Issuer: Host запроса подделывается (письмо сброса со ссылкой на чужой домен).

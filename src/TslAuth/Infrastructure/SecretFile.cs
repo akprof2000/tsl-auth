@@ -6,6 +6,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public static class SecretFile
 {
+    /// <summary>Читает секрет из файла; <paramref name="setting"/> — имя настройки для текста ошибки.</summary>
     public static string? Read(string? path, string setting)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;

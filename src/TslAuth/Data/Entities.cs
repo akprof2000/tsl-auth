@@ -147,6 +147,7 @@ public sealed class AccessRoleAssignment
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Статус заявки на роль: ожидает решения, одобрена или отклонена.</summary>
 public enum AccessRequestStatus
 {
     Pending = 0,
@@ -210,6 +211,7 @@ public sealed class WebhookSubscription
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>Статус доставки вебхука: ожидает (в т.ч. повтора), доставлен, попытки исчерпаны.</summary>
 public enum WebhookDeliveryStatus
 {
     Pending = 0,
@@ -245,6 +247,7 @@ public sealed class WebhookDelivery
     public DateTime? DeliveredAt { get; set; }
 }
 
+/// <summary>Важность записи аудита: информация, предупреждение (подозрительное действие), критично.</summary>
 public enum AuditSeverity
 {
     Info = 0,

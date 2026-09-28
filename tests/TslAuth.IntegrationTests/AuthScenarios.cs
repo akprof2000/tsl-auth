@@ -1,3 +1,9 @@
+// Сквозные интеграционные сценарии TSL Auth: выдача и проверка токенов, матрица прав,
+// refresh и отзыв сессий, блокировки, обмен токенов, PAT, бот, события, заявки, шифрование ПДн.
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -66,6 +72,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- OIDC / JWT ----------
 
+    /// <summary>Документ discovery и JWKS доступны; выданный токен проверяется опубликованным ключом.</summary>
     [Fact]
     public async Task Discovery_Jwks_And_SignatureValidation()
     {
@@ -86,6 +93,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.True(result.IsValid, result.Exception?.Message);
     }
 
+    /// <summary>Admin API без токена отвечает 401, с токеном без роли администратора — 403.</summary>
     [Fact]
     public async Task AdminApi_RequiresTokenAndRole()
     {
@@ -108,6 +116,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Equal(HttpStatusCode.Forbidden, (await noRole.GetAsync("/api/admin/users")).StatusCode);
     }
 
+    /// <summary>Вход по паролю: в JWT попадают роли и разрешения пользователя из матрицы приложения.</summary>
     [Fact]
     public async Task PasswordGrant_Jwt_HasMatrixPermissions()
     {
@@ -125,6 +134,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.True(token.TryGetProperty("refresh_token", out _));
     }
 
+    /// <summary>Refresh выдаёт новый refresh-токен, а новые access-токены отражают изменения ролей.</summary>
     [Fact]
     public async Task Refresh_RotatesToken_AndReflectsMatrixChanges()
     {
@@ -145,6 +155,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Equal("invalid_grant", reuse.GetProperty("error").GetString());
     }
 
+    /// <summary>После деактивации пользователя refresh отклоняется.</summary>
     [Fact]
     public async Task DeactivatedUser_CannotRefresh()
     {
@@ -161,6 +172,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Equal("invalid_grant", login.GetProperty("error").GetString());
     }
 
+    /// <summary>После отзыва сессии администратором её refresh-токен не работает.</summary>
     [Fact]
     public async Task RevokedSession_CannotRefresh()
     {
@@ -178,6 +190,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Equal("invalid_grant", refresh.GetProperty("error").GetString());
     }
 
+    /// <summary>Серия неверных паролей блокирует учётную запись; попытки пишутся в журнал аудита.</summary>
     [Fact]
     public async Task WrongPassword_LocksOut_AndIsAudited()
     {
@@ -197,6 +210,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Contains(audit.EnumerateArray(), e => e.GetProperty("type").GetString() == AuditTypes.LoginFailed);
     }
 
+    /// <summary>С временным паролем токены не выдаются, пока пароль не сменён.</summary>
     [Fact]
     public async Task TemporaryPassword_MustBeChangedBeforeTokens()
     {
@@ -212,6 +226,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Token exchange ----------
 
+    /// <summary>Обмен токена (RFC 8693): субъект сохраняется, права берутся из целевого API, добавляется act.</summary>
     [Fact]
     public async Task TokenExchange_KeepsUser_UsesTargetMatrix_AddsActor()
     {
@@ -270,6 +285,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Сроки жизни ----------
 
+    /// <summary>Клиент может сократить срок жизни токена относительно политики, но не увеличить.</summary>
     [Fact]
     public async Task TokenLifetime_ClientCanShorten_ButNotExtend()
     {
@@ -294,6 +310,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- App API ----------
 
+    /// <summary>App API приложения видит только своих пользователей, роли и разрешения.</summary>
     [Fact]
     public async Task AppApi_SeesOnlyItsOwnSlice()
     {
@@ -343,6 +360,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Политика паролей ----------
 
+    /// <summary>Политика паролей из настроек в БД применяется без перезапуска.</summary>
     [Fact]
     public async Task PasswordPolicy_FromDatabase_IsEnforced()
     {
@@ -373,6 +391,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- PAT ----------
 
+    /// <summary>PAT обменивается на JWT; после отзыва обмен отклоняется.</summary>
     [Fact]
     public async Task PersonalAccessToken_ExchangesForJwt_AndCanBeRevoked()
     {
@@ -400,6 +419,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Бот ----------
 
+    /// <summary>Бот привязывает учётную запись и сбрасывает пароль по запросу пользователя.</summary>
     [Fact]
     public async Task Bot_LinkAndResetPassword()
     {
@@ -442,6 +462,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.Contains("/Account/ResetPassword?uid=", reset.GetProperty("resetLink").GetString());
     }
 
+    /// <summary>Бот блокирует учётную запись и требует смены пароля.</summary>
     [Fact]
     public async Task Bot_LockAndForcePasswordChange()
     {
@@ -522,6 +543,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- События ----------
 
+    /// <summary>Long polling событий возвращает событие, появившееся во время ожидания.</summary>
     [Fact]
     public async Task Events_LongPolling_ReturnsNewEvents()
     {
@@ -540,6 +562,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Заявки на доступ ----------
 
+    /// <summary>Одобрение заявки на доступ выдаёт пользователю запрошенную роль.</summary>
     [Fact]
     public async Task AccessRequest_ApprovalGrantsRole()
     {
@@ -576,6 +599,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Роли: техническое имя и название для пользователей ----------
 
+    /// <summary>В токен идёт техническое имя роли, пользователям показывается отображаемое.</summary>
     [Fact]
     public async Task Role_TechnicalNameForTokens_DisplayNameForUsers()
     {
@@ -636,6 +660,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Хранение ----------
 
+    /// <summary>Персональные данные в БД хранятся зашифрованными (префикс enc1:), через API — в открытом виде.</summary>
     [Fact]
     public async Task PersonalData_IsEncryptedAtRest()
     {
@@ -662,6 +687,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
         Assert.StartsWith("AQAAAA", reader.GetString(3)); // Identity v3 hash (PBKDF2)
     }
 
+    /// <summary>После перезапуска сервиса ключи подписи, сессии и refresh-токены сохраняются.</summary>
     [Fact]
     public async Task Restart_KeepsKeys_Sessions_AndRefreshTokens()
     {
@@ -685,6 +711,7 @@ public abstract class AuthScenarios<TFixture>(TFixture fx) where TFixture : Auth
 
     // ---------- Локализация ----------
 
+    /// <summary>Страница входа отдаётся на запрошенном языке.</summary>
     [Fact]
     public async Task LoginPage_IsLocalized()
     {

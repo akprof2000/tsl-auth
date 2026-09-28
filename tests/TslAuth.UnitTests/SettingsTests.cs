@@ -1,3 +1,7 @@
+// Unit-тесты настроек времени выполнения и встроенных языковых пакетов.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using System.Text.Json;
 using TslAuth.Localization;
 using TslAuth.Services;
@@ -10,6 +14,7 @@ public sealed class RuntimeSettingsTests
     [Fact]
     public void Defaults_AreValid() => new RuntimeSettings().Validate();
 
+    /// <summary>Срок хранения берётся по самому длинному префиксу типа события, иначе — по умолчанию.</summary>
     [Fact]
     public void RetentionFor_UsesLongestPrefix_ThenDefault()
     {
@@ -23,6 +28,7 @@ public sealed class RuntimeSettingsTests
         Assert.Equal(100, s.RetentionFor("admin.change"));
     }
 
+    /// <summary>По умолчанию изменения администраторов хранятся дольше событий токенов.</summary>
     [Fact]
     public void DefaultRules_KeepAdminChangesLongerThanTokens()
     {
@@ -40,6 +46,7 @@ public sealed class RuntimeSettingsTests
     public void Validate_RejectsBadPerTypeRetention() =>
         Assert.Throws<AdminException>(() => new RuntimeSettings(AuditRetentionByType: new() { ["x"] = 0 }).Validate());
 
+    /// <summary>Сериализация и десериализация сохраняет вложенные политики.</summary>
     [Fact]
     public void SerializationRoundtrip_KeepsNestedPolicies()
     {
@@ -82,6 +89,7 @@ public sealed class PolicyValidationTests
 /// <summary>Встроенные языковые пакеты ru/en: одинаковый набор ключей и совпадающие плейсхолдеры {N}.</summary>
 public sealed class LanguagePackTests
 {
+    /// <summary>Все встроенные языковые пакеты содержат одинаковый набор ключей.</summary>
     [Fact]
     public void BuiltInPacks_HaveSameKeys()
     {
@@ -91,6 +99,7 @@ public sealed class LanguagePackTests
         Assert.Empty(en.Except(ru));
     }
 
+    /// <summary>Плейсхолдеры форматирования в переводах совпадают между пакетами.</summary>
     [Fact]
     public void BuiltInPacks_FormatPlaceholdersMatch()
     {

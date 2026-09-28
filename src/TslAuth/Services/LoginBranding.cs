@@ -57,6 +57,7 @@ public sealed partial class BrandingService(IOpenIddictApplicationManager applic
         return await ReadAsync(app, ct);
     }
 
+    /// <summary>Читает оформление входа из свойств приложения; при отсутствии — оформление по умолчанию.</summary>
     private async Task<LoginBranding> ReadAsync(object app, CancellationToken ct)
     {
         var properties = await applications.GetPropertiesAsync(app, ct);

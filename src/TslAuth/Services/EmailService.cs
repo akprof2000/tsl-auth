@@ -41,6 +41,7 @@ public sealed class SmtpEmailSender(IOptions<SmtpOptions> options, ILogger<SmtpE
 {
     public bool IsConfigured => options.Value.IsConfigured;
 
+    /// <summary>Отправляет письмо через SMTP; без настроенного SMTP — предупреждение в лог и AdminException.</summary>
     public async Task SendAsync(string to, string subject, string html, CancellationToken ct = default)
     {
         var o = options.Value;

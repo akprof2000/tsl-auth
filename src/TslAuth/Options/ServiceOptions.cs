@@ -27,6 +27,7 @@ public sealed class DatabaseOptions
 
     public bool AutoRepair => !SchemaRepair.Equals("Off", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Выбран PostgreSQL (иначе SQLite).</summary>
     public bool IsPostgres => Provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)
                               || Provider.Equals("PostgreSQL", StringComparison.OrdinalIgnoreCase);
 }

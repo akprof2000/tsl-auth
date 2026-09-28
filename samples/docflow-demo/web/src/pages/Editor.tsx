@@ -1,3 +1,6 @@
+// Создание и редактирование документа с маршрутом согласования. Исполнителя шага можно задать ролью или
+// конкретным пользователем (справочник /api/directory — пользователи приложения из TSL Auth).
+// Роли для шага фильтруются по разрешению: согласование — documents.review, утверждение — documents.approve.
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import clsx from "clsx";

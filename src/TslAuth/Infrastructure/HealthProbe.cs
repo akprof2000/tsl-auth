@@ -7,6 +7,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public static class HealthProbe
 {
+    /// <summary>Один запрос к проверке готовности; возвращает код выхода процесса: 0 — готов, 1 — не готов или недоступен.</summary>
     public static async Task<int> RunAsync(string? url)
     {
         url ??= Environment.GetEnvironmentVariable("HEALTHCHECK_URL") ?? "http://127.0.0.1:8080/health/ready";

@@ -1,3 +1,5 @@
+// Профиль: данные пользователя из ID-токена, ссылка в личный кабинет TSL Auth (пароль, 2FA, устройства),
+// выход и наглядная матрица «роль × разрешение» приложения docflow-api.
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Download, ExternalLink, KeyRound, LogOut, MessageCircle, ShieldCheck, Smartphone, Users } from "lucide-react";

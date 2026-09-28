@@ -1,4 +1,7 @@
 # Нагрузочный тест: k6 в контейнере против запущенного стенда. Результат — tests/artifacts/load/<имя>.json + вывод k6.
+# Порядок: ожидание готовности сервиса -> подготовка public-клиента и пула пользователей через Admin API ->
+# запуск k6 (tests/load/auth-load.js). Пример: ./tests/load/run-load.ps1 -Name cluster -Vus 50 -Duration 120s
+# Значения по умолчанию рассчитаны на демо-стенд; код выхода равен коду k6 (ненулевой при нарушении порогов).
 param(
     [string]$BaseUrl = "http://host.docker.internal:8080",
     [string]$Name = "single",

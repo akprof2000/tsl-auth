@@ -59,6 +59,7 @@ public abstract class AuthDbContext(DbContextOptions options)
     public DbSet<WebhookDelivery> WebhookDeliveries { get; set; } = null!;
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
+    /// <summary>Настройка модели: сущности Identity и OpenIddict с ключами Guid, собственные таблицы, индексы и ограничения длин.</summary>
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -262,6 +263,7 @@ public sealed class SqliteDesignTimeFactory : IDesignTimeDbContextFactory<Sqlite
         new(new DbContextOptionsBuilder<SqliteAuthDbContext>().UseSqlite("Data Source=design.db").Options);
 }
 
+/// <summary>Фабрика для инструментов EF (dotnet ef migrations) под PostgreSQL; строка подключения фиктивная, к БД не подключается.</summary>
 public sealed class PostgresDesignTimeFactory : IDesignTimeDbContextFactory<PostgresAuthDbContext>
 {
     public PostgresAuthDbContext CreateDbContext(string[] args) =>

@@ -1,3 +1,8 @@
+// Интеграционные сценарии, добавленные по итогам ревизии кода (покрытие и регрессии).
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -86,6 +91,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Лимиты частоты (M2, M32) ----------
 
+    /// <summary>Превышение лимита частоты на token/introspect/revoke даёт 429.</summary>
     [Fact]
     public async Task RateLimit_TokenIntrospectRevoke_Return429()
     {
@@ -105,6 +111,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Refresh (M1, L4, M32) ----------
 
+    /// <summary>Повтор того же refresh-токена в пределах окна допуска принимается.</summary>
     [Fact]
     public async Task Refresh_ReuseWithinLeeway_IsAccepted()
     {
@@ -121,6 +128,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.True(retry.TryGetProperty("access_token", out _));
     }
 
+    /// <summary>Refresh-токен, выданный другому клиенту, отклоняется.</summary>
     [Fact]
     public async Task Refresh_WithForeignClient_IsRejected()
     {
@@ -134,6 +142,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.Equal("invalid_grant", foreign.GetProperty("error").GetString());
     }
 
+    /// <summary>M1: после назначения временного пароля refresh отклоняется.</summary>
     [Fact]
     public async Task M1_Refresh_WithTemporaryPassword_IsRejected()
     {
@@ -151,6 +160,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.Equal("invalid_grant", refreshed.GetProperty("error").GetString());
     }
 
+    /// <summary>L4: по истечении максимального срока сессии refresh отклоняется.</summary>
     [Fact]
     public async Task L4_Refresh_AfterMaxSessionDays_IsRejected()
     {
@@ -190,6 +200,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         return fx.Factory.CreateClient().WithBearer(token.GetProperty("access_token").GetString()!);
     }
 
+    /// <summary>Роли администрирования: аудитор только читает, notifier видит только свои подписки.</summary>
     [Fact]
     public async Task AdminRoles_AuditorReadsOnly_NotifierSeesOwnSubscriptions()
     {
@@ -220,6 +231,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
     private static Task<JsonElement> PatExchangeAsync(HttpClient http, string secret) =>
         http.TokenAsync(new() { ["grant_type"] = "urn:tsl:grant-type:pat", ["client_id"] = "tsl-pat", ["token"] = secret }, expectSuccess: false);
 
+    /// <summary>PAT: просроченный, выключенный и ограниченный токены отклоняются, роли перепроверяются при обмене.</summary>
     [Fact]
     public async Task Pat_Expired_Disabled_Limited_AndRolesRechecked()
     {
@@ -299,6 +311,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
+    /// <summary>Доставка вебхука подписана HMAC секретом подписки (HTTP перехватывается подменённым обработчиком).</summary>
     [Fact]
     public async Task WebhookDelivery_IsSignedWithSubscriptionSecret()
     {
@@ -336,6 +349,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- CORS и заголовки безопасности (M32) ----------
 
+    /// <summary>CORS разрешён только для origin зарегистрированных SPA-клиентов.</summary>
     [Fact]
     public async Task Cors_AllowsOnlyRegisteredSpaOrigins()
     {
@@ -357,6 +371,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.Null(await PreflightAsync("https://evil.example"));
     }
 
+    /// <summary>Ответы содержат заголовки безопасности.</summary>
     [Fact]
     public async Task SecurityHeaders_ArePresent()
     {
@@ -375,6 +390,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
     [GeneratedRegex("name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"")]
     private static partial Regex AntiforgeryField();
 
+    /// <summary>Приглашение: переход по ссылке позволяет задать пароль и войти.</summary>
     [Fact]
     public async Task Invite_AcceptViaLink_SetsPassword()
     {
@@ -411,6 +427,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Лимит сбросов через бота (M16, M32) ----------
 
+    /// <summary>Число сбросов пароля через бота ограничено в час.</summary>
     [Fact]
     public async Task BotReset_IsLimitedPerHour()
     {
@@ -434,6 +451,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Регистрация без взаимной блокировки на SQLite (регрессия M13) ----------
 
+    /// <summary>Самостоятельная регистрация с заявкой на роль завершается быстро, без зависаний.</summary>
     [Fact]
     public async Task SelfRegistration_WithRequest_CompletesQuickly()
     {
@@ -455,6 +473,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Кабинет с временным паролем (M3) ----------
 
+    /// <summary>M3: страницы личного кабинета требуют сначала сменить временный пароль.</summary>
     [Fact]
     public async Task M3_AccountPages_RequirePasswordChange()
     {
@@ -478,6 +497,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- App API (M7, M8) ----------
 
+    /// <summary>App API не показывает чужие профили и применяет изменения профиля своих пользователей.</summary>
     [Fact]
     public async Task AppApi_HidesForeignProfiles_AndAppliesProfileChanges()
     {
@@ -531,6 +551,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Системные роли, удаление приложения, атомарность (M9, M12, M13) ----------
 
+    /// <summary>Системные роли нельзя сделать запрашиваемыми или переименовать.</summary>
     [Fact]
     public async Task SystemRoles_CannotBeMadeRequestable_OrRenamed()
     {
@@ -541,6 +562,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
             $"/api/admin/applications/{SystemApp.ClientId}/roles/{SystemApp.AdministratorRole}", new { displayName = "Хозяин" })).StatusCode);
     }
 
+    /// <summary>Удаление приложения освобождает владение; создание роли атомарно.</summary>
     [Fact]
     public async Task DeletingApplication_ReleasesOwnership_AndRoleCreationIsAtomic()
     {
@@ -575,6 +597,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- История паролей, языковые пакеты (L3, L22) ----------
 
+    /// <summary>История паролей обрезается до длины из политики.</summary>
     [Fact]
     public async Task PasswordHistory_IsTrimmedToPolicy()
     {
@@ -590,6 +613,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
         Assert.Equal(2, await scope.ServiceProvider.GetRequiredService<AuthDbContext>().PasswordHistory.CountAsync(h => h.UserId == userId));
     }
 
+    /// <summary>Языковой пакет с испорченным плейсхолдером отклоняется при загрузке.</summary>
     [Fact]
     public async Task LanguagePack_WithBrokenPlaceholder_IsRejected()
     {
@@ -603,6 +627,7 @@ public abstract partial class ReviewCoverageScenarios<TFixture>(TFixture fx) whe
 
     // ---------- Дубли ожидающих заявок при обновлении БД (L24) ----------
 
+    /// <summary>L24: миграция закрывает дубли ожидающих заявок, оставляя одну.</summary>
     [Fact]
     public async Task L24_DuplicatePendingRequests_AreClosedByMigration()
     {

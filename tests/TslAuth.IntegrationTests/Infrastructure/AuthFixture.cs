@@ -12,6 +12,9 @@ namespace TslAuth.IntegrationTests.Infrastructure;
 /// <summary>
 /// Поднимает сервис целиком (WebApplicationFactory) на выбранной БД. Конфигурация передаётся переменными
 /// окружения — так её видит код Program ещё до построения хоста. Тесты не параллелятся (см. xunit.runner.json).
+/// Сервис работает в памяти процесса (TestServer), сетевых портов не открывает; PostgreSQL и OpenBao поднимаются
+/// через Testcontainers на случайных портах хоста. Запуск: dotnet test tests/TslAuth.IntegrationTests
+/// (для PostgreSQL и OpenBao нужен работающий Docker). Учётные данные ниже генерируются при каждом запуске.
 /// </summary>
 public abstract class AuthFixture : IAsyncLifetime
 {
@@ -37,6 +40,7 @@ public abstract class AuthFixture : IAsyncLifetime
     {
         _database = await DatabaseSettingsAsync();
         Factory = Start();
+        // Первый запрос запускает хост: миграции БД и начальное заполнение выполняются до первого теста.
         await Factory.CreateClient().GetAsync("/health/ready");
     }
 
@@ -52,11 +56,13 @@ public abstract class AuthFixture : IAsyncLifetime
             ["Encryption__MasterKey"] = MasterKey,
             ["Auth__Issuer"] = "http://localhost/",
             ["Auth__RequireHttps"] = "false",
+            // Без окна повторного использования: повтор refresh-токена отвергается сразу, тесты ротации детерминированы.
             ["Auth__RefreshTokenReuseLeewaySeconds"] = "0",
             ["Bootstrap__AdminUserName"] = AdminUser,
             ["Bootstrap__AdminPassword"] = AdminPassword,
             ["Bootstrap__AdminApiClientId"] = AdminClientId,
             ["Bootstrap__AdminApiClientSecret"] = AdminClientSecret,
+            // Лимиты частоты подняты, чтобы серия тестов с одного адреса не упиралась в ограничитель.
             ["Security__TokenRequestsPerMinute"] = "100000",
             ["Security__LoginAttemptsPerMinute"] = "100000",
             ["Logging__LogLevel__Default"] = "Warning"
@@ -75,6 +81,7 @@ public abstract class AuthFixture : IAsyncLifetime
     public async Task RestartAsync(Func<Task>? whileStopped = null)
     {
         await Factory.DisposeAsync();
+        // Пул соединений SQLite держит файл открытым; сбрасываем, чтобы действие над БД шло без конкурентов.
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (whileStopped is not null) await whileStopped();
         Factory = Start();
@@ -128,6 +135,7 @@ public sealed class PostgresFixture : AuthFixture
     protected override async Task<Dictionary<string, string>> DatabaseSettingsAsync()
     {
         await _pg.StartAsync();
+        // Имя базы заменено на несуществующую: сервис обязан создать её сам при старте.
         var cs = new Npgsql.NpgsqlConnectionStringBuilder(_pg.GetConnectionString()) { Database = "tsl_auth_it" };
         return new Dictionary<string, string>
         {
@@ -155,6 +163,7 @@ public static class TestApi
         return body;
     }
 
+    /// <summary>Клиент с токеном начального клиента Admin API (client_credentials, scope tsl-auth-admin).</summary>
     public static async Task<HttpClient> AdminAsync(this WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();

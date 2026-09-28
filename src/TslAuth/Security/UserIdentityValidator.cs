@@ -21,6 +21,7 @@ public sealed class UserIdentityValidator(AuthDbContext db) : IUserValidator<App
     public const string DuplicateEmailCode = "DuplicateEmail";
     public const string UserNameLooksLikeEmailCode = "UserNameLooksLikeEmail";
 
+    /// <summary>Проверяет логин и email пользователя до сохранения.</summary>
     public async Task<IdentityResult> ValidateAsync(UserManager<AppUser> manager, AppUser user)
     {
         var errors = new List<IdentityError>();

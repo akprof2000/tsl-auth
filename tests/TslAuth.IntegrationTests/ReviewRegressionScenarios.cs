@@ -1,3 +1,8 @@
+// Регрессионные интеграционные сценарии по отчёту ревизии (H1–H6).
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -23,6 +28,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H1: ссылки в письмах не зависят от заголовка Host ----------
 
+    /// <summary>H1: ссылка приглашения строится от issuer, а не от заголовка Host запроса.</summary>
     [Fact]
     public async Task H1_InviteLink_UsesIssuer_NotHostHeader()
     {
@@ -41,6 +47,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H2: уникальный email, логин не занимает чужой адрес, дубликаты из старых БД не роняют вход ----------
 
+    /// <summary>H2: email уникален; логин нельзя занять чужим email.</summary>
     [Fact]
     public async Task H2_Email_IsUnique_AndLoginCannotSquatForeignEmail()
     {
@@ -69,6 +76,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
         Assert.Equal("error.emailTaken", ex.Key);
     }
 
+    /// <summary>H2: старые дубли email в БД не ломают вход.</summary>
     [Fact]
     public async Task H2_LegacyDuplicateEmails_DoNotBreakLogin()
     {
@@ -113,6 +121,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H3: SSE-поток не обрывается на пульсе ----------
 
+    /// <summary>H3: поток событий не обрывается на heartbeat.</summary>
     [Fact]
     public async Task H3_EventStream_SurvivesHeartbeat()
     {
@@ -136,6 +145,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H4: ошибки валидации API не пишутся в журнал как сбой ----------
 
+    /// <summary>H4: ошибка валидации пишется в аудит со своим статусом, а не как сбой.</summary>
     [Fact]
     public async Task H4_ValidationError_IsAuditedWithItsStatus_NotAsFailure()
     {
@@ -154,6 +164,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H5: фильтр журнала по датам (время без зоны) ----------
 
+    /// <summary>H5: фильтр журнала по датам работает с датами без часового пояса.</summary>
     [Fact]
     public async Task H5_AuditDateFilter_WorksWithoutTimeZone()
     {
@@ -168,6 +179,7 @@ public abstract class ReviewRegressionScenarios<TFixture>(TFixture fx) where TFi
 
     // ---------- H6: коды языков, различающиеся регистром, не роняют сервис ----------
 
+    /// <summary>H6: коды языков приводятся к каноническому виду; дубли по регистру не ломают страницы.</summary>
     [Fact]
     public async Task H6_LanguageCodes_AreCanonical_AndCaseDuplicatesDoNotBreakPages()
     {
@@ -208,6 +220,7 @@ public sealed class PostgresReviewRegression(PostgresFixture fx) : ReviewRegress
 [Collection("sqlite-review")]
 public sealed class IssuerStartupCheck
 {
+    /// <summary>H1: вне Development сервис не стартует без явного issuer.</summary>
     [Fact]
     public void H1_ServiceRefusesToStart_WithoutIssuer_OutsideDevelopment()
     {

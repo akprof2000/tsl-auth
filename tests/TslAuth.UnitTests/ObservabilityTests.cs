@@ -1,3 +1,7 @@
+// Unit-тесты логирования и наблюдаемости: уровни, адреса OTLP/Loki, защита /metrics, ротация файлов.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using System.Net;
 using Microsoft.Extensions.Configuration;
 using Serilog.Events;
@@ -16,6 +20,7 @@ public sealed class LogLevelsTests
             .AddInMemoryCollection(pairs.ToDictionary(p => "Logging:LogLevel:" + p.Key, p => (string?)p.Value))
             .Build().GetSection("Logging:LogLevel"));
 
+    /// <summary>Уровни из конфигурации: значение по умолчанию и переопределения по категориям.</summary>
     [Fact]
     public void Config_DefaultAndOverrides()
     {
@@ -28,6 +33,7 @@ public sealed class LogLevelsTests
         Assert.Equal("Warning", levels.ConfigOverrides["Microsoft"]);
     }
 
+    /// <summary>Настройки из БД перекрывают конфигурацию, а при удалении возвращают её значения.</summary>
     [Fact]
     public void Settings_OverrideConfig_AndRevert()
     {
@@ -44,6 +50,7 @@ public sealed class LogLevelsTests
         Assert.Equal(LogEventLevel.Warning, levels.Root.MinimumLevel);
     }
 
+    /// <summary>Фильтр выбирает уровень по SourceContext события (самый длинный префикс).</summary>
     [Fact]
     public void Filter_UsesSourceContext()
     {
@@ -64,6 +71,7 @@ public sealed class LogLevelsTests
     [Fact]
     public void ParseLevel_Unknown_IsNull() => Assert.Null(LoggingSetup.ParseLevel("loud"));
 
+    /// <summary>Валидация настроек логирования отклоняет неверные значения.</summary>
     [Fact]
     public void LoggingSettings_Validate()
     {
@@ -84,6 +92,7 @@ public sealed class LogLevelsTests
 /// <summary>Разбор настроек мониторинга и защита эндпоинта метрик.</summary>
 public sealed class ObservabilitySetupTests
 {
+    /// <summary>Адрес сигнала OTLP строится с учётом протокола.</summary>
     [Theory]
     [InlineData("grpc", "http://collector:4317", "traces", "http://collector:4317")]
     [InlineData("http", "http://collector:4318", "traces", "http://collector:4318/v1/traces")]
@@ -92,6 +101,7 @@ public sealed class ObservabilitySetupTests
     public void SignalEndpoint(string protocol, string endpoint, string signal, string expected) =>
         Assert.Equal(expected, ObservabilitySetup.SignalEndpoint(new OpenTelemetryOptions { Endpoint = endpoint, Protocol = protocol }, signal));
 
+    /// <summary>Разбор строк вида key=value для заголовков и меток.</summary>
     [Fact]
     public void ParsePairs_HeadersAndLabels()
     {
@@ -104,6 +114,7 @@ public sealed class ObservabilitySetupTests
         Assert.Equal(["env", "dc"], labels.Select(l => l.Key));
     }
 
+    /// <summary>Пользовательские атрибуты ресурса перекрывают значения по умолчанию.</summary>
     [Fact]
     public void ResourceAttributes_CustomOverridesDefaults()
     {
@@ -115,6 +126,7 @@ public sealed class ObservabilitySetupTests
         Assert.Equal("9.9.9", attributes["service.version"]);
     }
 
+    /// <summary>Чтение настроек наблюдаемости проверяет корректность адресов.</summary>
     [Fact]
     public void Read_ValidatesAddresses()
     {
@@ -137,6 +149,7 @@ public sealed class ObservabilitySetupTests
         Assert.False(none.MetricsEnabled || none.TracingEnabled || none.Loki.Enabled);
     }
 
+    /// <summary>Доступ к /metrics ограничен разрешёнными сетями и токеном.</summary>
     [Fact]
     public void PrometheusGuard_NetworksAndToken()
     {
@@ -182,6 +195,7 @@ public sealed class ObservabilitySetupTests
         }
     }
 
+    /// <summary>Файлы конфигурации ищутся вверх по дереву каталогов.</summary>
     [Fact]
     public void ConfigFiles_FindUpwards()
     {

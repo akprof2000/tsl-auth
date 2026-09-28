@@ -39,6 +39,7 @@ public sealed class ServerKeyRing
         EncryptionKey = new SymmetricSecurityKey(Convert.FromBase64String(encryption));
     }
 
+    /// <summary>Возвращает ключевой материал из БД или создаёт его при первом запуске.</summary>
     private static async Task<string> GetOrCreateAsync(AuthDbContext db, string id, Func<string> factory, CancellationToken ct)
     {
         var existing = await db.KeyMaterials.AsNoTracking().FirstOrDefaultAsync(k => k.Id == id, ct);

@@ -18,11 +18,16 @@ const form = { headers: { "Content-Type": "application/x-www-form-urlencoded" } 
 const USERS = (__ENV.USERS || __ENV.USER || "alice").split(",").map((u) => u.trim()).filter(Boolean);
 const userOf = () => USERS[(__VU - 1) % USERS.length];
 
+// Собственные метрики: отдельные тренды задержки по типу гранта и общая доля ошибок,
+// чтобы пороги ниже проверялись раздельно для «лёгких» и «тяжёлых» операций.
 const tokenLatency = new Trend("token_client_credentials_ms", true);
 const loginLatency = new Trend("token_password_ms", true);
 const refreshLatency = new Trend("token_refresh_ms", true);
 const errors = new Rate("errors");
 
+// Пять параллельных сценариев с постоянным числом VU; доли VU отражают ожидаемый профиль трафика
+// (межсервисные токены преобладают, входы по паролю и чтение Admin API — реже).
+// При нарушении любого порога k6 завершается с ненулевым кодом — прогон считается проваленным.
 export const options = {
   scenarios: {
     client_credentials: { executor: "constant-vus", exec: "clientCredentials", vus: VUS, duration: DURATION },
@@ -40,6 +45,7 @@ export const options = {
   },
 };
 
+// Тело запроса в формате application/x-www-form-urlencoded, как требует /connect/token.
 function body(obj) {
   return Object.entries(obj).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
 }
@@ -53,6 +59,8 @@ function adminToken() {
   return r.json("access_token");
 }
 
+// Выполняется один раз до сценариев: проверяет, что вход по паролю вообще работает,
+// и получает токен Admin API, который передаётся всем VU сценария adminRead.
 export function setup() {
   const login = token({ grant_type: "password", client_id: __ENV.PUBLIC_CLIENT, username: USERS[0], password: __ENV.PASSWORD,
     scope: "openid" });
@@ -88,6 +96,7 @@ export function refresh() {
   refreshLatency.add(r.timings.duration);
   const ok = check(r, { "refresh 200": (x) => x.status === 200 && !!x.json("refresh_token") });
   errors.add(!ok);
+  // При ошибке сессия сбрасывается: на следующей итерации VU войдёт заново, а не будет повторять отозванный токен.
   refreshToken = ok ? r.json("refresh_token") : null;
 }
 

@@ -30,6 +30,7 @@ public static class BotApi
         options.AddPolicy(ForcePasswordPolicy, p => Client(p).AddRequirements(new AdminPermissionRequirement(SystemApp.PasswordForcePermission)));
     }
 
+    /// <summary>Общая часть политик Bot API: Bearer-токен OpenIddict, выданный клиенту (не пользователю).</summary>
     private static AuthorizationPolicyBuilder Client(AuthorizationPolicyBuilder p) => p
         .AddAuthenticationSchemes(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser()
@@ -65,5 +66,6 @@ public static class BotApi
             s.ForcePasswordChangeAsync(Client(me), input, ct)).RequireAuthorization(ForcePasswordPolicy);
     }
 
+    /// <summary>client_id бота из токена — для аудита действий.</summary>
     private static string Client(ClaimsPrincipal me) => me.GetClaim(Claims.Subject)!;
 }

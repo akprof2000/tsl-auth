@@ -1,7 +1,9 @@
 # Grafana Tempo (хранилище трассировок) эталонного стенда: один процесс, локальные файлы, хранение 3 дня.
+# 3200 — HTTP API для запросов Grafana.
 server:
   http_listen_port: 3200
 
+# Приём трассировок по OTLP (gRPC 4317, HTTP 4318) — от OpenTelemetry Collector.
 distributor:
   receivers:
     otlp:
@@ -11,6 +13,7 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
+# Блоки и журнал упреждающей записи (WAL) — в томе контейнера.
 storage:
   trace:
     backend: local
@@ -19,6 +22,7 @@ storage:
     wal:
       path: /var/tempo/wal
 
+# Удаление трассировок старше 3 суток.
 compactor:
   compaction:
     block_retention: 72h

@@ -51,6 +51,7 @@ function Token([string]$url, [hashtable]$body) {
     Invoke-RestMethod "$url/connect/token" -Method Post -Body $body -TimeoutSec 10
 }
 
+# Public-клиент с password/refresh нужен для сессий пользователя; создаётся через Admin API, если его ещё нет.
 function Ensure-PublicClient([string]$url) {
     $t = Token $url @{ grant_type = "client_credentials"; client_id = $ClientId; client_secret = $ClientSecret; scope = "tsl-auth-admin" }
     $h = @{ Authorization = "Bearer $($t.access_token)" }
@@ -61,11 +62,13 @@ function Ensure-PublicClient([string]$url) {
     }
 }
 
+# Вход по паролю с offline_access: возвращает refresh-токен — «сессию», переживание которой проверяется.
 function New-Session([string]$url) {
     $r = Token $url @{ grant_type = "password"; client_id = $PublicClient; username = $User; password = $Password; scope = "openid offline_access" }
     return $r.refresh_token
 }
 
+# Обмен refresh-токена; токены ротируются, поэтому вызывающий обязан сохранить новый.
 function Use-Session([string]$url, [string]$refresh) {
     $r = Token $url @{ grant_type = "refresh_token"; client_id = $PublicClient; refresh_token = $refresh }
     return $r.refresh_token
@@ -94,6 +97,7 @@ function Start-Traffic([string]$url) {
     return @{ Job = $job; State = $state }
 }
 
+# Остановить фоновый трафик и вернуть итоги; «окно ошибок» — время между первой и последней ошибкой (оценка простоя).
 function Stop-Traffic($traffic) {
     $traffic.State.stop = $true
     $traffic.Job | Wait-Job -Timeout 15 | Out-Null
@@ -103,6 +107,8 @@ function Stop-Traffic($traffic) {
     return @{ Ok = $s.ok; Fail = $s.fail; FailWindow = $window }
 }
 
+# Общий каркас сценария: снимок JWKS и сессия до отказа -> фоновый трафик -> действие -> пауза на стабилизацию ->
+# проверка сессии, неизменности ключей и ошибок. Ошибки трафика допустимы только при $expectOutage (полный отказ).
 function Scenario([string]$mode, [string]$name, [string]$expectation, [scriptblock]$action, [string]$entry = $Lb, [bool]$expectOutage = $false) {
     Write-Host "`n=== [$mode] $name ===" -ForegroundColor Cyan
     $jwksBefore = (Invoke-WebRequest "$entry/.well-known/jwks" -UseBasicParsing).Content

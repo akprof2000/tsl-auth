@@ -42,6 +42,7 @@ public sealed class AccessService(AuthDbContext db)
         return new MatrixDto(clientId, permissions, roles);
     }
 
+    /// <summary>Добавляет разрешение в матрицу приложения; имя уникально в пределах приложения.</summary>
     public async Task<PermissionDto> AddPermissionAsync(string clientId, string name, string? description, CancellationToken ct = default)
     {
         name = Names.Validate(name, "Имя разрешения");
@@ -54,6 +55,7 @@ public sealed class AccessService(AuthDbContext db)
         return new PermissionDto(name, description);
     }
 
+    /// <summary>Удаляет разрешение приложения (с его связями с ролями).</summary>
     public async Task DeletePermissionAsync(string clientId, string name, CancellationToken ct = default)
     {
         var permission = await db.AccessPermissions.FirstOrDefaultAsync(p => p.ClientId == clientId && p.Name == name, ct)
@@ -93,6 +95,7 @@ public sealed class AccessService(AuthDbContext db)
         return (await GetMatrixAsync(clientId, ct)).Roles.First(r => r.Name == name);
     }
 
+    /// <summary>Удаляет роль приложения; для системного приложения действуют ограничения (GuardSystem).</summary>
     public async Task DeleteRoleAsync(string clientId, string name, CancellationToken ct = default)
     {
         var role = await db.AccessRoles.FirstOrDefaultAsync(r => r.ClientId == clientId && r.Name == name, ct)
@@ -275,6 +278,7 @@ public sealed class AccessService(AuthDbContext db)
     public Task RemoveSubjectAsync(SubjectType type, string subjectId, CancellationToken ct = default) =>
         db.AccessRoleAssignments.Where(a => a.SubjectType == type && a.SubjectId == subjectId).ExecuteDeleteAsync(ct);
 
+    /// <summary>Запрещает изменять встроенные роли и разрешения системного приложения.</summary>
     private static void GuardSystem(string clientId, string action = "удалить")
     {
         if (clientId == SystemApp.ClientId)

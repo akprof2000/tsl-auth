@@ -70,6 +70,7 @@ public sealed class TokenLifetimeService(SettingsService settings, IOpenIddictAp
         await applications.UpdateAsync(app, descriptor, ct);
     }
 
+    /// <summary>Итоговый предел: настройка приложения может только уменьшить глобальный.</summary>
     private static int Min(int global, int? app) => app is { } a ? Math.Min(global, a) : global;
 
     // Некорректные/неположительные значения параметра просто игнорируются (используется максимум).
@@ -78,5 +79,6 @@ public sealed class TokenLifetimeService(SettingsService settings, IOpenIddictAp
             ? TimeSpan.FromSeconds(seconds)
             : null;
 
+    /// <summary>Запрошенный клиентом срок, но не больше разрешённого.</summary>
     private static TimeSpan Cap(TimeSpan max, TimeSpan? requested) => requested is { } r && r < max ? r : max;
 }

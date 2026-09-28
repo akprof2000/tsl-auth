@@ -1,3 +1,5 @@
+// Общие UI-компоненты и хелперы: бейджи статусов, аватары, загрузчики, модальные окна, форматирование дат,
+// всплывающие уведомления (ToastProvider/useToast). С TSL Auth не взаимодействуют.
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { CheckCircle2, CircleAlert, Info, Loader2, X } from "lucide-react";

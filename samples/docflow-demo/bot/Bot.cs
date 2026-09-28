@@ -1,3 +1,7 @@
+// Логика бота безопасности: клиент Bot API TSL Auth и разбор команд чата.
+// AuthBotClient получает токен по client_credentials (scope tsl-auth-admin) и вызывает действия Bot API
+// от имени пользователя, опознанного по provider/externalId; решение о правах принимает TSL Auth.
+// CommandHandler превращает текст команд (/link, сброс пароля, блокировка и т. п.) в вызовы Bot API и ответы в чат.
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;

@@ -69,6 +69,7 @@ public sealed class AuditService(IServiceScopeFactory scopes, IHttpContextAccess
     // FlushAsync вызывается и фоновым циклом, и перед чтением/очисткой журнала — не даём им пересекаться.
     private readonly SemaphoreSlim _flushLock = new(1, 1);
 
+    /// <summary>Фоновая запись аудита: события из очереди сохраняются в БД, чтобы запросы не ждали записи.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try

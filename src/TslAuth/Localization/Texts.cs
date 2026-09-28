@@ -62,6 +62,7 @@ public sealed class LanguageMiddleware(RequestDelegate next, LocalizationService
 {
     public const string CookieName = "tsl_lang";
 
+    /// <summary>Определяет язык запроса и сохраняет его в HttpContext.Items для Texts.</summary>
     public async Task InvokeAsync(HttpContext context, BrandingService branding)
     {
         await localization.EnsureLoadedAsync();

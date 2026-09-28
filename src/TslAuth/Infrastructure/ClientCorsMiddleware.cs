@@ -15,6 +15,7 @@ public sealed class ClientCorsMiddleware(RequestDelegate next, IServiceScopeFact
     private HashSet<string> _origins = [];
     private DateTime _loadedAt = DateTime.MinValue;
 
+    /// <summary>Для OIDC-путей добавляет CORS-заголовки, только если Origin входит в разрешённые источники приложений; иначе запрос проходит без них.</summary>
     public async Task InvokeAsync(HttpContext context)
     {
         var origin = context.Request.Headers.Origin.ToString();

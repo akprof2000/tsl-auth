@@ -1,3 +1,8 @@
+// Интеграционные сценарии обновления старой БД до текущей схемы миграциями.
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -26,6 +31,7 @@ public abstract class UpgradeScenarios<TFixture>(TFixture fx) where TFixture : A
     private const string FirstVersion = "InitialCreate";
     private static readonly string Password = TestApi.NewPassword();
 
+    /// <summary>БД старой версии обновляется миграциями; пользователи и права работают как раньше.</summary>
     [Fact]
     public async Task OldDatabase_IsUpgraded_AndUsersKeepWorking()
     {
@@ -122,6 +128,7 @@ public abstract class UpgradeScenarios<TFixture>(TFixture fx) where TFixture : A
         await SetPasswordMaxAgeAsync(adminAfter, 0);
     }
 
+    /// <summary>Повторный старт на обновлённой БД ничего не меняет (миграции идемпотентны).</summary>
     [Fact]
     public async Task RepeatedStart_OnUpgradedDatabase_ChangesNothing()
     {

@@ -1,3 +1,9 @@
+// Интеграционные сценарии наблюдаемости: метрики Prometheus, уровни логов, отправка в Loki и OTLP
+// (приёмники подменяются локальным HTTP-сервером-заглушкой).
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -18,6 +24,7 @@ namespace TslAuth.IntegrationTests;
 /// </summary>
 public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
 {
+    /// <summary>По умолчанию /metrics выключен.</summary>
     [Fact]
     public async Task Metrics_DisabledByDefault()
     {
@@ -25,6 +32,7 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    /// <summary>С включёнными метриками и токеном /metrics отдаёт счётчики приложения.</summary>
     [Fact]
     public async Task Metrics_WithToken_ExposesApplicationCounters()
     {
@@ -53,6 +61,7 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         Assert.Contains("tsl_auth_users{", body);
     }
 
+    /// <summary>Уровни логов меняются через настройки в БД без перезапуска.</summary>
     [Fact]
     public async Task LogLevels_ChangeFromSettings_WithoutRestart()
     {
@@ -84,6 +93,7 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         }
     }
 
+    /// <summary>Логи доходят до Loki, трассы и метрики — до OTLP-приёмника (заглушка ждёт запросы с таймаутом).</summary>
     [Fact]
     public async Task Loki_And_Otlp_ReceiveSignals()
     {

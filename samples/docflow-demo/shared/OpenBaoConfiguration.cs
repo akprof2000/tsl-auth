@@ -1,3 +1,7 @@
+// Общая для API и бота загрузка секретов из OpenBao (KV v2) в конфигурацию .NET при старте сервиса.
+// К TSL Auth напрямую не обращается: отсюда лишь берутся секреты клиентов (например, client_secret
+// для client_credentials), с которыми сервисы затем ходят в TSL Auth. Если секция OpenBao не задана,
+// секреты читаются из переменных окружения и файлов конфигурации (режим MVP) с теми же ключами.
 using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;

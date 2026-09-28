@@ -1,3 +1,8 @@
+// Интеграционные сценарии authorization code + PKCE через настоящую страницу входа.
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -123,6 +128,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
 
     // ---------- Успешный поток ----------
 
+    /// <summary>Полный поток code + PKCE выдаёт токены; повторный обмен того же кода отклоняется.</summary>
     [Fact]
     public async Task CodeFlow_WithPkce_IssuesTokens_AndCodeIsSingleUse()
     {
@@ -150,6 +156,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
 
     // ---------- Отказы ----------
 
+    /// <summary>Запрос авторизации без code_challenge отклоняется (PKCE обязателен).</summary>
     [Fact]
     public async Task Authorize_WithoutCodeChallenge_IsRejected()
     {
@@ -163,6 +170,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
         Assert.Null(response.Headers.Location);
     }
 
+    /// <summary>Обмен кода с неверным code_verifier отклоняется.</summary>
     [Fact]
     public async Task Token_WithWrongCodeVerifier_IsRejected()
     {
@@ -173,6 +181,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
         Assert.Equal("invalid_grant", result.GetProperty("error").GetString());
     }
 
+    /// <summary>Незарегистрированный redirect_uri: сервис показывает ошибку и не перенаправляет.</summary>
     [Fact]
     public async Task Authorize_WithForeignRedirectUri_DoesNotRedirect()
     {
@@ -184,6 +193,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
         Assert.DoesNotContain("evil.example", response.Headers.Location?.ToString() ?? "");
     }
 
+    /// <summary>prompt=none без сессии возвращает login_required.</summary>
     [Fact]
     public async Task Authorize_PromptNone_WithoutSession_ReturnsLoginRequired()
     {
@@ -193,6 +203,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
         Assert.Equal("login_required", Query(response.Headers.Location!.ToString())["error"]);
     }
 
+    /// <summary>С временным паролем вход ведёт на смену пароля, код не выдаётся.</summary>
     [Fact]
     public async Task TemporaryPassword_RedirectsToChangePassword_WithoutCode()
     {
@@ -205,6 +216,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
 
     // ---------- Introspection, revocation ----------
 
+    /// <summary>Introspection показывает активный токен; после revocation он неактивен.</summary>
     [Fact]
     public async Task Introspection_AndRevocation_Work()
     {
@@ -243,6 +255,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
 
     // ---------- Выход ----------
 
+    /// <summary>Выход без id_token_hint требует подтверждения, с подсказкой выполняется сразу.</summary>
     [Fact]
     public async Task Logout_WithoutIdTokenHint_RequiresConfirmation_WithHint_IsImmediate()
     {
@@ -273,6 +286,7 @@ public abstract partial class AuthorizationCodeScenarios<TFixture>(TFixture fx) 
 
     // ---------- form_post и CSP ----------
 
+    /// <summary>response_mode=form_post: CSP страницы разрешает автоматическую отправку формы.</summary>
     [Fact]
     public async Task FormPost_ResponseMode_IsAllowedByCsp()
     {

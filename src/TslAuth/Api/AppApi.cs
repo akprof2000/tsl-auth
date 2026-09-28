@@ -125,6 +125,7 @@ public static class AppApi
             s.InviteAsync(Client(me), id, sendEmail ?? true, ct));
     }
 
+    /// <summary>client_id вызывающего приложения (sub токена client_credentials; наличие гарантирует политика).</summary>
     private static string Client(ClaimsPrincipal principal) => principal.GetClaim(Claims.Subject)!;
 
 }
@@ -135,6 +136,7 @@ public sealed class AppSelfRequirement : IAuthorizationRequirement;
 /// <summary>Самоуправление должно быть включено для приложения на момент запроса (проверка по БД).</summary>
 public sealed class AppSelfHandler(ApplicationService apps) : AuthorizationHandler<AppSelfRequirement>
 {
+    /// <summary>Пропускает только токены клиентских приложений (sub_type=client), кроме системного приложения.</summary>
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, AppSelfRequirement requirement)
     {
         var clientId = context.User.GetClaim(Claims.Subject);

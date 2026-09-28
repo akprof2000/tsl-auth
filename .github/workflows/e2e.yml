@@ -16,6 +16,7 @@ on:
         description: Длительность нагрузочного теста
         type: string
         default: "30s"
+  # Еженедельно, понедельник 03:00 UTC.
   schedule:
     - cron: "0 3 * * 1"
 
@@ -45,6 +46,8 @@ jobs:
       - name: Сервис (одиночный режим) + демо-данные
         shell: pwsh
         run: |
+          # Образ собирается из исходников; ожидание /health/ready до 2 мин, затем seed-demo.ps1
+          # регистрирует демо-клиентов и пишет их секреты в samples/.env.demo.
           docker compose up -d --build
           for ($i = 0; $i -lt 60; $i++) { try { if ((Invoke-WebRequest http://localhost:8080/health/ready -TimeoutSec 2).StatusCode -eq 200) { break } } catch { Start-Sleep 2 } }
           ./samples/seed-demo.ps1
@@ -60,6 +63,7 @@ jobs:
             Start-Process $exe -ArgumentList $arguments -WorkingDirectory $dir `
               -RedirectStandardOutput (Join-Path $logs "$name.out.log") -RedirectStandardError (Join-Path $logs "$name.err.log")
           }
+          # Секреты клиентов читаются из samples/.env.demo (формат KEY=VALUE) и передаются каждому приложению через env.
           $s = @{}; Get-Content samples/.env.demo | ForEach-Object { $k, $v = $_ -split '=', 2; $s[$k] = $v }
           $env:CLIENT_SECRET = $s.GO_CLIENT_SECRET
           Start-Demo go-api go @('run', '.') samples/go-api
@@ -83,6 +87,7 @@ jobs:
 
       - name: Нагрузочный тест (k6)
         shell: pwsh
+        # Лимиты частоты запросов подняты, чтобы k6 измерял производительность, а не срабатывание rate limit.
         env:
           SECURITY_TOKEN_RPM: "1000000"
           SECURITY_LOGIN_RPM: "1000000"

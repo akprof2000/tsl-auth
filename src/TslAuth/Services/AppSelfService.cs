@@ -195,6 +195,7 @@ public sealed class AppSelfService(
         return result;
     }
 
+    /// <summary>Пользователь, связанный с приложением; иначе 404.</summary>
     private async Task<AppUser> RequireRelatedAsync(string clientId, Guid id, CancellationToken ct)
     {
         var related = (await RelatedUserIdsAsync(clientId, ct)).Contains(id);
@@ -228,6 +229,7 @@ public sealed class AppSelfService(
         ToDto(clientId, user, (await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct))
             .Where(r => r.ClientId == clientId).Select(r => r.Role).ToList());
 
+    /// <summary>DTO для App API: email, статус и признаки пароля видны только приложению-создателю пользователя.</summary>
     private static AppUserDto ToDto(string clientId, AppUser user, List<string> roles)
     {
         var owned = user.CreatedByClientId == clientId;

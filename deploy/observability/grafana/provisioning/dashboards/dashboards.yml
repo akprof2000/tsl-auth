@@ -1,3 +1,6 @@
+# Провижининг дашбордов Grafana: при старте Grafana загружает JSON-дашборды из каталога,
+# смонтированного в /var/lib/grafana/dashboards, в папку «TSL Auth».
+# allowUiUpdates — правки в интерфейсе допустимы, но при перезапуске файлы с диска снова имеют приоритет.
 apiVersion: 1
 
 providers:

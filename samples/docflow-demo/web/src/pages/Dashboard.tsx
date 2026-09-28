@@ -1,3 +1,6 @@
+// Обзор: статистика документов (/api/dashboard, нужно dashboard.view), мои задачи на согласование
+// и мои заявки на доступ. Если у пользователя ещё нет ролей в docflow-api, показываем экран «нет доступа»
+// с возможностью запросить роль и перевойти, чтобы получить токен с новыми разрешениями.
 import { Link } from "react-router-dom";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ArrowUpRight, CheckCircle2, ClipboardCheck, Clock3, FileText, Hourglass, History, RefreshCw, XCircle } from "lucide-react";

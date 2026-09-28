@@ -3,12 +3,15 @@ chcp 65001 >nul
 rem Запуск демо "Документооборот": TSL Auth, настройка, API + PWA + бот.
 rem   demo-start.cmd            обычный запуск
 rem   demo-start.cmd rebuild    пересобрать образы API и бота
+rem Путь считается от каталога скрипта (%~dp0), поэтому запускать можно из любого места.
 setlocal
 cd /d "%~dp0samples\docflow-demo"
 
 where docker >nul 2>nul || (echo [ОШИБКА] Docker не найден. Установите и запустите Docker Desktop. & goto :fail)
 docker info >nul 2>nul || (echo [ОШИБКА] Docker Desktop не запущен. Запустите его и повторите. & goto :fail)
 
+rem Предпочитается PowerShell 7 (pwsh), при отсутствии - встроенный Windows PowerShell.
+rem init-env.ps1 создает .env со случайными секретами демо, если его еще нет.
 set PS=pwsh
 where pwsh >nul 2>nul || set PS=powershell
 %PS% -NoProfile -ExecutionPolicy Bypass -File init-env.ps1 || goto :fail
@@ -17,6 +20,7 @@ echo [1/4] Запуск TSL Auth...
 docker compose up -d tsl-auth || (echo [ОШИБКА] TSL Auth не запустился. Свободен ли порт 8080? & goto :fail)
 
 echo [2/4] Ожидание готовности TSL Auth...
+rem Опрос готовности: до 60 попыток с паузой ~2 с (ping как переносимый sleep).
 set /a n=0
 :wait_auth
 curl -fs -o nul http://localhost:8080/health/ready && goto :auth_ok

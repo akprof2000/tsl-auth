@@ -5,6 +5,7 @@ namespace TslAuth.Api;
 /// <summary>Общий фильтр групп API: ошибки бизнес-логики (<see cref="AdminException"/>) → ProblemDetails с их кодом.</summary>
 public static class ApiErrors
 {
+    /// <summary>Пропускает запрос дальше и превращает <see cref="AdminException"/> в ответ ProblemDetails; прочие исключения не перехватываются — их обрабатывает общий обработчик ошибок.</summary>
     public static async ValueTask<object?> Handle(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         try

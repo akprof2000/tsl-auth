@@ -134,6 +134,7 @@ public static class EventsApi
 
     private static readonly JsonElement EmptyData = JsonDocument.Parse("{}").RootElement.Clone();
 
+    /// <summary>Фильтр типов событий из query (через запятую); null — все типы.</summary>
     private static IReadOnlyCollection<string>? ParseTypes(string? types) =>
         string.IsNullOrWhiteSpace(types) ? null : types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 

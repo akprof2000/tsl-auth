@@ -14,6 +14,7 @@ public sealed class TokenPruningService(IServiceScopeFactory scopes, ILogger<Tok
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
+    /// <summary>Периодически удаляет просроченные токены и авторизации OpenIddict.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Случайная задержка, чтобы экземпляры кластера не чистили БД одновременно.

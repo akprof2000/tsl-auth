@@ -5,14 +5,20 @@ using static Microsoft.Playwright.Assertions;
 
 namespace TslAuth.UiTests;
 
-/// <summary>UI-сценарии (Playwright): страница входа, админка, демо-приложения, регистрация, персональные токены.</summary>
+/// <summary>
+/// UI-сценарии (Playwright): страница входа, админка, демо-приложения, регистрация, персональные токены.
+/// Работают против поднятого стенда через <see cref="UiFixture"/>; запуск: <c>dotnet test tests/TslAuth.UiTests</c>.
+/// Ожидания Expect(...) сами повторяют проверку до таймаута Playwright, поэтому явных задержек в тестах нет.
+/// </summary>
 [Collection("ui")]
 public sealed class UiScenarios(UiFixture fx)
 {
+    // Уникальный суффикс: сущности от прошлых прогонов остаются на стенде и не должны конфликтовать.
     private static string Unique(string p) => $"{p}-{Guid.NewGuid().ToString("N")[..6]}";
 
     // ---------- Страница входа ----------
 
+    /// <summary>«Глазок» переключает видимость пароля; неверный пароль даёт локализованное сообщение об ошибке.</summary>
     [Fact]
     public async Task Login_WrongPassword_ShowsError_PasswordEyeToggles()
     {
@@ -42,6 +48,7 @@ public sealed class UiScenarios(UiFixture fx)
 
     // ---------- Админка ----------
 
+    /// <summary>Администратор открывает каждый раздел админки и документацию; у каждой страницы ожидаемый заголовок.</summary>
     [Fact]
     public async Task Admin_NavigatesAllSections()
     {
@@ -74,6 +81,10 @@ public sealed class UiScenarios(UiFixture fx)
         await UiFixture.ShotAsync(page, "20-docs");
     }
 
+    /// <summary>
+    /// Регистрация приложения через UI показывает секрет один раз; затем в матрице создаются разрешение и роль,
+    /// связь сохраняется, и результат подтверждается через Admin API.
+    /// </summary>
     [Fact]
     public async Task Admin_RegistersApp_AndEditsMatrix()
     {
@@ -102,11 +113,13 @@ public sealed class UiScenarios(UiFixture fx)
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync("Матрица сохранена");
         await UiFixture.ShotAsync(page, "22-matrix-saved");
 
+        // Проверка по API: сообщение в UI не гарантирует, что матрица действительно записана.
         var matrix = await fx.Admin.GetFromJsonAsync<JsonElement>($"/api/admin/applications/{clientId}/matrix");
         Assert.Equal("docs.read", matrix.GetProperty("roles")[0].GetProperty("permissions")[0].GetString());
         Assert.Equal("Читатель документов", matrix.GetProperty("roles")[0].GetProperty("displayName").GetString());
     }
 
+    /// <summary>Пользователь с временным паролем при первом входе обязан сменить его и после смены попадает в личный кабинет.</summary>
     [Fact]
     public async Task TemporaryPassword_ForcesChangeOnFirstLogin()
     {
@@ -131,6 +144,10 @@ public sealed class UiScenarios(UiFixture fx)
 
     // ---------- Демо-приложения на разных стеках ----------
 
+    /// <summary>
+    /// SPA входит по Authorization Code + PKCE через брендированную страницу, вызывает API на Node и Go,
+    /// проверяет цепочку Go → Node через token exchange и обновление токена.
+    /// </summary>
     [Fact]
     public async Task NodeSpa_BrandedLogin_Pkce_ApisAndTokenExchange()
     {
@@ -158,6 +175,7 @@ public sealed class UiScenarios(UiFixture fx)
         await Expect(page.Locator("#out")).ToContainTextAsync("токен обновлён");
     }
 
+    /// <summary>Пользователь без роли в demo-go-api получает 403 от Go API, хотя Node API ему доступен.</summary>
     [Fact]
     public async Task NodeSpa_UserWithoutRole_GetsForbidden()
     {
@@ -174,6 +192,7 @@ public sealed class UiScenarios(UiFixture fx)
         await UiFixture.ShotAsync(page, "43-spa-bob-forbidden");
     }
 
+    /// <summary>ASP.NET MVC-пример: вход по OIDC, разрешения из токена в политиках авторизации, вызов Go API и обновление токена.</summary>
     [Fact]
     public async Task DotnetMvc_Oidc_Login_Authorization_Refresh()
     {
@@ -194,6 +213,10 @@ public sealed class UiScenarios(UiFixture fx)
         await UiFixture.ShotAsync(page, "51-dotnet-refresh");
     }
 
+    /// <summary>
+    /// Python-пример: вход по password grant с проверкой подписи JWT, создание пользователя через API приложения
+    /// (выдаётся временный пароль) и интроспекция токена.
+    /// </summary>
     [Fact]
     public async Task Python_PasswordGrant_And_AppApiUserManagement()
     {
@@ -219,6 +242,10 @@ public sealed class UiScenarios(UiFixture fx)
 
     // ---------- Самостоятельная регистрация + одобрение ----------
 
+    /// <summary>
+    /// Пользователь регистрируется со страницы входа приложения и запрашивает роль; администратор одобряет заявку,
+    /// после чего роль появляется у пользователя (проверяется через Admin API).
+    /// </summary>
     [Fact]
     public async Task SelfRegistration_RequestIsApprovedByAdmin()
     {
@@ -236,6 +263,7 @@ public sealed class UiScenarios(UiFixture fx)
         await page.ClickAsync("button.primary");
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("register.doneWithRequest"));
 
+        // Администратор работает в отдельном контексте браузера, чтобы не смешивать сессии.
         var admin = await fx.NewPageAsync();
         await admin.GotoAsync($"{UiFixture.Auth}/Admin/Requests");
         await UiFixture.LoginAsync(admin, UiFixture.UiAdmin, UiFixture.UiAdminPassword);
@@ -250,6 +278,10 @@ public sealed class UiScenarios(UiFixture fx)
 
     // ---------- Персональный токен ----------
 
+    /// <summary>
+    /// Персональный токен, выпущенный в личном кабинете, обменивается на JWT через /connect/token
+    /// и принимается Node API; в конце токен отзывается.
+    /// </summary>
     [Fact]
     public async Task PersonalAccessToken_CreatedInUi_WorksForAutomation()
     {
@@ -274,6 +306,7 @@ public sealed class UiScenarios(UiFixture fx)
         Assert.Equal(200, (int)orders.StatusCode); // JWT по PAT принимается Node API
 
         // Уборка: токен отзывается, иначе повторные прогоны упрутся в лимит активных PAT на пользователя.
+        // Кнопка отзыва спрашивает подтверждение через confirm() — принимаем диалог автоматически.
         page.Dialog += (_, dialog) => dialog.AcceptAsync();
         await page.Locator("tr", new() { HasText = name }).Locator("form[action*=Revoke] button").ClickAsync();
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("tokens.revoked"));

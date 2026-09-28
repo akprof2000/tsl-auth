@@ -293,6 +293,7 @@ public sealed class ApplicationService(
         return confidential;
     }
 
+    /// <summary>Разбирает и проверяет redirect URI, убирая пустые значения и повторы.</summary>
     private static IEnumerable<Uri> ParseUris(IEnumerable<string>? values)
     {
         foreach (var value in (values ?? []).Select(v => v.Trim()).Where(v => v.Length > 0).Distinct())
@@ -304,6 +305,7 @@ public sealed class ApplicationService(
         }
     }
 
+    /// <summary>Собирает DTO приложения из дескриптора OpenIddict и его свойств.</summary>
     private async Task<ApplicationDto> ToDtoAsync(object app, CancellationToken ct)
     {
         var permissions = await applications.GetPermissionsAsync(app, ct);
@@ -335,6 +337,7 @@ public sealed class ApplicationService(
 
     private static bool IsSystem(IReadOnlyDictionary<string, JsonElement> properties) => Flag(properties, SystemProperty);
 
+    /// <summary>Логический флаг из пользовательских свойств приложения OpenIddict.</summary>
     private static bool Flag(IReadOnlyDictionary<string, JsonElement> properties, string name) =>
         properties.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.True;
 

@@ -40,6 +40,7 @@ public static class SchemaRepair
     {
         public bool Healthy => !Corrupt && !(HistoryMissing && HasTables) && Unknown.Count == 0 && SchemaProblems.Count == 0;
 
+        /// <summary>Человекочитаемый список найденных проблем для лога и сообщения об ошибке.</summary>
         public IEnumerable<string> Describe()
         {
             if (Corrupt) yield return $"файл БД повреждён: {CorruptionDetails}";
@@ -146,6 +147,7 @@ public static class SchemaRepair
 
     // ---------- SQLite ----------
 
+    /// <summary>Пересборка SQLite: резервная копия файла, новая БД по модели и перенос данных из старой.</summary>
     private static async Task<(string, IReadOnlyList<TableCopy>)> RebuildSqliteAsync(string connectionString, IModel model, ILogger logger,
         string reason, CancellationToken ct)
     {
@@ -213,6 +215,7 @@ public static class SchemaRepair
         return (backup, results);
     }
 
+    /// <summary>Переносит таблицу по общим столбцам; новые обязательные столбцы заполняются значениями по умолчанию.</summary>
     private static async Task<TableCopy> CopySqliteTableAsync(SqliteConnection c, ModelTable table, ILogger logger, CancellationToken ct)
     {
         var oldColumns = await SqliteColumnsAsync(c, "old", table.Name, ct);
@@ -251,6 +254,7 @@ public static class SchemaRepair
         }
     }
 
+    /// <summary>Построчный перенос: строки, которые не удалось вставить, пропускаются и учитываются в итоге.</summary>
     private static async Task<TableCopy> CopySqliteRowByRowAsync(SqliteConnection c, ModelTable table, string insert, string reason,
         CancellationToken ct)
     {
@@ -282,6 +286,7 @@ public static class SchemaRepair
         return new TableCopy(table.Name, copied, skipped, "построчно: " + reason);
     }
 
+    /// <summary>Значение по умолчанию для обязательного столбца, которого не было в старой таблице.</summary>
     private static string SqliteDefault(ModelColumn col) => col.ClrType switch
     {
         var t when t == typeof(string) => "''",
@@ -296,6 +301,7 @@ public static class SchemaRepair
 
     private const string RebuildSchema = "tsl_rebuild";
 
+    /// <summary>Пересборка PostgreSQL: схема по модели создаётся заново, данные переносятся из старой схемы, которая остаётся резервной копией.</summary>
     private static async Task<(string, IReadOnlyList<TableCopy>)> RebuildPostgresAsync(string connectionString, IModel model, ILogger logger,
         string reason, CancellationToken ct)
     {
@@ -335,6 +341,7 @@ public static class SchemaRepair
         return (backup, results);
     }
 
+    /// <summary>Перенос таблицы из старой схемы в пересобранную по общим столбцам.</summary>
     private static async Task<TableCopy> CopyPostgresTableAsync(NpgsqlConnection c, NpgsqlTransaction tx, string oldSchema, ModelTable table,
         ILogger logger, CancellationToken ct)
     {
@@ -418,6 +425,7 @@ public static class SchemaRepair
         }
     }
 
+    /// <summary>Значение по умолчанию (PostgreSQL) для нового обязательного столбца.</summary>
     private static string PgDefault(ModelColumn col, string type) => col.ClrType switch
     {
         var t when t == typeof(string) => "''",
@@ -480,6 +488,7 @@ public static class SchemaRepair
         return ordered;
     }
 
+    /// <summary>Таблицы текущей БД; соединение закрывается, только если было открыто здесь.</summary>
     private static async Task<HashSet<string>> ExistingTablesAsync(AuthDbContext db, CancellationToken ct)
     {
         var connection = db.Database.GetDbConnection();
@@ -497,6 +506,7 @@ public static class SchemaRepair
         }
     }
 
+    /// <summary>Столбцы таблицы текущей БД с их типами.</summary>
     private static async Task<Dictionary<string, string>> ColumnsAsync(AuthDbContext db, string table, CancellationToken ct)
     {
         var connection = db.Database.GetDbConnection();
@@ -570,6 +580,7 @@ public static class SchemaRepair
     // Мелочи
     // ====================================================================================
 
+    /// <summary>Итог пересборки в лог: предупреждения по таблицам с потерями и путь к резервной копии.</summary>
     private static void LogSummary(ILogger logger, List<TableCopy> results, string backup)
     {
         foreach (var r in results.Where(r => r.Skipped > 0 || r.Note is not null))

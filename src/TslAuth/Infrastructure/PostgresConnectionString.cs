@@ -11,6 +11,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public static partial class PostgresConnectionString
 {
+    /// <summary>Возвращает строку подключения с отключённым GSS-шифрованием, если параметр не задан в исходной строке явно.</summary>
     public static string Normalize(string connectionString)
     {
         if (GssSetting().IsMatch(connectionString)) return connectionString; // задано явно — не трогаем

@@ -87,6 +87,7 @@ public sealed record LoggingSettings(string? DefaultLevel = null, Dictionary<str
 {
     public static readonly string[] Levels = ["Trace", "Debug", "Information", "Warning", "Error", "Critical", "None"];
 
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (DefaultLevel is not null && !Levels.Contains(DefaultLevel, StringComparer.OrdinalIgnoreCase))
@@ -119,6 +120,7 @@ public sealed record PasswordPolicy(
     int MaxFailedAttempts = 5,
     int LockoutMinutes = 15)
 {
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (MinLength is < 6 or > 128) throw new AdminException("Минимальная длина пароля: от 6 до 128.");
@@ -156,6 +158,7 @@ public sealed record TokenPolicy(
     int AuthorizationCodeMinutes = 5,
     int MaxSessionDays = 90)
 {
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (AccessTokenMinutes is < 1 or > 1440) throw new AdminException("Access-токен: от 1 до 1440 минут.");
@@ -171,6 +174,7 @@ public sealed record TokenPolicy(
 /// <summary>Переопределение сроков жизни токенов для конкретного приложения (null — глобальное значение).</summary>
 public sealed record AppTokenLifetimes(int? AccessTokenMinutes = null, int? RefreshTokenDays = null, int? ExchangeTokenMinutes = null)
 {
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (AccessTokenMinutes is < 1 or > 1440) throw new AdminException("Access-токен приложения: от 1 до 1440 минут.");
@@ -183,6 +187,7 @@ public sealed record AppTokenLifetimes(int? AccessTokenMinutes = null, int? Refr
 /// <param name="Mode">"link" — одноразовая ссылка сброса (бот не видит пароль); "temporary" — временный пароль со сменой при входе.</param>
 public sealed record BotResetPolicy(bool Enabled = true, string Mode = "link", int MaxPerUserPerHour = 3)
 {
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (Mode is not ("link" or "temporary")) throw new AdminException("Режим сброса через бота: link или temporary.");
@@ -193,6 +198,7 @@ public sealed record BotResetPolicy(bool Enabled = true, string Mode = "link", i
 /// <summary>Политика персональных токенов доступа.</summary>
 public sealed record PatPolicy(bool Enabled = true, int MaxLifetimeDays = 365, int MaxTokensPerUser = 20)
 {
+    /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (MaxLifetimeDays is < 1 or > 3650) throw new AdminException("Максимальный срок PAT: от 1 до 3650 дней.");

@@ -183,6 +183,7 @@ public static class PostgresMigration
 
     // ---------- Чтение / запись ----------
 
+    /// <summary>Потоково читает строки таблицы источника (SQLite) без загрузки всей таблицы в память.</summary>
     private static async IAsyncEnumerable<object?[]> ReadSourceAsync(DbConnection src, DbTransaction tx, Table t,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
@@ -199,6 +200,7 @@ public static class PostgresMigration
         }
     }
 
+    /// <summary>Потоково читает те же столбцы из PostgreSQL — для сверки контрольных сумм после переноса.</summary>
     private static async IAsyncEnumerable<object?[]> ReadTargetAsync(NpgsqlConnection dst, NpgsqlTransaction tx, Table t,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
@@ -293,6 +295,7 @@ public static class PostgresMigration
         private System.Numerics.BigInteger _sum;
         public long Count { get; private set; }
 
+        /// <summary>Сумма хешей строк по модулю: результат не зависит от порядка строк, поэтому источник и приёмник сравнимы без сортировки.</summary>
         public void Add(object?[] row)
         {
             var line = string.Join('\u001F', row.Select(Normalize));
@@ -304,6 +307,7 @@ public static class PostgresMigration
         public string Value => _sum.ToString("X64");
     }
 
+    /// <summary>Приводит значение к единому текстовому виду, чтобы одинаковые данные из SQLite и PostgreSQL давали одинаковый хеш.</summary>
     private static string Normalize(object? value) => value switch
     {
         null => "␀",

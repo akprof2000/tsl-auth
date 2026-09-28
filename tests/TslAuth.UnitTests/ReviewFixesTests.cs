@@ -1,3 +1,7 @@
+// Unit-тесты исправлений по ревизии: политика адресов вебхуков, доверенные сети, язык, аудит, профиль.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using System.Net;
 using TslAuth.Infrastructure;
 using TslAuth.Localization;
@@ -11,6 +15,7 @@ public sealed class WebhookTargetPolicyTests
     private static readonly WebhookTargetPolicy Default = new([]);
 
     // M6: адреса самого узла и инфраструктуры — всегда запрещены.
+    /// <summary>Эти адреса запрещены для вебхуков при любых настройках.</summary>
     [Theory]
     [InlineData("127.0.0.1")]
     [InlineData("::1")]
@@ -22,6 +27,7 @@ public sealed class WebhookTargetPolicyTests
     public void Forbidden_Always(string address) => Assert.False(Default.IsAllowed(IPAddress.Parse(address)));
 
     // Закрытый контур: частные сети по умолчанию разрешены (бот/мессенджер во внутренней сети).
+    /// <summary>Эти адреса разрешены политикой по умолчанию.</summary>
     [Theory]
     [InlineData("10.1.2.3")]
     [InlineData("192.168.1.10")]
@@ -29,6 +35,7 @@ public sealed class WebhookTargetPolicyTests
     [InlineData("93.184.216.34")]
     public void Allowed_ByDefault(string address) => Assert.True(Default.IsAllowed(IPAddress.Parse(address)));
 
+    /// <summary>Список разрешённых сетей сужает допустимые адреса.</summary>
     [Fact]
     public void AllowedNetworks_RestrictTargets()
     {
@@ -38,6 +45,7 @@ public sealed class WebhookTargetPolicyTests
         Assert.False(policy.IsAllowed(IPAddress.Parse("127.0.0.1")));
     }
 
+    /// <summary>Недопустимый URL вебхука отклоняется при сохранении.</summary>
     [Theory]
     [InlineData("http://localhost:8080/hook")]
     [InlineData("http://127.0.0.1/hook")]
@@ -52,6 +60,7 @@ public sealed class WebhookTargetPolicyTests
 public sealed class KnownNetworksTests
 {
     // H7: по умолчанию — loopback и частные сети; прочие адреса не могут подменять X-Forwarded-*.
+    /// <summary>Доверенные сети по умолчанию — только loopback и частные диапазоны.</summary>
     [Fact]
     public void Default_IsLoopbackAndPrivateOnly()
     {
@@ -61,6 +70,7 @@ public sealed class KnownNetworksTests
         Assert.DoesNotContain(networks, n => n.Contains(IPAddress.Parse("93.184.216.34")));
     }
 
+    /// <summary>Явный список доверенных сетей заменяет список по умолчанию.</summary>
     [Fact]
     public void Explicit_ReplacesDefault()
     {
@@ -76,6 +86,7 @@ public sealed class KnownNetworksTests
 public sealed class SmallFixesTests
 {
     // H6: код языка канонизируется — «RU» и «ru» не становятся разными пакетами.
+    /// <summary>Код языка приводится к каноническому виду.</summary>
     [Theory]
     [InlineData("RU", "ru")]
     [InlineData("en-us", "en-US")]
@@ -84,6 +95,7 @@ public sealed class SmallFixesTests
     public void CultureIsCanonical(string input, string expected) => Assert.Equal(expected, LocalizationService.Canonical(input));
 
     // H5: время без зоны из API считается UTC (PostgreSQL не принимает Kind=Unspecified).
+    /// <summary>Даты фильтра аудита приводятся к UTC.</summary>
     [Fact]
     public void AuditDates_AreUtc()
     {
@@ -94,6 +106,7 @@ public sealed class SmallFixesTests
     }
 
     // L5: в журнал — не сырой ввод логина (туда вводят пароли), а маска.
+    /// <summary>Логин в аудите частично маскируется.</summary>
     [Fact]
     public void Login_IsMaskedInAudit()
     {
@@ -102,6 +115,7 @@ public sealed class SmallFixesTests
     }
 
     // L17: длины полей профиля проверяются до записи в БД.
+    /// <summary>Длины полей профиля проверяются.</summary>
     [Fact]
     public void ProfileLengths_AreChecked()
     {

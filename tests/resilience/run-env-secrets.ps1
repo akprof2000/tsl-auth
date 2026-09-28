@@ -20,10 +20,12 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ("tsl-env-" + [guid]::NewGuid().ToS
 New-Item -ItemType Directory -Force $work | Out-Null
 $report = [System.Collections.Generic.List[string]]::new()
 $failed = $false
+# Выполнить проверку: ошибка не прерывает прогон, а фиксируется в отчёте и выставляет общий признак провала.
 function Check($name, [scriptblock]$test) {
     try { & $test; $report.Add("| $name | ✅ |"); Write-Host "OK   $name" -ForegroundColor Green }
     catch { $report.Add("| $name | ❌ $($_.Exception.Message) |"); Write-Host "FAIL $name — $($_.Exception.Message)" -ForegroundColor Red; $script:failed = $true }
 }
+# Опрос /health/ready до 120 с: сборка образа и миграции БД при первом старте занимают время.
 function WaitReady($port) {
     $deadline = (Get-Date).AddSeconds(120)
     while ((Get-Date) -lt $deadline) {
@@ -31,6 +33,7 @@ function WaitReady($port) {
     }
     throw "сервис на порту $port не ответил за 120 с"
 }
+# Токен Admin API по client_credentials: успешная выдача доказывает, что сервис принял секрет из проверяемого источника.
 function Token($port, $secret) {
     (Invoke-RestMethod "http://localhost:$port/connect/token" -Method Post -Body @{
         grant_type = "client_credentials"; client_id = "admin-cli"; client_secret = $secret; scope = "tsl-auth-admin" }).access_token
@@ -45,6 +48,7 @@ function SaveLogs($compose, $name) {
 }
 
 # ---------- 1–2. Переменные окружения (.env) ----------
+# Все секреты генерируются при запуске и живут только во временном каталоге $work — в репозитории литералов нет.
 $key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
 $apiSecret = "env-" + [guid]::NewGuid().ToString("N")
 @(
@@ -75,6 +79,8 @@ try {
 finally { SaveLogs $envCompose "env"; docker compose @envCompose down -v | Out-Null }
 
 # ---------- 3. Файл настроек ----------
+# Секреты только в appsettings.json, смонтированном read-only; переопределение compose обнуляет переменные,
+# чтобы сервис не мог взять значения из окружения. Порт +1 — чтобы не ждать освобождения порта предыдущего стенда.
 $fileSecret = "file-" + [guid]::NewGuid().ToString("N")
 $settings = @{
     Encryption = @{ MasterKey = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }

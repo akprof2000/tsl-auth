@@ -17,6 +17,7 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Права токена по умолчанию — только чтение; задаче docker расширенные права выдаются отдельно.
 permissions:
   contents: read
 
@@ -46,6 +47,7 @@ jobs:
       - name: Restore
         run: dotnet restore TslAuth.sln
 
+      # -warnaserror: любое предупреждение компилятора/анализаторов считается ошибкой сборки.
       - name: Build
         run: dotnet build TslAuth.sln -c Release --no-restore -warnaserror
 
@@ -62,6 +64,7 @@ jobs:
           dotnet list TslAuth.sln package --vulnerable --include-transitive | tee vulnerable.txt
           if grep -q -E "(Critical|High)" vulnerable.txt; then echo "::error::Найдены уязвимые пакеты"; exit 1; fi
 
+      # Отчёты trx сохраняются и при падении тестов (always), хранятся 1 день.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -157,6 +160,8 @@ jobs:
           echo "::warning title=Docker Hub::Вход не удался, образ публикуется только в GHCR.${hint:- Проверьте логин и токен (Account settings → Personal access tokens, права Read & Write).}"
           echo "DOCKERHUB_USERNAME=" >> "$GITHUB_ENV"
 
+      # latest — только для ветки по умолчанию; для тегов vX.Y.Z — X.Y.Z и X.Y; всегда — короткий sha.
+      # Пустая строка в images (нет входа в Docker Hub) игнорируется.
       - name: Теги образа
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0

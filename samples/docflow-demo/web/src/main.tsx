@@ -1,3 +1,6 @@
+// Точка входа PWA. Решает, что показать: обработку возврата из TSL Auth (/callback), экран входа
+// (Landing) или само приложение с маршрутами. Состояние входа берётся из oidc-client-ts (userManager),
+// поэтому компонент подписан на его события загрузки/потери пользователя.
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
@@ -22,6 +25,7 @@ let callback: Promise<User> | null = null;
 /** Возврат из TSL Auth после входа: обмениваем code на токены и уходим туда, откуда пришли. */
 function Callback() {
   const navigate = useNavigate();
+  // state — путь, сохранённый перед signinRedirect; принимаем только относительный, чтобы не было открытого редиректа.
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     (callback ??= userManager.signinRedirectCallback())
@@ -33,6 +37,7 @@ function Callback() {
     : <PageLoader />;
 }
 
+/** Корневой компонент: следит за состоянием входа и выбирает экран. */
 function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   useEffect(() => {
@@ -51,6 +56,7 @@ function App() {
 
   if (location.pathname === "/callback") return <Routes><Route path="/callback" element={<Callback />} /></Routes>;
   if (user === undefined) return <PageLoader />;
+  // Истёкший токен без refresh-токена продлить нельзя — нужен новый вход.
   if (!user || user.expired && !user.refresh_token) return <Landing />;
 
   return (

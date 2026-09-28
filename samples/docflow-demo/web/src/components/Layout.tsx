@@ -1,3 +1,6 @@
+// Каркас приложения после входа: боковое меню, верхняя панель, уведомления и тема.
+// Пункты меню показываются по разрешениям из JWT (useSession().can) — это лишь удобство интерфейса,
+// окончательную проверку делает API. Уведомления читаются из /api/notifications.
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";

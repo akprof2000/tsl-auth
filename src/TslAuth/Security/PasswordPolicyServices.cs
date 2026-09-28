@@ -14,6 +14,7 @@ public sealed class PolicyPasswordValidator(SettingsService settings, AuthDbCont
     Localization.Texts L)
     : IPasswordValidator<AppUser>
 {
+    /// <summary>Проверяет пароль по политике из настроек, которые администратор меняет без перезапуска.</summary>
     public async Task<IdentityResult> ValidateAsync(UserManager<AppUser> manager, AppUser user, string? password)
     {
         var p = (await settings.GetAsync()).Passwords;
@@ -68,6 +69,7 @@ public sealed class AppUserManager(
     // Прежний хеш, ожидающий записи в историю: добавляется только вместе с успешным сохранением пользователя.
     private PasswordHistoryEntry? _pendingHistory;
 
+    /// <summary>После успешной смены пароля сохраняет прежний хеш в историю — для запрета повторного использования.</summary>
     protected override async Task<IdentityResult> UpdatePasswordHash(AppUser user, string newPassword, bool validatePassword)
     {
         var previousHash = user.PasswordHash;

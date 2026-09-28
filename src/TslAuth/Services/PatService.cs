@@ -111,8 +111,10 @@ public sealed class PatService(AuthDbContext db, SettingsService settings, Audit
         return (token, user);
     }
 
+    /// <summary>В БД хранится только SHA-256 токена: сам токен показывается пользователю один раз.</summary>
     private static string Hash(string secret) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 
+    /// <summary>DTO токена: вместо секрета — только префикс; активен, если не отозван и не истёк.</summary>
     private static PatDto ToDto(PersonalAccessToken t) => new(t.Id, t.Name, t.Prefix + "…",
         t.Audiences.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList(), t.CreatedAt, t.ExpiresAt, t.LastUsedAt, t.LastUsedIp,
         t.RevokedAt is null && (t.ExpiresAt is null || t.ExpiresAt > DateTime.UtcNow));

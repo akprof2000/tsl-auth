@@ -10,6 +10,7 @@ namespace TslAuth.Security;
 /// </summary>
 public sealed class FieldCryptoXmlEncryptor : IXmlEncryptor
 {
+    /// <summary>Шифрует XML ключа целиком мастер-ключом и оборачивает результат в элемент encryptedKey.</summary>
     public EncryptedXmlInfo Encrypt(XElement plaintextElement)
     {
         var element = new XElement("encryptedKey",
@@ -26,6 +27,7 @@ public sealed class FieldCryptoXmlEncryptor : IXmlEncryptor
 /// </summary>
 public sealed class FieldCryptoXmlDecryptor : IXmlDecryptor
 {
+    /// <summary>Расшифровывает XML ключа, сохранённый методом Encrypt.</summary>
     public XElement Decrypt(XElement encryptedElement)
     {
         var value = (string?)encryptedElement.Element("value")

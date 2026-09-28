@@ -53,6 +53,7 @@ public sealed class AdminPermissionRequirement(params string[] anyOf) : IAuthori
 /// </summary>
 public sealed class AdminPermissionHandler(AccessService access) : AuthorizationHandler<AdminPermissionRequirement>
 {
+    /// <summary>Определяет субъект токена (пользователь/клиент) и проверяет наличие разрешения через его роли в системном приложении; при отсутствии требование не выполняется.</summary>
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, AdminPermissionRequirement requirement)
     {
         var (type, id) = GetSubject(context.User);

@@ -1,3 +1,7 @@
+// Unit-тесты конфигурации OpenBao: нормализация ключей, ошибки настройки, сверка мастер-ключа.
+// Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
+// отдельные классы сервиса без поднятия HTTP-хоста и БД.
+
 using Microsoft.Extensions.Logging.Abstractions;
 using TslAuth.Infrastructure;
 using TslAuth.Options;
@@ -7,6 +11,7 @@ namespace TslAuth.UnitTests;
 
 public class OpenBaoTests
 {
+    /// <summary>Ключ секрета в OpenBao преобразуется в ключ конфигурации .NET.</summary>
     [Theory]
     [InlineData("Encryption__MasterKey", "Encryption:MasterKey")]
     [InlineData("Observability__Loki__Password", "Observability:Loki:Password")]
@@ -16,6 +21,7 @@ public class OpenBaoTests
     [Fact]
     public void NoAddress_MeansDisabled() => Assert.False(new OpenBaoOptions().Enabled);
 
+    /// <summary>Адрес задан, а учётных данных AppRole нет — ошибка конфигурации.</summary>
     [Fact]
     public async Task NoCredentials_IsConfigurationError()
     {
@@ -24,6 +30,7 @@ public class OpenBaoTests
         Assert.Contains("AppRole", error.Message);
     }
 
+    /// <summary>Файл secret_id не найден — ошибка конфигурации.</summary>
     [Fact]
     public async Task MissingSecretIdFile_IsConfigurationError()
     {
@@ -33,6 +40,7 @@ public class OpenBaoTests
         Assert.Contains("не найден", error.Message);
     }
 
+    /// <summary>Мастер-ключ из хранилища не совпал с локальным — старт останавливается, чтобы не потерять данные.</summary>
     [Fact]
     public void KeyFromVault_DifferentFromLocalMasterKey_StopsStart()
     {

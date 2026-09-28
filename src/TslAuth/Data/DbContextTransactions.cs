@@ -18,6 +18,7 @@ public static class DbContextTransactions
         return result;
     }
 
+    /// <summary>Вариант без результата: действие выполняется в транзакции с той же стратегией повторов.</summary>
     public static Task InTransactionAsync(this DbContext db, Func<Task> action, CancellationToken ct = default) =>
         db.InTransactionAsync(async () => { await action(); return true; }, ct);
 }

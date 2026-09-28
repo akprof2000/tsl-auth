@@ -246,6 +246,7 @@ public sealed class AccessRequestService(
         return found;
     }
 
+    /// <summary>Выборка заявок (не более 1000, новые первыми) с данными роли и заявителя.</summary>
     private async Task<List<AccessRequestDto>> QueryAsync(IQueryable<AccessRequest> query, CancellationToken ct)
     {
         var rows = await query.AsNoTracking().OrderByDescending(r => r.CreatedAt)
@@ -260,6 +261,7 @@ public sealed class AccessRequestService(
             x.r.Comment, x.r.CreatedAt, x.r.DecidedAt, x.r.DecidedBy, x.r.DecisionComment, x.RoleDisplayName)).ToList();
     }
 
+    /// <summary>Письмо заявителю о решении; отправляется, только если настроена почта и у пользователя есть email.</summary>
     private async Task NotifyAsync(AccessRequestDto request, CancellationToken ct)
     {
         if (!email.IsConfigured || request.Email is null) return;

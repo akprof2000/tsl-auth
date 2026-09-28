@@ -21,6 +21,7 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
     private static readonly TimeSpan LockDuration = TimeSpan.FromSeconds(60);
     private static readonly string Instance = $"{Environment.MachineName}:{Environment.ProcessId}";
 
+    /// <summary>Каждые 2 секунды отправляет очередную пачку доставок, срок которых наступил.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
@@ -40,6 +41,7 @@ public sealed class WebhookDispatcher(IServiceScopeFactory scopes, IHttpClientFa
     // Одновременных доставок на экземпляр: одна зависшая подписка (таймаут 10 с) не задерживает остальные.
     private const int Parallelism = 5;
 
+    /// <summary>Выбирает доставки, готовые к отправке, и отправляет их, каждую в своём scope.</summary>
     private async Task DispatchBatchAsync(CancellationToken ct)
     {
         List<Guid> candidates;

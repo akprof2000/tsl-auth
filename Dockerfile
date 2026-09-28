@@ -36,6 +36,8 @@ LABEL org.opencontainers.image.title="TSL Auth" \
       org.opencontainers.image.source="https://github.com/akprof2000/tsl-auth"
 
 WORKDIR /app
+# Порт 8080 (не привилегированный, доступен без root); invariant-глобализация — без ICU в distroless;
+# EnableDiagnostics=0 отключает отладочные каналы (IPC/perf) в продуктиве; workstation GC — меньше памяти.
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true \

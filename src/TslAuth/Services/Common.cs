@@ -87,6 +87,7 @@ public static partial class Names
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")]
     private static partial Regex Pattern();
 
+    /// <summary>Обрезает пробелы и проверяет техническое имя; при ошибке — <see cref="AdminException"/> с текстом для пользователя (<paramref name="what"/> — что проверяется).</summary>
     public static string Validate(string? value, string what)
     {
         value = value?.Trim();

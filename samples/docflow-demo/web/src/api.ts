@@ -1,17 +1,24 @@
+// Клиент HTTP-API документооборота (samples/docflow-demo/api). Каждый запрос несёт access-токен TSL Auth
+// (aud=docflow-api), полученный в auth.ts через authorization code + PKCE. Проверку прав делает сам API
+// по claim permissions; здесь же — только транспорт, обработка 401 и типы ответов.
 import { accessToken, userManager } from "./auth";
 
+/** Ошибка API с HTTP-статусом; текст берётся из ProblemDetails (detail/title). */
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
 /** Запрос к API документооборота с access-токеном; 401 — сессия закончилась, отправляем на вход. */
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  // accessToken() при необходимости сам обновит токен refresh-токеном.
   const token = await accessToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   let body = init.body;
   if (init.json !== undefined) { headers.set("Content-Type", "application/json"); body = JSON.stringify(init.json); }
   const res = await fetch(path, { ...init, headers, body });
+  // 401: токен отозван или истёк без возможности обновления — забываем пользователя и идём на вход,
+  // сохранив текущий путь в state, чтобы после входа вернуться на ту же страницу.
   if (res.status === 401) {
     await userManager.removeUser();
     await userManager.signinRedirect({ state: location.pathname });
@@ -24,6 +31,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   return data as T;
 }
 
+// Типы ответов API документооборота.
 export type Me = { id: string; userName: string; displayName: string; roles: string[]; permissions: string[] };
 export type Status = "Draft" | "InReview" | "Approved" | "Rejected" | "Archived";
 export type DocSummary = {

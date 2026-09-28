@@ -14,6 +14,7 @@ public sealed class MustChangePasswordFilter : IAsyncPageFilter
 {
     public Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context) => Task.CompletedTask;
 
+    /// <summary>Пользователя с флагом обязательной смены пароля перенаправляет на страницу смены пароля; возврат на исходную страницу — через returnUrl.</summary>
     public async Task OnPageHandlerExecutionAsync(PageHandlerExecutingContext context, PageHandlerExecutionDelegate next)
     {
         var http = context.HttpContext;

@@ -72,6 +72,7 @@ public sealed class TokenPrincipalFactory(IOpenIddictScopeManager scopes, Access
     private static ClaimsIdentity NewIdentity() =>
         new(TokenValidationParameters.DefaultAuthenticationType, Claims.Name, Claims.Role);
 
+    /// <summary>Добавляет в токен scope, audience и роли/разрешения субъекта.</summary>
     private async Task AddAccessAsync(ClaimsIdentity identity, SubjectType type, string subjectId, string clientId,
         ImmutableArray<string> requestedScopes, CancellationToken ct, IReadOnlyCollection<string>? explicitAudiences = null)
     {

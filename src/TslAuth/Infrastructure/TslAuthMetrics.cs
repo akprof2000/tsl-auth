@@ -36,6 +36,7 @@ public sealed class TslAuthMetrics : IDisposable
     /// <summary>Источник собственных span'ов (обслуживание БД, доставка вебхуков).</summary>
     public static readonly ActivitySource Activities = new(ActivitySourceName, Version);
 
+    /// <summary>Создаёт счётчики и gauge-метрики; значения gauge берутся из последнего снимка БД.</summary>
     public TslAuthMetrics()
     {
         _tokensIssued = _meter.CreateCounter<long>("tsl_auth.tokens.issued", "{token}",
@@ -69,6 +70,7 @@ public sealed class TslAuthMetrics : IDisposable
         Activity.Current?.SetTag("tsl_auth.grant_type", grantType).SetTag("tsl_auth.client_id", clientId);
     }
 
+    /// <summary>Отказ в выдаче токена: счётчик по гранту и ошибке; client_id — только в теге трассировки, чтобы не раздувать число рядов метрики.</summary>
     public void TokenRejected(string? grantType, string error, string? clientId)
     {
         _tokensRejected.Add(1, new("grant_type", grantType ?? "unknown"), new("error", error));

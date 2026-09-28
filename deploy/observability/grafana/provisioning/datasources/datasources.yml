@@ -26,7 +26,7 @@ datasources:
           datasourceUid: tempo
           matcherType: regex
           matcherRegex: '"_?TraceId":"(\w+)"'   # sink Loki добавляет к служебному имени префикс «_»
-          url: "$${__value.raw}"
+          url: "$${__value.raw}"   # $$ — экранирование: Grafana не подставляет переменную окружения
 
   - name: Tempo
     uid: tempo

@@ -1,3 +1,6 @@
+// Карточка документа: содержимое, маршрут согласования, версии, комментарии, вложения, история.
+// Какие кнопки доступны, решает API (поле can в ответе /api/documents/{id}) по разрешениям из JWT и
+// роли пользователя на текущем шаге; интерфейс только отображает это решение.
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import clsx from "clsx";

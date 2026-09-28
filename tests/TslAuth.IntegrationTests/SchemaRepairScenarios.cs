@@ -1,3 +1,8 @@
+// Интеграционные сценарии самовосстановления схемы БД при старте сервиса.
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +22,7 @@ public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixtur
     /// <summary>Фикстура для сценариев наследников (без повторного захвата параметра конструктора).</summary>
     protected TFixture Fixture => fx;
 
+    /// <summary>Частично сломанная схема пересобирается при старте, данные сохраняются.</summary>
     [Fact]
     public async Task PartiallyBrokenSchema_IsRebuilt_DataKept()
     {
@@ -30,6 +36,7 @@ public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixtur
         await AssertWorksAsync(web, api, user);
     }
 
+    /// <summary>Неизвестные записи в истории миграций: схема пересобирается.</summary>
     [Fact]
     public async Task UnknownMigrationHistory_IsRebuilt()
     {
@@ -43,6 +50,7 @@ public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixtur
         Assert.DoesNotContain("20200101000000_ForeignBranch", await AppliedAsync());
     }
 
+    /// <summary>Нет таблицы истории миграций: схема пересобирается.</summary>
     [Fact]
     public async Task MissingMigrationHistory_IsRebuilt()
     {
@@ -55,6 +63,7 @@ public abstract class SchemaRepairScenarios<TFixture>(TFixture fx) where TFixtur
         Assert.Equal(fx.CreateDbContext().Database.GetMigrations(), await AppliedAsync());
     }
 
+    /// <summary>Схема новее кода: старт останавливается, пока БД не исправят.</summary>
     [Fact]
     public async Task NewerSchema_StopsStart_UntilFixed()
     {

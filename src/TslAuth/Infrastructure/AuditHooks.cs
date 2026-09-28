@@ -17,6 +17,7 @@ namespace TslAuth.Infrastructure;
 /// </summary>
 public sealed class ApiAuditFilter(string type) : IEndpointFilter
 {
+    /// <summary>Выполняет обработчик и пишет в аудит изменяющий запрос API; GET-запросы пропускаются.</summary>
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var http = context.HttpContext;
@@ -66,6 +67,7 @@ public sealed class AdminPageAuditFilter : IAsyncPageFilter
 {
     public Task OnPageHandlerSelectionAsync(PageHandlerSelectedContext context) => Task.CompletedTask;
 
+    /// <summary>После выполнения POST-обработчика страницы фиксирует в аудите действие пользователя UI.</summary>
     public async Task OnPageHandlerExecutionAsync(PageHandlerExecutingContext context, PageHandlerExecutionDelegate next)
     {
         var executed = await next();
@@ -95,6 +97,7 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
 {
     private readonly AuthorizationMiddlewareResultHandler _default = new();
 
+    /// <summary>Отказ в доступе (403) пишется в аудит как AccessDenied, затем работает стандартный обработчик.</summary>
     public async Task HandleAsync(RequestDelegate next, HttpContext context, AuthorizationPolicy policy, PolicyAuthorizationResult result)
     {
         if (result.Forbidden)
@@ -121,6 +124,7 @@ public sealed class TokenErrorAuditHandler(AuditService audit, TslAuthMetrics me
             .SetType(OpenIddictServerHandlerType.Custom)
             .Build();
 
+    /// <summary>Ошибочный ответ token endpoint: метрика отказа и запись в аудит; успешные ответы не обрабатываются.</summary>
     public async ValueTask HandleAsync(ApplyTokenResponseContext context)
     {
         if (string.IsNullOrEmpty(context.Response.Error)) return;
@@ -168,6 +172,7 @@ public sealed class RevocationErrorAuditHandler(AuditService audit) : IOpenIddic
         EndpointErrorAudit.WriteAsync(audit, "revoke", context.Request?.ClientId, context.Response);
 }
 
+/// <summary>Общая запись отказов introspection/revocation в аудит; invalid_client — предупреждение (возможен перебор секретов).</summary>
 internal static class EndpointErrorAudit
 {
     public static async ValueTask WriteAsync(AuditService audit, string endpoint, string? clientId, OpenIddictResponse response)

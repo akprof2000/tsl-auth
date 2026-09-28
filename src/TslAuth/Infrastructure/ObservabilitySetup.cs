@@ -38,6 +38,7 @@ public static class ObservabilitySetup
     private static bool IsHttpUrl(string? value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
+    /// <summary>Регистрирует метрики и трассировку OpenTelemetry согласно настройкам; при выключенных метриках и трассировке — только сервис метрик.</summary>
     public static void AddTslObservability(this WebApplicationBuilder builder, ObservabilityOptions o)
     {
         builder.Services.AddSingleton<TslAuthMetrics>();
@@ -112,6 +113,7 @@ public static class ObservabilitySetup
         app.UseOpenTelemetryPrometheusScrapingEndpoint(o.Prometheus.Path);
     }
 
+    /// <summary>Настройка OTLP-экспортёра для сигнала: адрес, протокол, заголовки.</summary>
     private static void Configure(OtlpExporterOptions exporter, OpenTelemetryOptions o, string signal)
     {
         exporter.Endpoint = new Uri(SignalEndpoint(o, signal));
@@ -163,6 +165,7 @@ public static class ObservabilitySetup
         return pairs;
     }
 
+    /// <summary>Служебные пути (проверки здоровья, метрики) — исключаются из трассировки и метрик запросов.</summary>
     internal static bool IsInfrastructure(PathString path, string metricsPath) =>
         path.StartsWithSegments("/health") || path.Equals(metricsPath, StringComparison.OrdinalIgnoreCase);
 }
@@ -176,6 +179,7 @@ public sealed class PrometheusGuard(PrometheusOptions options)
     /// <summary>null — доступ разрешён; иначе код ответа (403 — чужая сеть, 401 — нет или неверный токен).</summary>
     public int? Check(HttpContext ctx) => Check(ctx.Connection.RemoteIpAddress, ctx.Request.Headers.Authorization.ToString());
 
+    /// <summary>Проверка по адресу клиента и заголовку Authorization (вынесена отдельно для модульных тестов).</summary>
     public int? Check(IPAddress? remote, string? authorization)
     {
         // Адреса нет у запросов внутри процесса (тесты, healthcheck-команда) — считаем их локальными.

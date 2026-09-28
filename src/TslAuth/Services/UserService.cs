@@ -346,12 +346,14 @@ public sealed class UserService(
             new { userId = user.Id, userName = user.UserName }, ct);
     }
 
+    /// <summary>Пользователь по Id или 404.</summary>
     private async Task<AppUser> Require(Guid id) =>
         await users.FindByIdAsync(id.ToString()) ?? throw AdminException.NotFound("Пользователь");
 
     private async Task<UserDto> ToDtoAsync(AppUser user, CancellationToken ct) =>
         ToDto(user, await access.GetAssignmentsAsync(SubjectType.User, user.Id.ToString(), ct));
 
+    /// <summary>DTO пользователя с его ролями во всех приложениях.</summary>
     private static UserDto ToDto(AppUser user, List<RoleRef> roles) => new(
         user.Id,
         user.UserName!,

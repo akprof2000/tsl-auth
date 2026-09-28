@@ -1,3 +1,9 @@
+// Интеграционные сценарии получения секретов из OpenBao. Требуется Docker: OpenBao поднимается
+// в контейнере через Testcontainers.
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net;
 using System.Net.Http.Json;
 using DotNet.Testcontainers.Builders;
@@ -92,6 +98,7 @@ public sealed class OpenBaoFixture : AuthFixture
 [Collection("openbao")]
 public sealed class OpenBaoScenarios(OpenBaoFixture fx) : IClassFixture<OpenBaoFixture>
 {
+    /// <summary>Секреты берутся из OpenBao и перекрывают значения из переменных окружения.</summary>
     [Fact]
     public async Task Secrets_ComeFromOpenBao_AndOverrideEnvironment()
     {
@@ -113,6 +120,7 @@ public sealed class OpenBaoScenarios(OpenBaoFixture fx) : IClassFixture<OpenBaoF
         Assert.Equal("invalid_client", fromEnv.GetProperty("error").GetString());
     }
 
+    /// <summary>Неверный secret_id — ошибка конфигурации: старт прекращается сразу, без повторов.</summary>
     [Fact]
     public async Task WrongSecretId_StopsStart_WithoutRetries()
     {
@@ -123,6 +131,7 @@ public sealed class OpenBaoScenarios(OpenBaoFixture fx) : IClassFixture<OpenBaoF
         Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(5), "ошибка доступа не должна повторяться");
     }
 
+    /// <summary>Недоступный OpenBao: сервис делает повторные попытки, затем завершает старт ошибкой.</summary>
     [Fact]
     public async Task UnreachableOpenBao_Retries_ThenFails()
     {
@@ -134,6 +143,7 @@ public sealed class OpenBaoScenarios(OpenBaoFixture fx) : IClassFixture<OpenBaoF
         Assert.Contains("секреты не получены", error.Message);
     }
 
+    /// <summary>Запечатанный OpenBao: сервис ждёт распечатывания и затем стартует.</summary>
     [Fact]
     public async Task SealedOpenBao_IsWaitedFor()
     {

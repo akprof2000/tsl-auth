@@ -1,3 +1,8 @@
+// Интеграционный сценарий переноса данных SQLite -> PostgreSQL. Требуется Docker (PostgreSQL в контейнере).
+// Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
+// контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
+// (см. Infrastructure/AuthFixture.cs), админ-клиент и токены получаются через TestApi.
+
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +29,7 @@ public sealed class PostgresMigrationScenarios(SqliteFixture sqlite) : IClassFix
     public Task InitializeAsync() => _pg.InitializeAsync();
     public Task DisposeAsync() => _pg.DisposeAsync();
 
+    /// <summary>Данные SQLite переносятся в PostgreSQL со сверкой; пользователи входят как раньше.</summary>
     [Fact]
     public async Task SqliteData_MovesToPostgres_AndUsersKeepWorking()
     {

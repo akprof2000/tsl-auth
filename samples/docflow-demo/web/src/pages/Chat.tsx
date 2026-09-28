@@ -1,3 +1,6 @@
+// Чат с ботом безопасности. PWA шлёт сообщения в API (/api/chat/messages), API передаёт их боту,
+// а бот выполняет действия через Bot API TSL Auth (привязка аккаунта, сброс пароля, блокировка и т. п.).
+// Ответы бота могут содержать кнопки и одноразовые секреты (например, временный пароль) — их показываем скрытыми.
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Bot, Check, Copy, Eye, EyeOff, ExternalLink, Send, ShieldAlert, Trash2 } from "lucide-react";

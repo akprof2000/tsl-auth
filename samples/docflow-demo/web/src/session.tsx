@@ -1,3 +1,5 @@
+// Контекст сессии приложения: профиль текущего пользователя, его разрешения и справочник ролей.
+// Загружается один раз после входа через TSL Auth (/api/me и /api/roles) и доступен страницам через useSession().
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type Me, type Role } from "./api";
 import { userManager } from "./auth";
@@ -10,6 +12,7 @@ type Session = {
   logout: () => void;
 };
 
+// Контекст заполняется только после успешной загрузки, поэтому useSession() внутри провайдера не возвращает null.
 const Ctx = createContext<Session | null>(null);
 export const useSession = () => useContext(Ctx)!;
 
@@ -29,6 +32,7 @@ export function SessionProvider({ children, fallback }: { children: ReactNode; f
           me, roles,
           can: (p) => me.permissions.includes(p),
           roleTitle: (n) => roles.find((r) => r.name === n)?.title ?? n,
+          // Выход через end_session TSL Auth; если он недоступен — хотя бы локально забываем токены.
           logout: () => userManager.signoutRedirect().catch(() => userManager.removeUser().then(() => location.assign("/")))
         });
       } catch (e) { setError(e instanceof Error ? e.message : String(e)); }

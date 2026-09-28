@@ -66,6 +66,30 @@ public sealed class AppUserManager(
     : UserManager<AppUser>(store, optionsAccessor, passwordHasher, userValidators, passwordValidators, keyNormalizer,
         errors, services, logger)
 {
+    /// <summary>
+    /// Нужен ли пользователю второй фактор: да, если у него есть хотя бы одна роль с флагом RequiresTwoFactor
+    /// (решение В-9 ЧТЗ; флаг ставит администратор). Флаг IdentityUser.TwoFactorEnabled не используется —
+    /// требование задаётся ролями централизованно. SignInManager вызывает этот метод при входе по паролю.
+    /// </summary>
+    public override async Task<bool> GetTwoFactorEnabledAsync(AppUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        var id = user.Id.ToString();
+        return await db.AccessRoleAssignments.AsNoTracking()
+            .AnyAsync(a => a.SubjectType == SubjectType.User && a.SubjectId == id && a.Role.RequiresTwoFactor, CancellationToken);
+    }
+
+    /// <summary>
+    /// Каналы второго фактора, доступные пользователю: только почта и мессенджер (стандартные провайдеры Identity —
+    /// телефон, приложение-аутентификатор — не используются). Пустой список при обязательном втором факторе
+    /// означает, что войти нельзя: страница входа сообщает, что нужно указать email или привязать мессенджер.
+    /// </summary>
+    public override async Task<IList<string>> GetValidTwoFactorProvidersAsync(AppUser user)
+    {
+        var available = await base.GetValidTwoFactorProvidersAsync(user);
+        return TwoFactorProviders.All.Where(available.Contains).ToList();
+    }
+
     // Прежний хеш, ожидающий записи в историю: добавляется только вместе с успешным сохранением пользователя.
     private PasswordHistoryEntry? _pendingHistory;
 

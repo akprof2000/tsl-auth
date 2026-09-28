@@ -120,6 +120,7 @@ public sealed partial class CommandHandler(AuthBotClient api, BotOptions options
             "link" => [await LinkAsync(sender, arg, ct)],
             "unlink" => [await SimpleAsync(sender, "unlink", ct)],
             "reset" => [await ResetAsync(sender, ct)],
+            "code" => [await CodeAsync(sender, ct)],
             "lock" or "unlock" or "forcepwd" => [Ask(sender, command, arg)],
             "confirm" => [await ConfirmAsync(sender, ct)],
             "cancel" => [Cancel(sender)],
@@ -134,6 +135,7 @@ public sealed partial class CommandHandler(AuthBotClient api, BotOptions options
         **Команды**
         `/link КОД` — привязать чат к учётной записи (код — в личном кабинете TSL Auth)
         `/whoami` — к какой учётной записи привязан чат
+        `/code` — код для входа, если роль требует двухфакторный вход
         `/reset` — сбросить свой пароль (одноразовая ссылка)
         `/forcepwd` — потребовать смену своего пароля и завершить все сеансы
         `/lock` — срочно заблокировать свою учётную запись (например, украли телефон)
@@ -191,6 +193,18 @@ public sealed partial class CommandHandler(AuthBotClient api, BotOptions options
                 "secret", secret: r.Body.GetProperty("temporaryPassword").GetString());
         return ChatMessage.Bot($"Одноразовая ссылка для сброса пароля (действует до {expires}). Никому её не пересылайте.", "success",
             [new("Задать новый пароль", Url: r.Body.GetProperty("resetLink").GetString(), Style: "primary")]);
+    }
+
+    /// <summary>
+    /// Код второго фактора для входа в TSL Auth: страница входа просит отправить боту /code, бот запрашивает код
+    /// по Bot API (POST /api/bot/2fa-code) от имени привязанного отправителя и показывает его как секрет.
+    /// </summary>
+    private async Task<ChatMessage> CodeAsync(Sender sender, CancellationToken ct)
+    {
+        var r = await api.CallAsync("2fa-code", sender.Sub, ct: ct);
+        if (!r.Ok) return Error(r);
+        return ChatMessage.Bot($"Код для входа **{r.Body.GetProperty("userName").GetString()}** (действует несколько минут, никому не сообщайте):",
+            "secret", secret: r.Body.GetProperty("code").GetString());
     }
 
     /// <summary>Разрушительная команда: сначала спрашиваем подтверждение.</summary>

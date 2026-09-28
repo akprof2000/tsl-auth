@@ -89,6 +89,19 @@ public sealed class LoginModel(
             return Page();
         }
 
+        // Второй фактор обязателен, но каналов нет (нет email и привязанного мессенджера): Identity в этом случае
+        // выполнила бы вход без кода. Поэтому пароль проверяется без создания сессии, и пользователь получает причину.
+        if (await signIn.UserManager.GetTwoFactorEnabledAsync(user) &&
+            (await signIn.UserManager.GetValidTwoFactorProvidersAsync(user)).Count == 0)
+        {
+            var check = await signIn.CheckPasswordSignInAsync(user, Password, lockoutOnFailure: true);
+            await audit.WriteAsync(check.Succeeded ? AuditTypes.TwoFactorFailed : AuditTypes.LoginFailed, false,
+                check.Succeeded ? AuditSeverity.Warning : AuditSeverity.Info, _clientId, user.Id,
+                new { reason = check.Succeeded ? "no_channel" : "bad_password", channel = "web" }, $"user:{user.Id}", user.UserName);
+            Error = check.Succeeded ? "login.2fa.error.noChannel" : "login.error.invalid";
+            return Page();
+        }
+
         // lockoutOnFailure: неудачные попытки считаются, после порога учётная запись временно блокируется (защита от перебора).
         var result = await signIn.PasswordSignInAsync(user, Password, RememberMe, lockoutOnFailure: true);
         if (result.IsLockedOut)
@@ -103,6 +116,10 @@ public sealed class LoginModel(
             Error = "login.error.invalid";
             return Page();
         }
+        // Пароль верен, но роли пользователя требуют второй фактор (решение В-9 ЧТЗ): Identity выставила
+        // временную cookie TwoFactorUserId, вход завершится на странице ввода кода.
+        if (result.RequiresTwoFactor)
+            return RedirectToPage("/Account/LoginTwoFactor", new { returnUrl = ReturnUrl, rememberMe = RememberMe });
         if (!result.Succeeded)
         {
             await audit.WriteAsync(AuditTypes.LoginFailed, false, AuditSeverity.Info, _clientId, user.Id,

@@ -77,6 +77,16 @@ else
                         <b>@(r.DisplayName ?? r.Name)</b>
                         @if (r.DisplayName is not null) { <code class="small">@r.Name</code> }
                         @if (r.IsRequestable) { <span class="badge ok" title="Пользователь может запросить роль при регистрации">запрашиваемая</span> }
+                        @if (r.RequiresTwoFactor) { <span class="badge warn" title="После пароля нужен код с почты или из мессенджера">2FA</span> }
+                        @* Двухфакторный вход настраивается и для системных ролей (решение В-9 ЧТЗ), поэтому форма вне проверки !system. *@
+                        @if (Model.CanManage)
+                        {
+                            <form method="post" asp-page-handler="TwoFactor" asp-route-clientId="@Model.ClientId" class="inline">
+                                <input type="hidden" name="Name" value="@r.Name" />
+                                <input type="hidden" name="value" value="@((!r.RequiresTwoFactor).ToString())" />
+                                <button class="link small" type="submit">@(r.RequiresTwoFactor ? "выключить 2FA" : "требовать 2FA")</button>
+                            </form>
+                        }
                         @if (r.Description is not null) { <div class="small muted">@r.Description</div> }
                         @if (Model.CanManage && !system)
                         {

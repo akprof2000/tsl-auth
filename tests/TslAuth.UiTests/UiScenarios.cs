@@ -142,6 +142,68 @@ public sealed class UiScenarios(UiFixture fx)
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("change.done"));
     }
 
+    /// <summary>
+    /// Двухфакторный вход по роли (решение В-9 ЧТЗ): пользователь привязывает мессенджер через личный кабинет,
+    /// администратор включает у роли «требовать 2FA», при входе после пароля открывается страница кода,
+    /// код выдаёт бот по Bot API (/code) — после ввода пользователь попадает в личный кабинет.
+    /// </summary>
+    [Fact]
+    public async Task TwoFactorRole_CodeFromMessengerBot()
+    {
+        var name = Unique("mfa");
+        var password = $"Mfa-{Guid.NewGuid():N}-9aZ!";
+        var app = Unique("mfa-app");
+        (await fx.Admin.PostAsJsonAsync("/api/admin/applications", new { clientId = app, clientType = "public", grantTypes = Array.Empty<string>() })).EnsureSuccessStatusCode();
+        (await fx.Admin.PostAsJsonAsync($"/api/admin/applications/{app}/roles", new { name = "reader" })).EnsureSuccessStatusCode();
+        await fx.EnsureUserAsync(name, password, [new { clientId = app, role = "reader" }]);
+
+        // Бот: сервисный клиент с ролью reset-bot системного приложения.
+        var botId = Unique("mfa-bot");
+        var created = await (await fx.Admin.PostAsJsonAsync("/api/admin/applications", new
+        {
+            clientId = botId, clientType = "confidential", grantTypes = new[] { "client_credentials" }, scopes = new[] { "tsl-auth-admin" }
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        (await fx.Admin.PutAsJsonAsync($"/api/admin/applications/{botId}/service-roles", new[] { new { clientId = "tsl-auth-admin", role = "reset-bot" } })).EnsureSuccessStatusCode();
+        var bot = new HttpClient { BaseAddress = new Uri(UiFixture.Auth) };
+        var token = await (await bot.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials", ["client_id"] = botId,
+            ["client_secret"] = created.GetProperty("clientSecret").GetString()!, ["scope"] = "tsl-auth-admin"
+        }))).Content.ReadFromJsonAsync<JsonElement>();
+        bot.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.GetProperty("access_token").GetString());
+
+        // Привязка мессенджера: код из личного кабинета отправляется боту как /link КОД.
+        var cabinet = await fx.NewPageAsync();
+        await cabinet.GotoAsync($"{UiFixture.Auth}/Account/Messenger");
+        await UiFixture.LoginAsync(cabinet, name, password);
+        await cabinet.ClickAsync("form[action*=Code] button.primary");
+        var linkCode = (await cabinet.Locator("code.code-lg").InnerTextAsync()).Replace("/link", "").Trim();
+        var externalId = Unique("chat");
+        (await bot.PostAsJsonAsync("/api/bot/link", new { provider = "chat", externalId, code = linkCode })).EnsureSuccessStatusCode();
+
+        // Администратор требует второй фактор для роли.
+        (await fx.Admin.PutAsync($"/api/admin/applications/{app}/roles/reader/two-factor?value=true", null)).EnsureSuccessStatusCode();
+
+        var page = await fx.NewPageAsync();
+        await page.GotoAsync($"{UiFixture.Auth}/Account/Login");
+        await UiFixture.LoginAsync(page, name, password);
+        await Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("LoginTwoFactor"));
+        await Expect(page.Locator("h2")).ToContainTextAsync(UiFixture.Ru("login.2fa.title"));
+        // У пользователя есть и email, и мессенджер: переключаемся на канал «мессенджер».
+        await page.ClickAsync($"text={UiFixture.Ru("login.2fa.channel.messenger-code")}");
+        await Expect(page.Locator(".card")).ToContainTextAsync(UiFixture.Ru("login.2fa.messengerHint"));
+        await UiFixture.ShotAsync(page, "32-two-factor");
+
+        var reply = await (await bot.PostAsJsonAsync("/api/bot/2fa-code", new { provider = "chat", externalId })).Content.ReadFromJsonAsync<JsonElement>();
+        await page.FillAsync("#Code", reply.GetProperty("code").GetString()!);
+        await page.ClickAsync("form[action*=Verify] button.primary");
+        await Expect(page).ToHaveURLAsync(new System.Text.RegularExpressions.Regex("/Account$"));
+        await UiFixture.ShotAsync(page, "33-two-factor-done");
+
+        // Выключаем флаг: роль переиспользуется только этим тестом, но стенд общий.
+        await fx.Admin.PutAsync($"/api/admin/applications/{app}/roles/reader/two-factor?value=false", null);
+    }
+
     // ---------- Демо-приложения на разных стеках ----------
 
     /// <summary>

@@ -231,6 +231,14 @@ public static class AdminApi
             return Results.Ok(await s.GetAssignmentsAsync(SubjectType.User, id.ToString(), ct));
         }).RequireAuthorization(AdminPolicies.ApiManage);
 
+        // Обязательный двухфакторный вход для роли (решение В-9 ЧТЗ): ?value=true|false.
+        apps.MapPut("/{clientId}/roles/{name}/two-factor", async (string clientId, string name, bool value, AccessService s,
+            CancellationToken ct) =>
+        {
+            await s.SetRoleTwoFactorAsync(clientId, name, value, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AdminPolicies.ApiManage);
+
         apps.MapPut("/{clientId}/roles/{name}/requestable", async (string clientId, string name, bool value, AccessService s,
             CancellationToken ct) =>
         {

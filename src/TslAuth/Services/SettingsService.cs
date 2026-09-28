@@ -25,7 +25,8 @@ public sealed record RuntimeSettings(
     PatPolicy? PatPolicy = null,
     TokenPolicy? TokenPolicy = null,
     BotResetPolicy? BotResetPolicy = null,
-    LoggingSettings? LoggingPolicy = null)
+    LoggingSettings? LoggingPolicy = null,
+    InactivityPolicy? InactivityPolicy = null)
 {
     // Вложенные политики nullable, чтобы JSON, сохранённый старой версией (без этих секций), читался без ошибок;
     // свойства ниже подставляют значения по умолчанию. [JsonIgnore]: вычисляемые свойства не должны попадать
@@ -34,17 +35,23 @@ public sealed record RuntimeSettings(
     [JsonIgnore] public PasswordPolicy Passwords => PasswordPolicy ?? new PasswordPolicy();
     [JsonIgnore] public PatPolicy Pats => PatPolicy ?? new PatPolicy();
     [JsonIgnore] public TokenPolicy Tokens => TokenPolicy ?? new TokenPolicy();
+    [JsonIgnore] public InactivityPolicy Inactivity => InactivityPolicy ?? new InactivityPolicy();
 
-    /// <summary>Разумные значения по умолчанию: частые события храним меньше, изменения и инциденты — дольше.</summary>
+    /// <summary>
+    /// Сроки по умолчанию (решение заказчика В-5 ЧТЗ): входы и выходы — 1 год; изменения учётных записей, паролей,
+    /// ролей, настроек и действия администраторов — 5 лет; технические события токенов — 90 дней.
+    /// Ключи — префиксы типов: правило «auth.» охватывает вход, неудачный вход, выход и второй фактор.
+    /// </summary>
     public static readonly Dictionary<string, int> DefaultRetentionByType = new()
     {
-        [AuditTypes.TokenIssued] = 30,
-        [AuditTypes.LoginSucceeded] = 180,
-        [AuditTypes.LoginFailed] = 365,
+        ["auth."] = 365,
+        [AuditTypes.LockedOut] = 1825,
+        ["token."] = 90,
+        ["password."] = 1825,
+        ["user."] = 1825,
         [AuditTypes.AdminChange] = 1825,
         [AuditTypes.AppApiChange] = 1825,
-        [AuditTypes.LockedOut] = 1825,
-        [AuditTypes.AccessDenied] = 730
+        [AuditTypes.AccessDenied] = 1825
     };
 
     /// <summary>Правила хранения по типам: заданные администратором или значения по умолчанию.</summary>
@@ -72,6 +79,7 @@ public sealed record RuntimeSettings(
         Pats.Validate();
         Tokens.Validate();
         BotReset.Validate();
+        Inactivity.Validate();
         LoggingPolicy?.Validate();
         return this;
     }
@@ -192,6 +200,21 @@ public sealed record BotResetPolicy(bool Enabled = true, string Mode = "link", i
     {
         if (Mode is not ("link" or "temporary")) throw new AdminException("Режим сброса через бота: link или temporary.");
         if (MaxPerUserPerHour is < 1 or > 20) throw new AdminException("Сбросов через бота в час: от 1 до 20.");
+    }
+}
+
+/// <summary>
+/// Автоматическое отключение неактивных учётных записей (решение В-10 ЧТЗ). Учётная запись без входа дольше
+/// <paramref name="DisableAfterDays"/> дней отключается при плановом обслуживании БД (TokenPruningService);
+/// для никогда не входивших отсчёт идёт от даты создания. Пользователи с ролью administrator сервиса
+/// не отключаются автоматически — только вручную, чтобы не потерять доступ к администрированию.
+/// </summary>
+public sealed record InactivityPolicy(bool Enabled = true, int DisableAfterDays = 90)
+{
+    /// <summary>Проверяет допустимые значения перед сохранением.</summary>
+    public void Validate()
+    {
+        if (DisableAfterDays is < 7 or > 3650) throw new AdminException("Отключение неактивных: от 7 до 3650 дней.");
     }
 }
 

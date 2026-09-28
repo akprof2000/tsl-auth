@@ -48,6 +48,11 @@ public sealed class MatrixModel(ApplicationService apps, AccessService access) :
         await RunAsync(() => access.SetRoleRequestableAsync(ClientId, Name ?? "", value, ct),
             value ? $"Роль {Name} можно запрашивать." : $"Роль {Name} больше нельзя запрашивать.", ct);
 
+    /// <summary>Включает/выключает обязательный двухфакторный вход для роли (решение В-9 ЧТЗ).</summary>
+    public async Task<IActionResult> OnPostTwoFactorAsync(bool value, CancellationToken ct) =>
+        await RunAsync(() => access.SetRoleTwoFactorAsync(ClientId, Name ?? "", value, ct),
+            value ? $"Для роли {Name} включён двухфакторный вход." : $"Для роли {Name} двухфакторный вход выключен.", ct);
+
     /// <summary>Сохраняет матрицу целиком: неотмеченные ячейки означают отсутствие разрешения у роли.</summary>
     public async Task<IActionResult> OnPostSaveAsync(CancellationToken ct)
     {

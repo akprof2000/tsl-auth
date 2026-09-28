@@ -29,6 +29,13 @@ public static class AuditTypes
     public const string AdminChange = "admin.change";
     public const string AppApiChange = "app_api.change";
     public const string AccessDenied = "access.denied";
+
+    /// <summary>Учётная запись отключена автоматически по неактивности (решение В-10 ЧТЗ).</summary>
+    public const string DisabledInactive = "user.disabled_inactive";
+
+    /// <summary>Второй фактор: код отправлен (успех) или не принят (неудача).</summary>
+    public const string TwoFactorCodeSent = "auth.2fa.sent";
+    public const string TwoFactorFailed = "auth.2fa.failed";
 }
 
 /// <summary>Запись журнала для API/UI; Details — исходный JSON с подробностями события.</summary>

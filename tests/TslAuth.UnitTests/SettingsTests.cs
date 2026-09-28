@@ -36,6 +36,20 @@ public sealed class RuntimeSettingsTests
         Assert.True(s.RetentionFor(AuditTypes.AdminChange) > s.RetentionFor(AuditTypes.TokenIssued));
     }
 
+    /// <summary>Сроки по умолчанию из решения В-5 ЧТЗ: входы — 1 год, изменения и действия администраторов — 5 лет, токены — 90 дней.</summary>
+    [Fact]
+    public void DefaultRules_MatchCustomerDecision()
+    {
+        var s = new RuntimeSettings();
+        Assert.Equal(365, s.RetentionFor(AuditTypes.LoginSucceeded));
+        Assert.Equal(365, s.RetentionFor(AuditTypes.LoginFailed));
+        Assert.Equal(365, s.RetentionFor(AuditTypes.Logout));
+        Assert.Equal(1825, s.RetentionFor(AuditTypes.AdminChange));
+        Assert.Equal(1825, s.RetentionFor(AuditTypes.PasswordChanged));
+        Assert.Equal(1825, s.RetentionFor(AuditTypes.LockedOut));
+        Assert.Equal(90, s.RetentionFor(AuditTypes.TokenIssued));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(4000)]

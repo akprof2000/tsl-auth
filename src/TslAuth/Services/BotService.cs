@@ -17,6 +17,9 @@ public sealed record BotLinkInput(string Provider, string ExternalId, string Cod
 /// <summary>Идентификация пользователя мессенджера: провайдер (например mattermost) + его внешний Id.</summary>
 public sealed record BotUserRef(string Provider, string ExternalId);
 
+/// <summary>Ответ Bot API на /2fa-code: логин и одноразовый код второго фактора для показа пользователю.</summary>
+public sealed record BotTwoFactorCode(string UserName, string Code);
+
 /// <summary>
 /// Команда бота над учётной записью: отправитель (provider + externalId) и цель — логин или email.
 /// <c>Target</c> пустой — действие над собственной учётной записью отправителя.
@@ -43,7 +46,8 @@ public sealed class BotService(
     SettingsService settings,
     AuditService audit,
     WebhookService webhooks,
-    AccessService access)
+    AccessService access,
+    Microsoft.AspNetCore.Identity.UserManager<AppUser> userManager)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(10);
     private const string ResetAuditType = "bot.password_reset";
@@ -116,6 +120,29 @@ public sealed class BotService(
         var userId = await db.ExternalIdentities.Where(x => x.Provider == provider && x.ExternalId == ExternalId(user.ExternalId))
             .Select(x => (Guid?)x.UserId).FirstOrDefaultAsync(ct);
         return userId is null ? null : (await users.GetAsync(userId.Value, ct))?.UserName;
+    }
+
+    /// <summary>
+    /// Код второго фактора для входа (решение В-9 ЧТЗ): пользователь на странице входа выбирает «мессенджер»
+    /// и отправляет боту /code; бот вызывает этот метод от имени привязанного отправителя и показывает код.
+    /// Код генерирует MessengerCodeProvider (TOTP по security stamp): сервис его не хранит, он действует
+    /// несколько минут. Выдача пишется в журнал; код без пароля бесполезен — это второй фактор.
+    /// </summary>
+    public async Task<BotTwoFactorCode> TwoFactorCodeAsync(string botClientId, BotUserRef input, CancellationToken ct = default)
+    {
+        var provider = Provider(input.Provider);
+        var identity = await db.ExternalIdentities.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Provider == provider && x.ExternalId == ExternalId(input.ExternalId), ct);
+        if (identity is null)
+            throw AdminException.NotFound("Привязка мессенджера (пользователь должен сначала выполнить /link с кодом из личного кабинета)");
+
+        var user = await userManager.FindByIdAsync(identity.UserId.ToString()) ?? throw AdminException.NotFound("Пользователь");
+        if (!user.IsActive) throw new AdminException("Учётная запись отключена.", StatusCodes.Status403Forbidden);
+
+        var code = await userManager.GenerateTwoFactorTokenAsync(user, Security.TwoFactorProviders.Messenger);
+        await audit.WriteAsync(AuditTypes.TwoFactorCodeSent, true, AuditSeverity.Info, botClientId, user.Id,
+            new { channel = "messenger", provider }, $"user:{user.Id}", user.UserName);
+        return new BotTwoFactorCode(user.UserName!, code);
     }
 
     /// <summary>

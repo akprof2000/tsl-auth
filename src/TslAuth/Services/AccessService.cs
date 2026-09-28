@@ -10,8 +10,9 @@ public sealed record PermissionDto(string Name, string? Description);
 /// Роль приложения со списком входящих в неё разрешений; <c>IsRequestable</c> — роль можно запросить через заявку.
 /// <c>Name</c> — техническое имя (в токенах и API), <c>DisplayName</c> — название для пользователей.
 /// </summary>
+/// <c>RequiresTwoFactor</c> — роль требует двухфакторного входа (решение В-9 ЧТЗ).
 public sealed record RoleDto(string Name, string? Description, List<string> Permissions, bool IsRequestable = false,
-    string? DisplayName = null);
+    string? DisplayName = null, bool RequiresTwoFactor = false);
 
 /// <summary>Матрица «роль × разрешение» одного приложения (страница Admin/Apps/Matrix и Admin API).</summary>
 public sealed record MatrixDto(string ClientId, List<PermissionDto> Permissions, List<RoleDto> Roles);
@@ -36,7 +37,7 @@ public sealed class AccessService(AuthDbContext db)
         var roles = await db.AccessRoles.AsNoTracking()
             .Where(r => r.ClientId == clientId).OrderBy(r => r.Name)
             .Select(r => new RoleDto(r.Name, r.Description,
-                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable, r.DisplayName))
+                r.Permissions.Select(x => x.Permission.Name).OrderBy(n => n).ToList(), r.IsRequestable, r.DisplayName, r.RequiresTwoFactor))
             .ToListAsync(ct);
 
         return new MatrixDto(clientId, permissions, roles);
@@ -131,6 +132,25 @@ public sealed class AccessService(AuthDbContext db)
         var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == roleName)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.IsRequestable, requestable), ct);
         if (affected == 0) throw AdminException.NotFound($"Роль '{roleName}'");
+    }
+
+    /// <summary>
+    /// Включает или выключает для роли обязательный двухфакторный вход (решение В-9 ЧТЗ). Вызывается только из админки
+    /// и Admin API: приложение через App API флаг не меняет. Для системных ролей (например, administrator) разрешено.
+    /// </summary>
+    public async Task SetRoleTwoFactorAsync(string clientId, string roleName, bool required, CancellationToken ct = default)
+    {
+        var affected = await db.AccessRoles.Where(r => r.ClientId == clientId && r.Name == roleName)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.RequiresTwoFactor, required), ct);
+        if (affected == 0) throw AdminException.NotFound($"Роль '{roleName}'");
+    }
+
+    /// <summary>Есть ли у пользователя хотя бы одна роль с обязательным двухфакторным входом.</summary>
+    public Task<bool> UserRequiresTwoFactorAsync(Guid userId, CancellationToken ct = default)
+    {
+        var id = userId.ToString();
+        return db.AccessRoleAssignments.AsNoTracking()
+            .AnyAsync(a => a.SubjectType == SubjectType.User && a.SubjectId == id && a.Role.RequiresTwoFactor, ct);
     }
 
     /// <summary>Заменяет набор разрешений роли указанным (все разрешения должны существовать в том же приложении).</summary>

@@ -38,6 +38,7 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
     [BindProperty] public TokenPolicy Tokens { get; set; } = new();
     [BindProperty] public PatPolicy Pats { get; set; } = new();
     [BindProperty] public BotResetPolicy Bot { get; set; } = new();
+    [BindProperty] public InactivityPolicy Inactivity { get; set; } = new();
 
     public List<string> Types { get; private set; } = [];
     public DateTime? UpdatedAt { get; private set; }
@@ -48,7 +49,7 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
         var s = await settings.GetAsync(ct);
         (AuditRetentionDays, AuditLogTokenRefresh, EventsRetentionDays, TokensRetentionHours) =
             (s.AuditRetentionDays, s.AuditLogTokenRefresh, s.EventsRetentionDays, s.TokensRetentionHours);
-        (Passwords, Tokens, Pats, Bot) = (s.Passwords, s.Tokens, s.Pats, s.BotReset);
+        (Passwords, Tokens, Pats, Bot, Inactivity) = (s.Passwords, s.Tokens, s.Pats, s.BotReset, s.Inactivity);
         LogLevel = s.LoggingPolicy?.DefaultLevel;
         LogOverrides = string.Join("\n", (s.LoggingPolicy?.Overrides ?? []).Select(o => $"{o.Key}={o.Value}"));
         var rules = s.EffectiveRetentionByType;
@@ -92,7 +93,7 @@ public sealed class IndexModel(SettingsService settings, AuditService audit, Use
 
         var ok = await TryAsync(() => settings.SetAsync(
             new RuntimeSettings(AuditRetentionDays, AuditLogTokenRefresh, EventsRetentionDays, TokensRetentionHours, rules,
-                Passwords, Pats, Tokens, Bot, logging),
+                Passwords, Pats, Tokens, Bot, logging, Inactivity),
             $"user:{users.GetUserName(User)}", ct));
         if (!ok)
         {

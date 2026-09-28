@@ -78,6 +78,14 @@
                 <div><label asp-for="Bot.MaxPerUserPerHour">Сбросов на пользователя в час</label>
                     <input asp-for="Bot.MaxPerUserPerHour" type="number" min="1" max="20" disabled="@disabled" /></div>
             </div>
+
+            @* Решение В-10 ЧТЗ: отключение по неактивности выполняет фоновое обслуживание БД; администраторы — только вручную. *@
+            <h2>Неактивные учётные записи</h2>
+            <label class="inline"><input asp-for="Inactivity.Enabled" disabled="@disabled" /> Отключать учётные записи без входа (кроме администраторов сервиса)</label>
+            <div class="grid2">
+                <div><label asp-for="Inactivity.DisableAfterDays">Отключать после, дней без входа</label>
+                    <input asp-for="Inactivity.DisableAfterDays" type="number" min="7" max="3650" disabled="@disabled" /></div>
+            </div>
         </div>
     </div>
 

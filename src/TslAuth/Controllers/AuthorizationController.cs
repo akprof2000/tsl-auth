@@ -83,7 +83,12 @@ public sealed class AuthorizationController(
         var expired = request.MaxAge is { } maxAge && cookie.Properties?.IssuedUtc is { } issued &&
                       DateTimeOffset.UtcNow - issued > TimeSpan.FromSeconds(maxAge);
 
-        if (user is not { IsActive: true } || expired || request.HasPromptValue(PromptValues.Login))
+        // Второй фактор (решение В-9 ЧТЗ): если роли пользователя требуют его, а cookie получена без кода
+        // (вход до назначения роли, старая сессия), нужен повторный вход через /Account/Login и код.
+        var mfa = cookie.Principal?.HasClaim("amr", "mfa") == true;
+        var needsSecondFactor = user is { IsActive: true } && !mfa && await users.GetTwoFactorEnabledAsync(user);
+
+        if (user is not { IsActive: true } || expired || needsSecondFactor || request.HasPromptValue(PromptValues.Login))
         {
             // prompt=none (тихое продление в iframe/SPA) запрещает показывать UI — отвечаем ошибкой по спецификации.
             if (request.HasPromptValue(PromptValues.None))
@@ -114,6 +119,10 @@ public sealed class AuthorizationController(
 
         // Согласие (consent) не запрашивается: доступ определяется ролями в матрице, а не выбором пользователя.
         var identity = await principals.CreateForUserAsync(user, request.ClientId!, request.GetScopes());
+        // amr (RFC 8176): способ входа — пароль или пароль + одноразовый код. Приложение по нему решает,
+        // пускать ли к критической операции (решение В-7 ЧТЗ: повторное подтверждение — на стороне приложения).
+        foreach (var method in mfa ? new[] { "pwd", "otp", "mfa" } : new[] { "pwd" })
+            identity.AddClaim(new Claim("amr", method).SetDestinations(Destinations.AccessToken, Destinations.IdentityToken));
 
         // Постоянная авторизация пользователь+клиент — это "сессия", видимая в админке.
         // Существующая переиспользуется, чтобы повторные входы не плодили записи; её отзыв
@@ -176,6 +185,15 @@ public sealed class AuthorizationController(
             if (!check.Succeeded)
                 return Error(Errors.InvalidGrant,
                     "Неверное имя пользователя или пароль. После нескольких неудачных попыток вход временно блокируется.");
+
+            // Второй фактор нельзя ввести в password grant (нет UI): пользователям с такими ролями
+            // этот способ закрыт, вход — только через браузер (authorization code + PKCE). Решение В-9 ЧТЗ.
+            if (await users.GetTwoFactorEnabledAsync(user))
+            {
+                await audit.WriteAsync(AuditTypes.TwoFactorFailed, false, AuditSeverity.Warning, request.ClientId, user.Id,
+                    new { reason = "password_grant", channel = "password_grant" }, $"user:{user.Id}", user.UserName);
+                return Error(Errors.InvalidGrant, "Для роли пользователя нужен двухфакторный вход: войдите через веб-интерфейс (authorization code).");
+            }
 
             // Сменить пароль в password grant нельзя (нет UI) — просроченный пароль помечаем
             // «требует смены» и отправляем пользователя в веб-интерфейс.
@@ -244,7 +262,15 @@ public sealed class AuthorizationController(
                 if (user.MustChangePassword || Security.AppUserManager.IsPasswordExpired(user, runtime.Passwords))
                     return Error(Errors.InvalidGrant, "Требуется смена пароля: смените его через веб-интерфейс (/Account/ChangePassword).");
 
+                // Роль с двухфакторным входом назначена после входа без кода: сессия не продлевается, нужен вход с кодом.
+                var amr = principal.GetClaims("amr");
+                if (!amr.Contains("mfa") && await users.GetTwoFactorEnabledAsync(user))
+                    return Error(Errors.InvalidGrant, "Для роли пользователя нужен двухфакторный вход: войдите заново.");
+
                 identity = await principals.CreateForUserAsync(user, request.ClientId!, principal.GetScopes());
+                // Способ входа (amr) не меняется при продлении — переносится из исходной сессии.
+                foreach (var method in amr)
+                    identity.AddClaim(new Claim("amr", method).SetDestinations(Destinations.AccessToken, Destinations.IdentityToken));
             }
 
             // Сохраняем привязку к той же авторизации (сессии), чтобы её отзыв продолжал действовать.

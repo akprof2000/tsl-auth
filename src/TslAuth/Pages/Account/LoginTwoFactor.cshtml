@@ -1,0 +1,58 @@
+@page
+@model TslAuth.Pages.Account.LoginTwoFactorModel
+@* Второй шаг входа (решение В-9 ЧТЗ): выбор канала и ввод одноразового кода. Пользователь определяется по временной
+   cookie Identity; ReturnUrl и RememberMe переходят со страницы входа. *@
+@{
+    ViewData["Title"] = L["login.2fa.title"];
+    ViewData["ReturnUrl"] = Model.ReturnUrl;
+}
+
+<div class="card">
+    <h2>@L["login.2fa.title"]</h2>
+    <p class="muted">@L["login.2fa.intro"]</p>
+    @if (Model.Error is not null)
+    {
+        <div class="alert error">@L[Model.Error]</div>
+    }
+    @if (Model.Info is not null)
+    {
+        <div class="alert ok">@Model.Info</div>
+    }
+    <partial name="_Errors" />
+
+    @* Переключение канала — обычные ссылки GET: код при этом не отправляется. *@
+    @if (Model.Providers.Count > 1)
+    {
+        <p class="row">
+            @foreach (var p in Model.Providers)
+            {
+                if (p == Model.Provider) { <b>@L["login.2fa.channel." + p]</b> }
+                else { <a asp-page="/Account/LoginTwoFactor" asp-route-provider="@p" asp-route-returnUrl="@Model.ReturnUrl" asp-route-rememberMe="@Model.RememberMe">@L["login.2fa.channel." + p]</a> }
+            }
+        </p>
+    }
+
+    @if (Model.Provider == TslAuth.Security.TwoFactorProviders.Email)
+    {
+        <form method="post" asp-page-handler="Send">
+            <input type="hidden" asp-for="ReturnUrl" />
+            <input type="hidden" asp-for="RememberMe" />
+            <button type="submit">@L["login.2fa.sendEmail"]</button>
+        </form>
+    }
+    else if (Model.Provider == TslAuth.Security.TwoFactorProviders.Messenger)
+    {
+        <p>@L["login.2fa.messengerHint"]</p>
+    }
+
+    <form method="post" asp-page-handler="Verify">
+        <input type="hidden" asp-for="ReturnUrl" />
+        <input type="hidden" asp-for="RememberMe" />
+        <input type="hidden" asp-for="Provider" />
+        <label for="Code">@L["login.2fa.code"]</label>
+        <input asp-for="Code" autocomplete="one-time-code" inputmode="numeric" maxlength="10" autofocus required />
+        <div class="actions">
+            <button class="primary" type="submit">@L["login.2fa.submit"]</button>
+        </div>
+    </form>
+</div>

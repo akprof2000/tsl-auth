@@ -314,6 +314,32 @@ public sealed class UserService(
     }
 
     /// <summary>
+    /// Отключает учётные записи без входа дольше <paramref name="days"/> дней (решение В-10 ЧТЗ). Для никогда
+    /// не входивших отсчёт идёт от даты создания. Пользователи с ролью administrator сервиса (tsl-auth-admin)
+    /// пропускаются: их отключают только вручную, иначе можно потерять доступ к администрированию.
+    /// Отключение — через <see cref="SetActiveAsync"/>: сессии и refresh-токены отзываются.
+    /// Возвращает отключённых (для аудита и уведомлений).
+    /// </summary>
+    public async Task<List<(Guid Id, string? UserName)>> DisableInactiveAsync(int days, CancellationToken ct = default)
+    {
+        var threshold = DateTime.UtcNow.AddDays(-days);
+        // Id пользователей с системной ролью administrator: назначения хранят Id строкой (SubjectType.User).
+        var admins = await db.AccessRoleAssignments.AsNoTracking()
+            .Where(a => a.SubjectType == SubjectType.User && a.Role.ClientId == SystemApp.ClientId && a.Role.Name == SystemApp.AdministratorRole)
+            .Select(a => a.SubjectId).ToListAsync(ct);
+        var candidates = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && (u.LastLoginAt ?? u.CreatedAt) < threshold)
+            .Select(u => new { u.Id, u.UserName }).ToListAsync(ct);
+
+        var disabled = new List<(Guid, string?)>();
+        foreach (var u in candidates.Where(c => !admins.Contains(c.Id.ToString())))
+        {
+            if (await SetActiveAsync(u.Id, false, ct)) disabled.Add((u.Id, u.UserName));
+        }
+        return disabled;
+    }
+
+    /// <summary>
     /// Требует сменить пароль при следующем входе и отзывает все сессии: текущий пароль остаётся,
     /// но воспользоваться им можно только один раз — для установки нового.
     /// </summary>

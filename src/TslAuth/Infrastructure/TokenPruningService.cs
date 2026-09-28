@@ -56,7 +56,25 @@ public sealed class TokenPruningService(IServiceScopeFactory scopes, ILogger<Tok
         var events = await sp.GetRequiredService<AuthDbContext>().WebhookEvents
             .Where(e => e.OccurredAt < eventsThreshold).ExecuteDeleteAsync(ct);
 
-        var result = new { tokens, authorizations, audit, events };
+        // Отключение неактивных учётных записей (решение В-10 ЧТЗ). Параллельный запуск на других узлах безопасен:
+        // SetActiveAsync возвращает false для уже отключённой записи, поэтому аудит пишется один раз на запись.
+        var inactive = 0;
+        if (settings.Inactivity.Enabled)
+        {
+            var auditService = sp.GetRequiredService<AuditService>();
+            var webhooks = sp.GetRequiredService<WebhookService>();
+            foreach (var (id, name) in await sp.GetRequiredService<UserService>().DisableInactiveAsync(settings.Inactivity.DisableAfterDays, ct))
+            {
+                inactive++;
+                await auditService.WriteAsync(AuditTypes.DisabledInactive, true, AuditSeverity.Warning, null, id,
+                    new { days = settings.Inactivity.DisableAfterDays }, "system", "обслуживание");
+                await webhooks.PublishAsync(WebhookEvents.SecurityAlert,
+                    $"⏸ Учётная запись {name} отключена: нет входа более {settings.Inactivity.DisableAfterDays} дней.",
+                    new { userId = id, userName = name, reason = "inactive" }, ct);
+            }
+        }
+
+        var result = new { tokens, authorizations, audit, events, inactive };
         logger.LogInformation("Обслуживание БД: {@Result}", result);
         return result;
     }

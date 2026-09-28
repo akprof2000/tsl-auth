@@ -109,7 +109,10 @@ public static class ServiceSetup
             .AddPasswordValidator<PolicyPasswordValidator>()
             .AddUserValidator<UserIdentityValidator>()
             .AddDefaultTokenProviders()
-            .AddTokenProvider<InviteTokenProvider>(InviteTokenProvider.ProviderName);
+            .AddTokenProvider<InviteTokenProvider>(InviteTokenProvider.ProviderName)
+            // Второй фактор (решение В-9 ЧТЗ): коды на почту и в мессенджер — см. Security/TwoFactorProviders.cs.
+            .AddTokenProvider<EmailCodeProvider>(TwoFactorProviders.Email)
+            .AddTokenProvider<MessengerCodeProvider>(TwoFactorProviders.Messenger);
 
         // Ссылки сброса пароля — 2 часа, приглашения — 7 дней (см. InviteTokenProviderOptions).
         services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromHours(2));

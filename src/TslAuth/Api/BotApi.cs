@@ -52,6 +52,10 @@ public static class BotApi
         bot.MapPost("/whois", async (BotUserRef user, BotService s, CancellationToken ct) =>
             await s.WhoIsAsync(user, ct) is { } name ? Results.Ok(new { linked = true, userName = name }) : Results.Ok(new { linked = false }));
 
+        // Пользователь прислал боту "/code" во время входа с двухфакторной проверкой: вернуть одноразовый код.
+        bot.MapPost("/2fa-code", (ClaimsPrincipal me, BotUserRef user, BotService s, CancellationToken ct) =>
+            s.TwoFactorCodeAsync(Client(me), user, ct));
+
         // Пользователь прислал боту "/reset": вернуть одноразовую ссылку (или временный пароль — по настройке).
         bot.MapPost("/password-reset", (ClaimsPrincipal me, BotUserRef user, BotService s, CancellationToken ct) =>
             s.ResetPasswordAsync(Client(me), user, ct));

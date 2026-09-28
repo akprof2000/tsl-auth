@@ -110,6 +110,12 @@ public sealed class AccessRole
     /// <summary>Роль можно запросить при самостоятельной регистрации / через «Запросить доступ».</summary>
     public bool IsRequestable { get; set; }
 
+    /// <summary>
+    /// Роль требует двухфакторного входа (решение В-9 ЧТЗ): если у пользователя есть хотя бы одна такая роль,
+    /// после пароля он вводит одноразовый код с почты или из мессенджера. Флаг ставит только администратор сервиса.
+    /// </summary>
+    public bool RequiresTwoFactor { get; set; }
+
     public List<AccessRolePermission> Permissions { get; set; } = [];
     public List<AccessRoleAssignment> Assignments { get; set; } = [];
 }

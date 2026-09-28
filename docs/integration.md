@@ -31,7 +31,7 @@
 
 ## 2. Вход пользователя: authorization code + PKCE
 
-![2. Вход пользователя: authorization code + PKCE](diagrams/56b6cc3fa204.svg)
+![2. Вход пользователя: authorization code + PKCE](diagrams/56b6cc3fa204.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -68,7 +68,7 @@ sequenceDiagram
 
 ## 3. Продление сессии (refresh)
 
-![3. Продление сессии (refresh)](diagrams/f09a11139a51.svg)
+![3. Продление сессии (refresh)](diagrams/f09a11139a51.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -153,7 +153,7 @@ curl -X POST https://auth.corp/connect/token \
 
 ### От имени пользователя (token exchange, RFC 8693)
 
-![От имени пользователя (token exchange, RFC 8693)](diagrams/2bdb7246258d.svg)
+![От имени пользователя (token exchange, RFC 8693)](diagrams/2bdb7246258d.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -193,7 +193,7 @@ JWT по PAT содержит только выбранные приложени
 
 Включите в карточке приложения «Самоуправление». Токен приложения — `client_credentials`, scope `tsl-auth-app`.
 
-![7. App API — приложение управляет своими пользователями](diagrams/af93c5fb102d.svg)
+![7. App API — приложение управляет своими пользователями](diagrams/af93c5fb102d.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -231,7 +231,7 @@ flowchart LR
 
 Клиент бота: роль `notifier` в `tsl-auth-admin`, токен со scope `tsl-auth-admin`.
 
-![8. События для ботов и мониторинга](diagrams/c69ebe6a13a3.svg)
+![8. События для ботов и мониторинга](diagrams/c69ebe6a13a3.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -257,7 +257,7 @@ Mattermost/Rocket.Chat). Курсор `id` монотонный — после �
 
 ## 9. Сброс пароля через бота мессенджера
 
-![9. Сброс пароля через бота мессенджера](diagrams/8d0f5c0f7991.svg)
+![9. Сброс пароля через бота мессенджера](diagrams/8d0f5c0f7991.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

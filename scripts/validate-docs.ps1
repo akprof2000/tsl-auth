@@ -47,8 +47,8 @@ foreach ($f in $files) {
                     $text = ($block | ForEach-Object { $_.TrimEnd() }) -join "`n"
                     $hash = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text.Trim())))).Substring(0, 12).ToLowerInvariant()
                     $before = ($lines[[Math]::Max(0, $start - 7)..([Math]::Max(0, $start - 2))]) -join "`n"
-                    if ($before -notmatch "diagrams/$hash\.svg\)" -or -not (Test-Path (Join-Path $root "docs/diagrams/$hash.svg"))) {
-                        $problems.Add("${f}:${start}: нет актуальной картинки схемы docs/diagrams/$hash.svg — запустите scripts/render-diagrams.ps1")
+                    if ($before -notmatch "diagrams/$hash\.png\)" -or -not (Test-Path (Join-Path $root "docs/diagrams/$hash.png"))) {
+                        $problems.Add("${f}:${start}: нет актуальной картинки схемы docs/diagrams/$hash.png — запустите scripts/render-diagrams.ps1")
                     }
                 }
             }

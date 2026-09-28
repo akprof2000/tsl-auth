@@ -37,7 +37,7 @@ Docker-сокет и передаёт в VictoriaLogs, VictoriaMetrics опра�
 в VictoriaTraces. Подсистемы включаются по отдельности (см. [конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry)):
 что не настроено — не собирается и ресурсов не потребляет.
 
-![Мониторинг](diagrams/963ea4e95719.svg)
+![Мониторинг](diagrams/963ea4e95719.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -128,7 +128,7 @@ victoriametrics-logs-datasource), VictoriaTraces (тип jaeger, `/select/jaeger
 При каждом старте сервис проверяет БД до обновления схемы и после него. Штатный путь — миграции EF.
 Если по ним нельзя прийти к рабочей схеме, схема **пересобирается с переносом данных**.
 
-![Самовосстановление БД](diagrams/006d25ee733b.svg)
+![Самовосстановление БД](diagrams/006d25ee733b.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

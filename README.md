@@ -44,7 +44,7 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 [![Grafana](https://img.shields.io/badge/Grafana-VictoriaMetrics%20·%20Logs%20·%20Traces-F46800?logo=grafana&logoColor=white)](docs/operations.md#эталонный-стенд-grafana)
 [![Демо](https://img.shields.io/badge/демо-.NET%20·%20Node%20·%20Go%20·%20Python-yellow)](samples/)
 
-![TSL Auth](docs/diagrams/5d0cf5d052fe.svg)
+![TSL Auth](docs/diagrams/5d0cf5d052fe.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -186,7 +186,7 @@ docker compose -f docker-compose.ha.yml up -d --build
 | [Тестирование](docs/testing.md) | Пирамида тестов, как запускать, результаты нагрузки и отказоустойчивости |
 | [Эксплуатация](docs/operations.md) | Проверки состояния, журналы, мониторинг (метрики `/metrics`, OpenTelemetry, VictoriaMetrics/Logs/Traces, стенд Grafana), восстановление доступа, типовые проблемы |
 
-Схемы Mermaid в документации дублируются картинками `docs/diagrams/*.svg`: GitHub рисует Mermaid сам, GitFlic — нет.
+Схемы Mermaid в документации дублируются картинками `docs/diagrams/*.png`: GitHub рисует Mermaid сам, GitFlic — нет.
 Схему правят в блоке «Исходник схемы (Mermaid)», затем запускают `scripts/render-diagrams.ps1` — он обновит картинку.
 Устаревшую картинку находит проверка документации в CI.
 

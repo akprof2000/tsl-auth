@@ -7,7 +7,7 @@ PWA-приложение документооборота (React + TypeScript), 
 - **сотрудники и назначение ролей** — внутри демо, через App API TSL Auth;
 - **бот** принудительно меняет пароль и блокирует учётные записи через Bot API TSL Auth.
 
-![Демо «Документооборот» на TSL Auth](../../docs/diagrams/fe4725b82d5e.svg)
+![Демо «Документооборот» на TSL Auth](../../docs/diagrams/fe4725b82d5e.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

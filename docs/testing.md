@@ -1,6 +1,6 @@
 # Тестирование
 
-![Тестирование](diagrams/b9bd3ac42559.svg)
+![Тестирование](diagrams/b9bd3ac42559.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

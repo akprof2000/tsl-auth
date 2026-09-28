@@ -1,9 +1,10 @@
 # Отрисовка схем Mermaid в картинки для площадок без рендера Mermaid (GitFlic; GitHub рендерит и так).
 #   ./scripts/render-diagrams.ps1            — обновить разметку и отрисовать недостающие картинки
 # Что делает с каждым блоком ```mermaid в Markdown-файлах репозитория:
-#   1. ставит перед ним картинку docs/diagrams/<хеш>.svg (хеш — первые 12 знаков SHA-256 исходника схемы);
+#   1. ставит перед ним картинку docs/diagrams/<хеш>.png (хеш — первые 12 знаков SHA-256 исходника схемы). PNG, а не SVG: GitFlic отдаёт
+#      SVG с типом text/plain, и браузер его не показывает;
 #   2. заворачивает исходник в сворачиваемый блок «Исходник схемы (Mermaid)» — править схему нужно в нём;
-#   3. отрисовывает SVG, которых ещё нет (mermaid-cli в Docker, тот же образ, что в validate-docs.ps1);
+#   3. отрисовывает PNG, которых ещё нет (mermaid-cli в Docker, тот же образ, что в validate-docs.ps1);
 #   4. удаляет из docs/diagrams картинки, на которые больше никто не ссылается.
 # Повторный запуск идемпотентен: изменился исходник — меняется хеш, путь картинки и сама картинка.
 # validate-docs.ps1 проверяет, что у каждой схемы есть актуальная картинка (иначе — запустить этот скрипт).
@@ -41,7 +42,7 @@ foreach ($f in $files) {
         while ($j -lt $lines.Count -and $lines[$j] -notmatch '^```\s*$') { $block += $lines[$j]; $j++ }
         $hash = Get-DiagramHash $block
         $needed[$hash] = $block
-        $image = "![$heading]($rel/$hash.svg)"
+        $image = "![$heading]($rel/$hash.png)"
 
         # Уже обёрнут (картинка + <details>): обновляем только путь картинки.
         $k = $out.Count - 1
@@ -49,7 +50,7 @@ foreach ($f in $files) {
         if ($k -ge 0 -and $out[$k] -eq $summary) {
             $m = $k - 1
             while ($m -ge 0 -and $out[$m] -eq "") { $m-- }
-            if ($m -ge 0 -and $out[$m] -match 'diagrams/[0-9a-f]{12}\.svg\)$') { $out[$m] = $out[$m] -replace '\([^)]*diagrams/[0-9a-f]{12}\.svg\)$', "($rel/$hash.svg)" }
+            if ($m -ge 0 -and $out[$m] -match 'diagrams/[0-9a-f]{12}\.png\)$') { $out[$m] = $out[$m] -replace '\([^)]*diagrams/[0-9a-f]{12}\.png\)$', "($rel/$hash.png)" }
             $out.Add($line); $out.AddRange([string[]]$block); $out.Add($lines[$j])
         }
         else {
@@ -64,27 +65,27 @@ foreach ($f in $files) {
 }
 
 # Отрисовка недостающих картинок одним контейнером mermaid-cli.
-$missing = $needed.Keys | Where-Object { $Force -or -not (Test-Path (Join-Path $outDir "$_.svg")) }
+$missing = $needed.Keys | Where-Object { $Force -or -not (Test-Path (Join-Path $outDir "$_.png")) }
 if ($missing) {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("diagrams-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory $tmp | Out-Null
     foreach ($h in $missing) { Set-Content (Join-Path $tmp "$h.mmd") ($needed[$h] -join "`n") -Encoding utf8NoBOM }
-    # Подписи — обычным SVG-текстом (htmlLabels: false): картинка вставляется через <img>, а там HTML внутри SVG
-    # (foreignObject) отображается не везде. Белый фон — читается и в тёмной теме площадки.
+    # Подписи — обычным текстом (htmlLabels: false), ширина переноса увеличена: слова не рвутся посередине.
+    # Белый фон — читается и в тёмной теме площадки; масштаб 2 — чёткость на экранах высокой плотности.
     '{"theme":"default","htmlLabels":false,"flowchart":{"htmlLabels":false,"wrappingWidth":400},"themeVariables":{"fontFamily":"Arial, sans-serif"}}' |
         Set-Content (Join-Path $tmp "config.json") -Encoding utf8NoBOM
-    $script = 'for f in /data/*.mmd; do mmdc -p /puppeteer-config.json -q -c /data/config.json -b white -i "$f" -o "${f%.mmd}.svg" || exit 1; done'
+    $script = 'for f in /data/*.mmd; do mmdc -p /puppeteer-config.json -q -c /data/config.json -b white -i "$f" -s 2 -o "${f%.mmd}.png" || exit 1; done'
     $userArgs = if ($IsWindows) { @() } else { @("--user", "$(id -u):$(id -g)", "-e", "HOME=/tmp") }
     $image = "minlag/mermaid-cli:11.17.1@sha256:d302a7cceeb01b6e4a94a377107056f85e2e488b8789e23fc80835a97960801d"
     docker run --rm @userArgs -v "${tmp}:/data" --entrypoint sh $image -c $script
     if ($LASTEXITCODE -ne 0) { throw "mermaid-cli не отрисовал схемы (см. вывод выше)" }
-    foreach ($h in $missing) { Copy-Item (Join-Path $tmp "$h.svg") (Join-Path $outDir "$h.svg") -Force }
+    foreach ($h in $missing) { Copy-Item (Join-Path $tmp "$h.png") (Join-Path $outDir "$h.png") -Force }
     Remove-Item $tmp -Recurse -Force
     Write-Host "отрисовано схем: $(@($missing).Count)"
 }
 
 # Картинки, на которые больше нет ссылок (схему изменили или удалили).
-Get-ChildItem $outDir -Filter *.svg | Where-Object { -not $needed.ContainsKey($_.BaseName) } | ForEach-Object {
+Get-ChildItem $outDir -Filter *.png | Where-Object { -not $needed.ContainsKey($_.BaseName) } | ForEach-Object {
     Remove-Item $_.FullName; Write-Host "удалена $($_.Name)"
 }
 Write-Host "Схем: $($needed.Count), каталог: docs/diagrams"

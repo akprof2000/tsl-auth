@@ -2,7 +2,7 @@
 
 ## Варианты
 
-![Варианты](diagrams/1e2334854364.svg)
+![Варианты](diagrams/1e2334854364.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -110,7 +110,7 @@ docker compose -f docker-compose.ha.yml -f docker-compose.ha-nodes.yml up -d
 Режимы не смешиваются: экземпляр работает либо с SQLite, либо с PostgreSQL (`Database__Provider`). При переключении
 на PostgreSQL данные SQLite **сами не переносятся** — для этого есть команда `admin migrate-to-postgres`.
 
-![Переход с одиночного режима на кластер](diagrams/0ddf91cd26c8.svg)
+![Переход с одиночного режима на кластер](diagrams/0ddf91cd26c8.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -225,7 +225,7 @@ nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, пере�
 OpenBao — единое хранилище секретов проектов ТСЛ. Сервис при старте входит в OpenBao по AppRole и читает секреты
 из KV v2 (`secret/tsl-auth`). В окружении контейнеров, в `.env` и в compose-файлах значений секретов нет.
 
-![Секреты в OpenBao (после MVP)](diagrams/a252c7790ead.svg)
+![Секреты в OpenBao (после MVP)](diagrams/a252c7790ead.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -317,7 +317,7 @@ VictoriaLogs + VictoriaTraces + Vector + OTel Collector + Grafana с дашбо�
 
 ## Закрытый контур (без интернета)
 
-![Закрытый контур (без интернета)](diagrams/f4c726282734.svg)
+![Закрытый контур (без интернета)](diagrams/f4c726282734.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

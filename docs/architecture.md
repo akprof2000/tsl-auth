@@ -2,7 +2,7 @@
 
 ## Компоненты
 
-![Компоненты](diagrams/9b657ff93bef.svg)
+![Компоненты](diagrams/9b657ff93bef.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -50,7 +50,7 @@ flowchart TB
 
 ## Модель данных
 
-![Модель данных](diagrams/4914e1f72141.svg)
+![Модель данных](diagrams/4914e1f72141.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -109,7 +109,7 @@ erDiagram
 
 ## Как формируется токен
 
-![Как формируется токен](diagrams/84b9fb0ec01a.svg)
+![Как формируется токен](diagrams/84b9fb0ec01a.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -130,7 +130,7 @@ flowchart LR
 
 ## Кластер и сохранность состояния
 
-![Кластер и сохранность состояния](diagrams/96b127f6e19c.svg)
+![Кластер и сохранность состояния](diagrams/96b127f6e19c.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -156,7 +156,7 @@ flowchart TB
 
 **Старт узла:**
 
-![Кластер и сохранность состояния](diagrams/da98a9ac0ddb.svg)
+![Кластер и сохранность состояния](diagrams/da98a9ac0ddb.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -184,7 +184,7 @@ sequenceDiagram
 
 ## Хранение секретов
 
-![Хранение секретов](diagrams/857e6da5b5dd.svg)
+![Хранение секретов](diagrams/857e6da5b5dd.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

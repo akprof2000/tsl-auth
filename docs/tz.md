@@ -40,7 +40,7 @@ TSL Auth выполняет единую идентификацию и ауте�
 
 ## 2. Пользователи и роли
 
-![2. Пользователи и роли](diagrams/a7eba03fc3e3.svg)
+![2. Пользователи и роли](diagrams/a7eba03fc3e3.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -98,7 +98,7 @@ flowchart LR
 8. Двухфакторный вход: пароль → код с почты или из мессенджера (для ролей с флагом 2FA).
 9. Автоматическое отключение учётной записи без входа 90 дней (кроме администраторов сервиса).
 
-![3. Процессы и сценарии](diagrams/26107b261cf0.svg)
+![3. Процессы и сценарии](diagrams/26107b261cf0.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -123,7 +123,7 @@ sequenceDiagram
 
 </details>
 
-![3. Процессы и сценарии](diagrams/c424f7e431eb.svg)
+![3. Процессы и сценарии](diagrams/c424f7e431eb.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 </details>
 
-![3. Процессы и сценарии](diagrams/72361c4c3cd6.svg)
+![3. Процессы и сценарии](diagrams/72361c4c3cd6.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -166,7 +166,7 @@ sequenceDiagram
 
 ## 4. Объекты и справочники
 
-![4. Объекты и справочники](diagrams/fb234784f832.svg)
+![4. Объекты и справочники](diagrams/fb234784f832.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -194,7 +194,7 @@ erDiagram
 
 ## 5. Статусы и переходы
 
-![5. Статусы и переходы](diagrams/dcfeed3e64c8.svg)
+![5. Статусы и переходы](diagrams/dcfeed3e64c8.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -321,7 +321,7 @@ stateDiagram-v2
 
 ### 11.1. Архитектура
 
-![11.1. Архитектура](diagrams/f393eb2ac259.svg)
+![11.1. Архитектура](diagrams/f393eb2ac259.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -389,7 +389,7 @@ flowchart TB
 | Н-8 | Сервис стартует и сохраняет данные, если БД повреждена или её схема в неизвестном состоянии. Пересборка идёт с переносом данных и резервной копией | есть |
 | Н-9 | Запуск на схеме новее версии сервиса запрещён, пока это не разрешено явно | есть |
 
-![11.5. Обновление схемы и самовосстановление](diagrams/5bf462dd4ac4.svg)
+![11.5. Обновление схемы и самовосстановление](diagrams/5bf462dd4ac4.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -436,7 +436,7 @@ flowchart TD
 
 ## 12. Развёртывание и выпуск (04.12)
 
-![12. Развёртывание и выпуск (04.12)](diagrams/59c42de5f8da.svg)
+![12. Развёртывание и выпуск (04.12)](diagrams/59c42de5f8da.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

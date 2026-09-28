@@ -16,7 +16,7 @@
 
 ## Разделы
 
-![Разделы](diagrams/cf343ebd26e6.svg)
+![Разделы](diagrams/cf343ebd26e6.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 

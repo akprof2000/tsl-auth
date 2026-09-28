@@ -1,0 +1,34 @@
+# Сканер секретов gitleaks (CI и ./scripts/test.sh security). Правила gitleaks по умолчанию плюс свои:
+# значение по умолчанию у переменной-секрета в compose/скриптах (${X_PASSWORD:-значение}) — запрещено,
+# секреты задаются только в .env стенда или генерируются при первом запуске.
+# Тестовые значения (эфемерные контейнеры тестов) — в allowlist ниже; такие же пути в .gitguardian.yaml.
+title = "secret scan"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "secret-default-value"
+description = "Значение по умолчанию у переменной-секрета"
+regex = '''\$\{[A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|MASTER_KEY|ACCESS_KEY|SECRET_KEY|API_KEY)(?:_[A-Z0-9_]*)?:-([^}\s]+)\}'''
+secretGroup = 1
+keywords = ["password", "passwd", "secret", "token", "_key"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = ['''_(?:FILE|PATH|PORT|RPM|URL|MOUNT)[A-Z0-9_]*:-''']
+
+[allowlist]
+description = "тестовые данные и эфемерные тестовые стенды"
+# UID:GID в docker run --user (curl-auth-user принимает его за логин:пароль)
+regexes = ['''^\d+:\d+$''']
+paths = [
+  '''(^|/)tests?/''',
+  '''(^|/)testdata/''',
+  '''_test\.go$''',
+  '''(^|/)test_[^/]*\.py$''',
+  '''(^|/)conftest\.py$''',
+  '''\.(?:Tests|IntegrationTests|UnitTests|UiTests)/''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)go\.sum$''',
+  '''\.env\.example$''',
+]

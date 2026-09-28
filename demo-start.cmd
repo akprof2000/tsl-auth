@@ -9,6 +9,10 @@ cd /d "%~dp0samples\docflow-demo"
 where docker >nul 2>nul || (echo [ОШИБКА] Docker не найден. Установите и запустите Docker Desktop. & goto :fail)
 docker info >nul 2>nul || (echo [ОШИБКА] Docker Desktop не запущен. Запустите его и повторите. & goto :fail)
 
+set PS=pwsh
+where pwsh >nul 2>nul || set PS=powershell
+%PS% -NoProfile -ExecutionPolicy Bypass -File init-env.ps1 || goto :fail
+
 echo [1/4] Запуск TSL Auth...
 docker compose up -d tsl-auth || (echo [ОШИБКА] TSL Auth не запустился. Свободен ли порт 8080? & goto :fail)
 
@@ -23,8 +27,6 @@ goto :wait_auth
 :auth_ok
 
 echo [3/4] Настройка приложений, ролей и сотрудников...
-set PS=pwsh
-where pwsh >nul 2>nul || set PS=powershell
 %PS% -NoProfile -ExecutionPolicy Bypass -File seed.ps1 || (echo [ОШИБКА] Настройка не удалась. & goto :fail)
 
 echo [4/4] Запуск API, PWA и бота (первый раз — сборка, несколько минут)...

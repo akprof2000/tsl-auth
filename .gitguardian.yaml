@@ -1,0 +1,16 @@
+# GitGuardian (ggshield и мониторинг репозитория): тестовые данные и эфемерные тестовые стенды — не секреты.
+# Те же пути исключены в .gitleaks.toml. Настоящие секреты стенда живут только в .env (в git не попадает).
+version: 2
+secret:
+  ignored_paths:
+    - "**/tests/**"
+    - "**/test/**"
+    - "**/testdata/**"
+    - "**/*_test.go"
+    - "**/test_*.py"
+    - "**/conftest.py"
+    - "**/*.Tests/**"
+    - "**/*.IntegrationTests/**"
+    - "**/*.UnitTests/**"
+    - "**/*.UiTests/**"
+    - "**/.env.example"

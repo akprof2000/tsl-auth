@@ -1,6 +1,7 @@
 # Демо «Документооборот» на готовом образе TSL Auth с Docker Hub.
 # MVP: все настройки, включая секреты, — переменные контейнеров из .env (его заполняет seed.ps1).
 #   Проще всего: demo-start.cmd в корне репозитория. Вручную:
+#   0) ./init-env.ps1                       — случайный секрет Admin API в .env
 #   1) docker compose up -d tsl-auth        — TSL Auth (http://localhost:8080)
 #   2) ./seed.ps1                           — приложения, роли, сотрудники; секреты клиентов → .env
 #   3) docker compose up -d --build         — API + PWA (http://localhost:5200) и бот
@@ -24,9 +25,10 @@ services:
       Auth__RequireHttps: "false"
       Bootstrap__AdminUserName: admin
       Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
-      # Клиент Admin API для seed.ps1 — только для демо-стенда.
+      # Клиент Admin API для seed.ps1 — только для демо-стенда. Секрет случайный, его пишет в .env init-env.ps1
+      # (demo-start.cmd запускает его сам); значения по умолчанию в репозитории нет.
       Bootstrap__AdminApiClientId: admin-cli
-      Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-demo-admin-cli-secret-2026}"
+      Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-}"
     volumes:
       - auth-data:/app/data
 

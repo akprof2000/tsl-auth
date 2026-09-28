@@ -69,10 +69,10 @@ flowchart LR
 
 ## Запуск в Docker
 
-MVP: все секреты стенда — переменные контейнеров из `.env`. Его заполняет `seed.ps1`:
+MVP: все секреты стенда — переменные контейнеров из `.env`. Его заполняют `init-env.ps1` и `seed.ps1`:
 
 - `DOCFLOW_API_SECRET` и `DOCFLOW_BOT_SECRET` — секреты клиентов демо;
-- `BOOTSTRAP_API_CLIENT_SECRET` — секрет клиента Admin API (по умолчанию демо-значение);
+- `BOOTSTRAP_API_CLIENT_SECRET` — секрет клиента Admin API: случайный, его пишет `init-env.ps1` до первого старта (запускает `demo-start.cmd`);
 - `BOOTSTRAP_ADMIN_PASSWORD` — пароль администратора TSL Auth. Если не задан, он генерируется и выводится в журнал.
 
 После MVP секреты можно перенести в OpenBao: добавьте `-f docker-compose.openbao.yml` ко всем командам compose.
@@ -87,6 +87,7 @@ MVP: все секреты стенда — переменные контейн�
 
 ```powershell
 cd samples/docflow-demo
+./init-env.ps1                   # случайный секрет Admin API → .env (до первого старта TSL Auth)
 docker compose up -d tsl-auth
 ./seed.ps1                       # приложения, роли, сотрудники; секреты клиентов → .env
 docker compose up -d --build     # http://localhost:5200

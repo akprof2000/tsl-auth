@@ -11,7 +11,7 @@
 param(
     [string]$Issuer = "http://localhost:8080",
     [string]$AdminClientId = "admin-cli",
-    # Пусто — из .env (BOOTSTRAP_API_CLIENT_SECRET, по умолчанию как в docker-compose.yml) или из OpenBao.
+    # Пусто — из .env (BOOTSTRAP_API_CLIENT_SECRET, его пишет init-env.ps1) или из OpenBao.
     [string]$AdminClientSecret = "",
     [string]$UserPassword = "Demo-Passw0rd!",
     # Адреса PWA: собранная (раздаёт API) и dev-сервер Vite.
@@ -44,7 +44,7 @@ function Set-Secret($path, $field, $envName, $value) {
     if ($LASTEXITCODE -ne 0) { Bao kv put "secret/$path" "$field=$value" | Out-Null }
 }
 if (-not $AdminClientSecret) { $AdminClientSecret = Get-Secret "tsl-auth" "Bootstrap__AdminApiClientSecret" "BOOTSTRAP_API_CLIENT_SECRET" }
-if (-not $AdminClientSecret -and -not $useVault) { $AdminClientSecret = "demo-admin-cli-secret-2026" }   # значение по умолчанию docker-compose.yml
+if (-not $AdminClientSecret -and -not $useVault) { throw "Нет BOOTSTRAP_API_CLIENT_SECRET в .env — запустите init-env.ps1 до первого старта TSL Auth" }
 if (-not $AdminClientSecret) { throw "Нет секрета Admin API в OpenBao (secret/tsl-auth) — запущен ли openbao-init?" }
 Write-Host "Секреты: $(if ($useVault) { 'OpenBao' } else { '.env (переменные контейнеров)' })"
 $tok = Invoke-RestMethod "$Issuer/connect/token" -Method Post -Body @{

@@ -93,7 +93,7 @@ services:
     user: "472:472"
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: "${OBS_GRAFANA_PASSWORD:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${OBS_GRAFANA_PASSWORD:?задайте OBS_GRAFANA_PASSWORD в .env}"
       # Просмотр дашбордов без входа (только чтение) — стенд на 127.0.0.1; для общего сервера выключите.
       GF_AUTH_ANONYMOUS_ENABLED: "${OBS_GRAFANA_ANONYMOUS:-true}"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer

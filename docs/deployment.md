@@ -197,7 +197,7 @@ nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, пере�
 | Секрет клиента Admin API | `BOOTSTRAP_API_CLIENT_SECRET` | `Bootstrap:AdminApiClientSecret` |
 | Пароль PostgreSQL и строка подключения | `POSTGRES_PASSWORD`, `DB_CONNECTION_STRING` | `Database:ConnectionString` |
 | SMTP | `SMTP_USER`, `SMTP_PASSWORD` | `Smtp:UserName`, `Smtp:Password` |
-| Мониторинг | `OBS_PROMETHEUS_TOKEN`, `OBS_OTLP_HEADERS`, `OBS_LOKI_USER`, `OBS_LOKI_PASSWORD` | `Observability:*` |
+| Мониторинг | `OBS_PROMETHEUS_TOKEN`, `OBS_OTLP_HEADERS` | `Observability:*` |
 
 Правила для MVP:
 
@@ -292,10 +292,10 @@ docker compose -f docker-compose.ha.yml -f docker-compose.ha-secrets.yml up -d
 
 ## Мониторинг
 
-Метрики Prometheus, трассировки и логи по OTLP, логи в Loki включаются переменными `OBS_*` в `.env` (см.
-[конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry-loki)) и работают в обоих режимах; в кластере
-Prometheus опрашивает узлы напрямую внутри docker-сети. Эталонный стенд (Prometheus + Loki + Tempo + OTel Collector +
-Grafana с дашбордом) — оверлей `docker-compose.observability.yml`, см. [эксплуатацию](operations.md#эталонный-стенд-grafana).
+Эндпоинт `/metrics` (формат Prometheus) и трассировки по OTLP включаются переменными `OBS_*` в `.env` (см.
+[конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry)) и работают в обоих режимах; логи сервис пишет только
+в stdout. В кластере VictoriaMetrics опрашивает узлы напрямую внутри docker-сети. Эталонный стенд (VictoriaMetrics +
+VictoriaLogs + VictoriaTraces + Vector + OTel Collector + Grafana с дашбордом) — оверлей `docker-compose.observability.yml`, см. [эксплуатацию](operations.md#эталонный-стенд-grafana).
 
 ## Закрытый контур (без интернета)
 
@@ -322,7 +322,8 @@ sequenceDiagram
 `docker load` находится не на всех версиях Docker, и запуск в закрытом контуре сорвался бы попыткой скачать образ.
 Какие именно образы перенесены, фиксирует `dist/tsl-auth-images-<версия>.txt` (ID и digest каждого).
 Без PostgreSQL (внешняя БД) или nginx комплект собирается с ключами `-NoPostgres` / `-NoNginx`;
-`-Observability` добавляет образы стенда мониторинга (Prometheus, Loki, Tempo, OpenTelemetry Collector, Grafana).
+`-Observability` добавляет образы стенда мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector, OpenTelemetry Collector)
+и собирает локальный образ Grafana со встроенным плагином VictoriaLogs.
 
 ## Первичная настройка после установки
 

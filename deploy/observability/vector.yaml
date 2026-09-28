@@ -1,0 +1,82 @@
+# Vector — сборщик логов эталонного стенда. Сервисы пишут логи только в stdout (TSL Auth — JSON, Logging__Format=Json);
+# Vector читает логи всех контейнеров хоста через Docker socket (только чтение) и отправляет их в VictoriaLogs.
+# Сами сервисы в хранилище логов не пишут и о нём не знают.
+#
+# Строка лога в формате Serilog Compact JSON (@t, @m, @l, @x, @tr, @sp и свойства) разбирается в поля записи:
+# время, сообщение, уровень, исключение, trace_id — по ним работают фильтры LogsQL и переход к трассировке в Grafana.
+# Строки не-JSON (nginx, PostgreSQL, сам стенд) попадают как есть, с полями контейнера.
+
+api:
+  enabled: false
+
+sources:
+  docker:
+    type: docker_logs
+    docker_host: unix:///var/run/docker.sock
+    # Логи самого Vector не собираем: иначе ошибки отправки порождали бы новые записи в цикле.
+    exclude_containers: ["tsl-auth-vector"]
+
+  # Собственные метрики Vector (принято, отправлено, ошибки) — для VictoriaMetrics.
+  vector_metrics:
+    type: internal_metrics
+
+transforms:
+  parse:
+    type: remap
+    inputs: [docker]
+    source: |
+      # Имя сервиса compose (auth, auth1, postgres…) — поле потока; без compose — имя контейнера.
+      .service = .label."com.docker.compose.service"
+      if is_null(.service) { .service = .container_name }
+      .container = .container_name
+      parsed, err = parse_json(.message)
+      if err == null && is_object(parsed) {
+        . = merge(., object!(parsed))
+        if exists(."@m") { .message = del(."@m") }
+        if exists(."@t") {
+          t = del(."@t")
+          .timestamp = parse_timestamp(string(t) ?? "", "%+") ?? .timestamp
+        }
+        if exists(."@l") { .level = del(."@l") }
+        if exists(."@x") { .exception = del(."@x") }
+        if exists(."@mt") { .template = del(."@mt") }
+        if exists(."@tr") { .trace_id = del(."@tr") }
+        if exists(."@sp") { .span_id = del(."@sp") }
+        if exists(.TraceId) { .trace_id = del(.TraceId) }
+        if exists(.SpanId) { .span_id = del(.SpanId) }
+        if exists(.SourceContext) { .logger = del(.SourceContext) }
+        # Serilog не пишет @l для Information — уровень по умолчанию.
+        if !exists(.level) { .level = "Information" }
+      }
+      if exists(.level) { .level = downcase(to_string!(.level)) }
+      # Служебные поля Docker, не нужные для поиска.
+      del(.label)
+      del(.container_created_at)
+      del(.image)
+      del(.source_type)
+      del(.container_id)
+      del(.container_name)
+
+sinks:
+  victorialogs:
+    type: http
+    inputs: [parse]
+    # JSON Lines API VictoriaLogs; поток — сервис compose и контейнер.
+    uri: http://victorialogs:9428/insert/jsonline?_stream_fields=service,container&_msg_field=message&_time_field=timestamp
+    compression: gzip
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    healthcheck:
+      enabled: false
+    # Пока VictoriaLogs недоступна, записи ждут в буфере на диске (переживают перезапуск Vector).
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: drop_newest
+
+  metrics:
+    type: prometheus_exporter
+    inputs: [vector_metrics]
+    address: 0.0.0.0:9598

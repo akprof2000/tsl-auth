@@ -1,4 +1,4 @@
-// Unit-тесты логирования и наблюдаемости: уровни, адреса OTLP/Loki, защита /metrics, ротация файлов.
+// Unit-тесты логирования и наблюдаемости: уровни, адреса OTLP, защита /metrics, ротация файлов.
 // Запуск: dotnet test tests/TslAuth.UnitTests. Внешние зависимости не нужны: проверяются
 // отдельные классы сервиса без поднятия HTTP-хоста и БД.
 
@@ -97,11 +97,11 @@ public sealed class ObservabilitySetupTests
     [InlineData("grpc", "http://collector:4317", "traces", "http://collector:4317")]
     [InlineData("http", "http://collector:4318", "traces", "http://collector:4318/v1/traces")]
     [InlineData("http", "http://collector:4318/", "logs", "http://collector:4318/v1/logs")]
-    [InlineData("http", "http://loki:3100/otlp/v1/logs", "logs", "http://loki:3100/otlp/v1/logs")] // путь задан — как есть
+    [InlineData("http", "http://victorialogs:9428/insert/opentelemetry/v1/logs", "logs", "http://victorialogs:9428/insert/opentelemetry/v1/logs")] // путь задан — как есть
     public void SignalEndpoint(string protocol, string endpoint, string signal, string expected) =>
         Assert.Equal(expected, ObservabilitySetup.SignalEndpoint(new OpenTelemetryOptions { Endpoint = endpoint, Protocol = protocol }, signal));
 
-    /// <summary>Разбор строк вида key=value для заголовков и меток.</summary>
+    /// <summary>Разбор строк вида key=value для заголовков и атрибутов.</summary>
     [Fact]
     public void ParsePairs_HeadersAndLabels()
     {
@@ -110,8 +110,8 @@ public sealed class ObservabilitySetupTests
         Assert.Equal("team1", headers["X-Scope-OrgID"]);
         Assert.Empty(ObservabilitySetup.ParseHeaders(" "));
         Assert.Throws<InvalidOperationException>(() => ObservabilitySetup.ParseHeaders("no-equals"));
-        var labels = LoggingSetup.ParseLabels("env=prod;dc=msk");
-        Assert.Equal(["env", "dc"], labels.Select(l => l.Key));
+        var attributes = ObservabilitySetup.ParsePairs("env=prod;dc=msk", "test");
+        Assert.Equal(["env", "dc"], attributes.Select(l => l.Key));
     }
 
     /// <summary>Пользовательские атрибуты ресурса перекрывают значения по умолчанию.</summary>
@@ -134,19 +134,18 @@ public sealed class ObservabilitySetupTests
         {
             ["Observability:Prometheus:Enabled"] = "true",
             ["Observability:OpenTelemetry:Endpoint"] = "http://collector:4317",
-            ["Observability:OpenTelemetry:Metrics"] = "false",
-            ["Observability:Loki:Url"] = "http://loki:3100"
+            ["Observability:OpenTelemetry:Metrics"] = "false"
         }).Build();
         var o = ObservabilitySetup.Read(config);
-        Assert.True(o.MetricsEnabled && o.TracingEnabled && o.Loki.Enabled);
+        Assert.True(o.MetricsEnabled && o.TracingEnabled);
 
         var bad = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["Observability:Loki:Url"] = "loki:3100" }).Build();
+            { ["Observability:OpenTelemetry:Endpoint"] = "collector:4317" }).Build();
         Assert.Throws<InvalidOperationException>(() => ObservabilitySetup.Read(bad));
 
         // Ничего не задано — ни метрик, ни трассировок: экспортёры не создаются.
         var none = ObservabilitySetup.Read(new ConfigurationBuilder().Build());
-        Assert.False(none.MetricsEnabled || none.TracingEnabled || none.Loki.Enabled);
+        Assert.False(none.MetricsEnabled || none.TracingEnabled);
     }
 
     /// <summary>Доступ к /metrics ограничен разрешёнными сетями и токеном.</summary>

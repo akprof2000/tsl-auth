@@ -2,7 +2,8 @@
 # Результат: dist/tsl-auth-images-<версия>.tar.gz + SHA256 — перенесите на целевой сервер и выполните import-images.
 # PostgreSQL, nginx и OpenBao (хранилище секретов) входят в комплект по умолчанию; исключить: -NoPostgres (внешняя БД),
 # -NoNginx, -NoOpenBao (используется уже развёрнутый OpenBao контура).
-# -Observability — добавить образы стенда мониторинга (Prometheus, Loki, Tempo, OpenTelemetry Collector, Grafana).
+# -Observability — добавить образы стенда мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector,
+#   OpenTelemetry Collector и Grafana; Grafana собирается здесь же с плагином VictoriaLogs — в контуре его не скачать).
 param(
     [string]$Version = "latest",
     [switch]$NoPostgres,
@@ -22,7 +23,11 @@ if (-not $NoOpenBao) { docker pull openbao/openbao:2.4.1; $images += "openbao/op
 if ($Observability) {
     # Версии — те же, что в docker-compose.observability.yml.
     $stack = Select-String -Path docker-compose.observability.yml -Pattern '^\s*image:\s*(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value }
-    foreach ($image in $stack) { docker pull $image; $images += $image }
+    # Grafana с плагином VictoriaLogs — локальная сборка (deploy/observability/grafana/Dockerfile), остальные — из реестра.
+    # compose требует OBS_GRAFANA_PASSWORD при разборе файла; для сборки образа значение не используется.
+    if (-not $env:OBS_GRAFANA_PASSWORD) { $env:OBS_GRAFANA_PASSWORD = [guid]::NewGuid().ToString("N") }
+    docker compose -f docker-compose.observability.yml build grafana
+    foreach ($image in $stack) { if ($image -notlike "tsl-auth-grafana:*") { docker pull $image }; $images += $image }
 }
 
 New-Item -ItemType Directory -Force dist | Out-Null

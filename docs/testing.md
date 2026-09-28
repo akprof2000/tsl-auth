@@ -109,6 +109,16 @@ SQLite сериализует запись, поэтому одиночный р
 ### Секреты в переменных и файле настроек (MVP)
 
 E2E-скрипт `tests/resilience/run-env-secrets.ps1` проверяет режим без OpenBao. Отчёт — `tests/artifacts/env-secrets/report.md`.
+
+E2E-скрипт `tests/resilience/run-observability.ps1` поднимает сервис со стендом мониторинга на Victoria и проверяет,
+что данные доходят, хотя сервис сам в хранилища не пишет:
+
+- VictoriaMetrics опрашивает `/metrics` сервиса и компоненты стенда, все цели доступны, метрики сервиса есть;
+- stdout сервиса (JSON) Vector через Docker socket доставляет в VictoriaLogs, поля записи разобраны;
+- трассировки через OpenTelemetry Collector доходят до VictoriaTraces;
+- в Grafana (образ с плагином VictoriaLogs) отвечают все три источника данных.
+
+Отчёт — `tests/artifacts/observability/report.md`. Стенд и тома удаляются после прогона.
 Модульные тесты `ConfigFilesTests` проверяют файл вне каталога приложения и то, что пустые переменные его не затирают.
 
 | Сценарий E2E | Результат |

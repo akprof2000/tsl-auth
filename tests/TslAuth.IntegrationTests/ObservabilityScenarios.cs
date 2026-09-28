@@ -1,4 +1,4 @@
-// Интеграционные сценарии наблюдаемости: метрики Prometheus, уровни логов, отправка в Loki и OTLP
+// Интеграционные сценарии наблюдаемости: метрики /metrics (их забирает VictoriaMetrics), уровни логов и OTLP
 // (приёмники подменяются локальным HTTP-сервером-заглушкой).
 // Запуск: dotnet test tests/TslAuth.IntegrationTests (для вариантов на PostgreSQL нужен Docker —
 // контейнер поднимает Testcontainers). Сервис поднимается в процессе через WebApplicationFactory
@@ -19,7 +19,7 @@ namespace TslAuth.IntegrationTests;
 
 /// <summary>
 /// Мониторинг: эндпоинт /metrics (выключен по умолчанию, токен, прикладные счётчики), уровни логирования из настроек
-/// в БД (применяются без перезапуска), отправка логов в Loki и трассировок/метрик/логов по OTLP —
+/// в БД (применяются без перезапуска), трассировки/метрики/логи по OTLP (логи в стенде идут только в stdout, их собирает Vector) —
 /// на заглушке-приёмнике внутри теста, без внешних систем.
 /// </summary>
 public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixture : AuthFixture
@@ -93,36 +93,25 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         }
     }
 
-    /// <summary>Логи доходят до Loki, трассы и метрики — до OTLP-приёмника (заглушка ждёт запросы с таймаутом).</summary>
+    /// <summary>
+    /// Трассы, метрики и логи доходят до OTLP-приёмника, если их включить (заглушка ждёт запросы с таймаутом).
+    /// Других сетевых приёмников логов у сервиса нет: в стенде логи идут только в stdout и их забирает Vector.
+    /// </summary>
     [Fact]
-    public async Task Loki_And_Otlp_ReceiveSignals()
+    public async Task Otlp_ReceivesSignals_AndNoOtherLogSink()
     {
         await using var sink = await Receiver.StartAsync();
         using var factory = fx.Factory.WithWebHostBuilder(b =>
         {
-            b.UseSetting("Observability:Loki:Url", sink.Url);
-            b.UseSetting("Observability:Loki:Labels", "env=test");
-            b.UseSetting("Observability:Loki:PeriodSeconds", "1");
             b.UseSetting("Observability:OpenTelemetry:Endpoint", sink.Url);
             b.UseSetting("Observability:OpenTelemetry:Protocol", "http");
             b.UseSetting("Observability:OpenTelemetry:Headers", "X-Probe=yes");
             b.UseSetting("Observability:OpenTelemetry:MetricsExportIntervalSeconds", "1");
             b.UseSetting("Logging:LogLevel:Default", "Information");
         });
-        var marker = "loki-probe-" + Guid.NewGuid().ToString("N");
+        var marker = "otlp-probe-" + Guid.NewGuid().ToString("N");
         await factory.AdminAsync(); // запрос → span и метрики
         factory.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TslAuth.Probe").LogWarning("Проверка {Marker}", marker);
-
-        var push = await sink.WaitAsync("/loki/api/v1/push", body => body.Contains(marker));
-        var stream = JsonDocument.Parse(push.Body).RootElement.GetProperty("streams").EnumerateArray()
-            .First(s => s.GetProperty("values").EnumerateArray().Any(v => v[1].GetString()!.Contains(marker)));
-        var labels = stream.GetProperty("stream");
-        Assert.Equal("tsl-auth", labels.GetProperty("service").GetString());
-        Assert.Equal("test", labels.GetProperty("env").GetString());
-        Assert.Equal("warning", labels.GetProperty("level").GetString(), ignoreCase: true);
-        var line = JsonDocument.Parse(stream.GetProperty("values")[0][1].GetString()!).RootElement;
-        Assert.Equal("TslAuth.Probe", line.GetProperty("SourceContext").GetString());
-        Assert.Equal(marker, line.GetProperty("Marker").GetString()); // параметры шаблона — отдельные поля
 
         // OTLP по http/protobuf: пути /v1/* добавлены к адресу, заголовки переданы, все три сигнала пришли.
         foreach (var signal in new[] { "traces", "metrics", "logs" })
@@ -133,6 +122,9 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         }
         var traces = sink.Bodies("/v1/traces");
         Assert.Contains(traces, t => t.Contains("connect/token") && t.Contains("tsl_auth.grant_type"));
+        await sink.WaitAsync("/v1/logs", body => body.Contains(marker));
+        // Кроме OTLP сервис никуда не отправляет данные (отправки логов в хранилище напрямую нет).
+        Assert.All(sink.Paths(), p => Assert.StartsWith("/v1/", p));
     }
 
     /// <summary>Объединяет текущие настройки (JSON) с изменяемыми полями, чтобы не затирать остальное.</summary>
@@ -143,7 +135,7 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         return result;
     }
 
-    /// <summary>Приёмник HTTP внутри теста: запоминает все POST (Loki push, OTLP) для проверки.</summary>
+    /// <summary>Приёмник HTTP внутри теста: запоминает все POST (OTLP) для проверки.</summary>
     private sealed class Receiver : IAsyncDisposable
     {
         public sealed record Request(string Path, string Body, string? ContentType, Dictionary<string, string> Headers);
@@ -193,6 +185,12 @@ public abstract class ObservabilityScenarios<TFixture>(TFixture fx) where TFixtu
         public List<string> Bodies(string path)
         {
             lock (_requests) return _requests.Where(r => r.Path == path).Select(r => r.Body).ToList();
+        }
+
+        /// <summary>Все пути, на которые приходили запросы.</summary>
+        public List<string> Paths()
+        {
+            lock (_requests) return _requests.Select(r => r.Path).Distinct().ToList();
         }
 
         public async ValueTask DisposeAsync()

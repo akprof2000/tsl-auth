@@ -21,7 +21,7 @@ Docker HEALTHCHECK встроен в образ: в distroless-образе не
   каждый запрос, `TslAuth=Debug` — подробности сервисов, `Microsoft.EntityFrameworkCore.Database.Command=Information` — SQL.
 * Логи не растут бесконечно: в compose драйвер `json-file` держит 5 файлов по 20 МБ на контейнер, ротированные сжаты
   (`compress`). Вне контейнера — `Logging__File__*`: файл на день и по размеру, не более `RetainedFiles` файлов, архивы `.gz`.
-* Логи в Loki и по OTLP, метрики и трассировки — раздел [мониторинг](#мониторинг).
+* Сбор логов в VictoriaLogs (через Vector), метрики и трассировки — раздел [мониторинг](#мониторинг).
 * Журнал безопасности — в БД, админка → **Журнал**, `GET /api/admin/audit`, выгрузка CSV.
 * Лента событий — для ботов/SIEM: long-polling, SSE, вебхуки (`security.alert` — важные события безопасности).
 * nginx пишет в stdout, на какой узел ушёл каждый запрос (`-> 172.19.0.4:8080`).
@@ -31,24 +31,26 @@ Docker HEALTHCHECK встроен в образ: в distroless-образе не
 
 ## Мониторинг
 
-Сервис отдаёт метрики Prometheus, отправляет трассировки, метрики и логи по OTLP и логи — напрямую в Grafana Loki.
-Подсистемы включаются по отдельности (см. [конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry-loki)):
+Сервис сам в хранилища мониторинга не пишет: логи — только в stdout, метрики отдаёт на `/metrics` (формат Prometheus)
+для опроса, трассировки отправляет по OTLP в коллектор. Дальше их собирают: Vector читает логи контейнеров через
+Docker-сокет и передаёт в VictoriaLogs, VictoriaMetrics опрашивает `/metrics`, OTel Collector передаёт трассировки
+в VictoriaTraces. Подсистемы включаются по отдельности (см. [конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry)):
 что не настроено — не собирается и ресурсов не потребляет.
 
 ```mermaid
 flowchart LR
     A[TSL Auth<br/>узлы auth1..auth3]
-    A -- "/metrics (pull)" --> P[(Prometheus)]
-    A -- "OTLP: трассировки<br/>(метрики, логи)" --> C[OTel Collector] --> T[(Tempo)]
-    C -.-> P
-    C -.-> L
-    A -- "push API: логи" --> L[(Loki)]
+    P[(VictoriaMetrics)] -- "/metrics (pull)" --> A
+    A -- "OTLP: трассировки" --> C[OTel Collector] --> T[(VictoriaTraces)]
+    A -- "stdout (JSON)" --> D[Docker]
+    V[Vector] -- "Docker-сокет<br/>(только чтение)" --> D
+    V -- "JSON Lines" --> L[(VictoriaLogs)]
     P & T & L --> G[Grafana<br/>дашборд «TSL Auth»]
 ```
 
 ### Метрики (Prometheus)
 
-`Observability__Prometheus__Enabled=true` — эндпоинт `/metrics` на каждом узле (в кластере Prometheus опрашивает узлы
+`Observability__Prometheus__Enabled=true` — эндпоинт `/metrics` на каждом узле (в кластере VictoriaMetrics опрашивает узлы
 напрямую, минуя nginx: `auth1:8080`, `auth2:8080`, `auth3:8080`). Доступ — только из частных сетей
 (`AllowedNetworks`) и (или) по bearer-токену (`Token`): метрики раскрывают имена приложений и объёмы отказов.
 Тот же набор уходит по OTLP при `OpenTelemetry__Metrics=true`.
@@ -84,25 +86,36 @@ flowchart LR
 событие аудита — событием в span'е (`tsl_auth.audit.type`, `severity`, `success`). Входящий `traceparent` от приложений
 принимается — трассировка приложения продолжается в сервисе. Ресурс: `service.name`, `service.version`,
 `service.instance.id` (узел), `Observability__ResourceAttributes`.
-Логи по OTLP и в Loki (`Observability__Loki__Url`) содержат текст, уровень, категорию, параметры сообщения отдельными
-полями и идентификаторы трассировки (`TraceId`/`SpanId`; в строке Loki — `_TraceId`/`_SpanId`) — в Grafana строка лога
-ведёт к трассировке, а span — к логам узла.
+Логи в stdout (`Logging__Format=Json`, в compose по умолчанию) — компактный JSON Serilog: текст, уровень, категория,
+параметры сообщения отдельными полями и идентификаторы трассировки. Vector разбирает строку в поля VictoriaLogs
+(`level`, `logger`, `trace_id` и др., метки `service`, `instance`) — в Grafana строка лога ведёт к трассировке, а span —
+к логам узла. Логи по OTLP (`OpenTelemetry__Logs=true`) по-прежнему доступны, но в compose выключены (`OBS_OTLP_LOGS=false`).
 
 ### Эталонный стенд Grafana
 
-`docker-compose.observability.yml` поднимает Prometheus, Loki, Tempo, OpenTelemetry Collector и Grafana с готовым
+`docker-compose.observability.yml` поднимает VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector, OpenTelemetry
+Collector и Grafana с готовым
 дашбордом «TSL Auth» (запросы, токены, входы, события безопасности, состояние, среда выполнения, логи) и связями
 метрики ↔ трассировки ↔ логи:
 
 ```bash
-# в .env: OBS_PROMETHEUS_ENABLED=true  OBS_OTLP_ENDPOINT=http://otel-collector:4317  OBS_OTLP_METRICS=false  OBS_OTLP_LOGS=false  OBS_LOKI_URL=http://loki:3100
+# в .env: OBS_PROMETHEUS_ENABLED=true  OBS_OTLP_ENDPOINT=http://otel-collector:4317  LOG_FORMAT=Json
 docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 ```
 
-Grafana — http://localhost:3000 (просмотр без входа; правка — `admin` / `OBS_GRAFANA_PASSWORD`), Prometheus —
-http://localhost:9090; порты привязаны к 127.0.0.1. Для кластера добавьте `OBS_PROMETHEUS_CONFIG=deploy/observability/prometheus-ha.yml`
-(опрос узлов `auth1..auth3`). Образы стенда для закрытого контура: `scripts/export-images.ps1 -Observability`.
-Стенд — отправная точка: в продуктиве подключайте существующие Prometheus/Loki/коллектор теми же переменными.
+| Компонент | Адрес | Назначение |
+|---|---|---|
+| Grafana | http://localhost:3000 | дашборд; просмотр без входа, правка — `admin` / `OBS_GRAFANA_PASSWORD` |
+| VictoriaMetrics | http://localhost:8428/vmui | метрики (`OBS_VM_PORT`), опрос по `deploy/observability/vmscrape.yml` |
+| VictoriaLogs | http://localhost:9428/select/vmui | логи (`OBS_VLOGS_PORT`), запросы LogsQL: `service:"tsl-auth" level:"error"` |
+
+Порты привязаны к 127.0.0.1. Источники данных Grafana: VictoriaMetrics (тип prometheus), VictoriaLogs (плагин
+victoriametrics-logs-datasource), VictoriaTraces (тип jaeger, `/select/jaeger`). Плагин VictoriaLogs встроен в
+локально собираемый образ `tsl-auth-grafana` (`deploy/observability/grafana/Dockerfile`) — в закрытом контуре скачать
+его при запуске нельзя. Сроки хранения: `OBS_METRICS_RETENTION` (15d), `OBS_LOGS_RETENTION` (30d), `OBS_TRACES_RETENTION` (7d).
+Для кластера добавьте `OBS_VM_SCRAPE_CONFIG=deploy/observability/vmscrape-ha.yml` (опрос узлов `auth1..auth3`).
+Образы стенда для закрытого контура (включая сборку Grafana с плагином): `scripts/export-images.ps1 -Observability`.
+Стенд — отправная точка: в продуктиве подключайте существующие хранилища и коллектор теми же переменными.
 
 ## Самовосстановление БД
 

@@ -21,7 +21,7 @@ flowchart TB
         OBS[Наблюдаемость: Serilog,<br/>OpenTelemetry — метрики и трассировки]
     end
     DB[(SQLite или PostgreSQL)]
-    MON[Prometheus / OTLP-коллектор / Loki]
+    MON[VictoriaMetrics / OTLP-коллектор / Vector → VictoriaLogs]
 
     MW --> OIDC --> CTRL --> SVC
     MW --> UI --> SVC
@@ -37,7 +37,7 @@ flowchart TB
 | Бизнес-логика | `Services/` | RBAC, приложения, пользователи, сессии, PAT, заявки, бот, аудит, события, настройки |
 | API | `Api/` | Admin API, App API (самоуправление), Bot API, события |
 | Интерфейс | `Pages/` | Страницы пользователя (`Account/`), админка (`Admin/`), документация (`Docs/`) |
-| Инфраструктура | `Infrastructure/` | Регистрация сервисов, старт (миграции, ключи, начальные данные), безопасность, CORS, аудит-фильтры, фоновые задачи, журналирование (Serilog: консоль/файл/Loki/OTLP, уровни из БД), метрики и трассировки (OpenTelemetry: Prometheus, OTLP) |
+| Инфраструктура | `Infrastructure/` | Регистрация сервисов, старт (миграции, ключи, начальные данные), безопасность, CORS, аудит-фильтры, фоновые задачи, журналирование (Serilog: консоль/файл/OTLP, уровни из БД), метрики и трассировки (OpenTelemetry: `/metrics` в формате Prometheus, OTLP) |
 | Безопасность данных | `Security/` | Шифрование полей, мастер-ключ, ключи подписи, политика паролей |
 | Данные | `Data/` | Модель EF Core, миграции для SQLite и PostgreSQL |
 | Локализация | `Localization/` | Встроенные языковые пакеты, пакеты из БД, выбор языка |

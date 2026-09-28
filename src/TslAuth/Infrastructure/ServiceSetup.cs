@@ -26,7 +26,7 @@ public static class ServiceSetup
         var services = builder.Services;
         var config = builder.Configuration;
 
-        // Журналирование (Serilog) и мониторинг (Prometheus/OTLP/Loki) — по секции Observability; в режиме CLI
+        // Журналирование (Serilog) и мониторинг (/metrics для VictoriaMetrics, OTLP) — по секции Observability; в режиме CLI
         // экспортёры метрик и трассировок не поднимаются: команда отработает и завершится.
         var observability = ObservabilitySetup.Read(config);
         builder.AddTslLogging(observability);

@@ -1,51 +1,43 @@
-# Источники данных Grafana эталонного стенда. Связи: из строки лога — в трассировку (по trace_id),
-# из span'а — в логи узла и в метрики (span metrics из Tempo).
+# Источники данных Grafana эталонного стенда (всё хранение — Victoria):
+#   VictoriaMetrics — метрики (совместима с Prometheus API, встроенный тип prometheus);
+#   VictoriaLogs    — логи (плагин victoriametrics-logs-datasource, ставится при сборке образа Grafana);
+#   VictoriaTraces  — трассировки (Jaeger Query API, встроенный тип jaeger).
+# Связи: из строки лога — в трассировку по trace_id; из span'а — в логи того же trace_id.
 apiVersion: 1
 
 datasources:
-  - name: Prometheus
-    uid: prometheus
+  - name: VictoriaMetrics
+    uid: victoriametrics
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://victoriametrics:8428
     isDefault: true
     jsonData:
       httpMethod: POST
-      exemplarTraceIdDestinations:
-        - name: trace_id
-          datasourceUid: tempo
 
-  - name: Loki
-    uid: loki
-    type: loki
+  - name: VictoriaLogs
+    uid: victorialogs
+    type: victoriametrics-logs-datasource
     access: proxy
-    url: http://loki:3100
+    url: http://victorialogs:9428
     jsonData:
       derivedFields:
         - name: TraceID
-          datasourceUid: tempo
-          matcherType: regex
-          matcherRegex: '"_?TraceId":"(\w+)"'   # sink Loki добавляет к служебному имени префикс «_»
+          datasourceUid: victoriatraces
+          matcherType: label
+          matcherRegex: trace_id
           url: "$${__value.raw}"   # $$ — экранирование: Grafana не подставляет переменную окружения
 
-  - name: Tempo
-    uid: tempo
-    type: tempo
+  - name: VictoriaTraces
+    uid: victoriatraces
+    type: jaeger
     access: proxy
-    url: http://tempo:3200
+    url: http://victoriatraces:10428/select/jaeger
     jsonData:
       tracesToLogsV2:
-        datasourceUid: loki
+        datasourceUid: victorialogs
         spanStartTimeShift: "-5m"
         spanEndTimeShift: "5m"
         filterByTraceID: true
-        tags: [{ key: service.name, value: service }]
-      tracesToMetrics:
-        datasourceUid: prometheus
-        tags: [{ key: service.name, value: service }]
-      serviceMap:
-        datasourceUid: prometheus
-      nodeGraph:
-        enabled: true
-      lokiSearch:
-        datasourceUid: loki
+        customQuery: true
+        query: 'trace_id:"$${__trace.traceId}"'

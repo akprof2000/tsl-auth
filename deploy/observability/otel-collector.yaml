@@ -1,7 +1,8 @@
-# OpenTelemetry Collector эталонного стенда: принимает OTLP от TSL Auth (и любых приложений)
-# и раскладывает сигналы по бэкендам: трассировки → Tempo, метрики → Prometheus (remote write), логи → Loki (OTLP).
-# В стенде сервис шлёт коллектору только трассировки (метрики Prometheus забирает сам, логи идут в Loki напрямую),
-# но конвейеры метрик и логов настроены — достаточно включить OBS_OTLP_METRICS / OBS_OTLP_LOGS.
+# OpenTelemetry Collector эталонного стенда: принимает OTLP и раскладывает сигналы по хранилищам Victoria:
+# трассировки → VictoriaTraces, метрики → VictoriaMetrics, логи → VictoriaLogs (все — OTLP/HTTP).
+# В стенде TSL Auth шлёт сюда только трассировки: метрики VictoriaMetrics забирает с /metrics сама (pull),
+# логи сервис пишет в stdout, их доставляет Vector через Docker socket. Конвейеры метрик и логов оставлены
+# для приложений, которые умеют только OTLP.
 receivers:
   otlp:
     protocols:
@@ -18,16 +19,16 @@ processors:
     limit_mib: 256
 
 exporters:
-  otlp/tempo:
-    endpoint: tempo:4317
+  otlphttp/victoriatraces:
+    traces_endpoint: http://victoriatraces:10428/insert/opentelemetry/v1/traces
     tls:
       insecure: true
-  prometheusremotewrite:
-    endpoint: http://prometheus:9090/api/v1/write
-    resource_to_telemetry_conversion:
-      enabled: true          # service.instance.id и прочие атрибуты ресурса — метками метрик
-  otlphttp/loki:
-    endpoint: http://loki:3100/otlp
+  otlphttp/victoriametrics:
+    metrics_endpoint: http://victoriametrics:8428/opentelemetry/v1/metrics
+    tls:
+      insecure: true
+  otlphttp/victorialogs:
+    logs_endpoint: http://victorialogs:9428/insert/opentelemetry/v1/logs
     tls:
       insecure: true
 
@@ -44,12 +45,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlphttp/victoriatraces]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [otlphttp/victoriametrics]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/loki]
+      exporters: [otlphttp/victorialogs]

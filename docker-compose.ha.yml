@@ -62,8 +62,8 @@ x-auth: &auth
     Smtp__Password: "${SMTP_PASSWORD:-}"
     # Журналирование: уровень и формат консоли (Text | Json); глубина по категориям меняется в админке без перезапуска.
     Logging__LogLevel__Default: "${LOG_LEVEL:-Information}"
-    Logging__Format: "${LOG_FORMAT:-Text}"
-    # Мониторинг (см. docs/operations.md). Prometheus опрашивает каждый узел отдельно (auth1..auth3:8080/metrics)
+    Logging__Format: "${LOG_FORMAT:-Json}"   # stdout в JSON: его разбирает Vector (стенд мониторинга)
+    # Мониторинг (см. docs/operations.md). VictoriaMetrics опрашивает каждый узел отдельно (auth1..auth3:8080/metrics)
     # внутри docker-сети; узел в метриках и логах различается по service.instance.id = hostname (auth1..auth3).
     Observability__Prometheus__Enabled: "${OBS_PROMETHEUS_ENABLED:-false}"
     Observability__Prometheus__Token: "${OBS_PROMETHEUS_TOKEN:-}"
@@ -71,12 +71,8 @@ x-auth: &auth
     Observability__OpenTelemetry__Protocol: "${OBS_OTLP_PROTOCOL:-grpc}"
     Observability__OpenTelemetry__Headers: "${OBS_OTLP_HEADERS:-}"
     Observability__OpenTelemetry__Traces: "${OBS_OTLP_TRACES:-true}"
-    Observability__OpenTelemetry__Metrics: "${OBS_OTLP_METRICS:-true}"
-    Observability__OpenTelemetry__Logs: "${OBS_OTLP_LOGS:-true}"
-    Observability__Loki__Url: "${OBS_LOKI_URL:-}"
-    Observability__Loki__Labels: "${OBS_LOKI_LABELS:-}"
-    Observability__Loki__Username: "${OBS_LOKI_USER:-}"
-    Observability__Loki__Password: "${OBS_LOKI_PASSWORD:-}"
+    Observability__OpenTelemetry__Metrics: "${OBS_OTLP_METRICS:-false}"
+    Observability__OpenTelemetry__Logs: "${OBS_OTLP_LOGS:-false}"
     Observability__ResourceAttributes: "${OBS_RESOURCE_ATTRIBUTES:-}"
 
 services:

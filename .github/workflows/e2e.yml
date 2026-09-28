@@ -115,6 +115,12 @@ jobs:
           docker compose down -v
           ./tests/resilience/run-env-secrets.ps1
 
+      # Стенд мониторинга на Victoria: сервис пишет только в stdout и отдаёт /metrics, данные доходят
+      # до VictoriaMetrics, VictoriaLogs (через Vector и Docker socket) и VictoriaTraces; Grafana видит все источники.
+      - name: Стенд мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces)
+        shell: pwsh
+        run: ./tests/resilience/run-observability.ps1
+
       - name: Секреты из OpenBao (одиночный режим и кластер)
         shell: pwsh
         run: |

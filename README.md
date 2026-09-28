@@ -37,7 +37,7 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 [![Offline](https://img.shields.io/badge/работает-без%20интернета-informational)](docs/deployment.md#закрытый-контур-без-интернета)
 [![Prometheus](https://img.shields.io/badge/Prometheus-metrics-E6522C?logo=prometheus&logoColor=white)](docs/operations.md#мониторинг)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP-000000?logo=opentelemetry&logoColor=white)](docs/operations.md#трассировки-и-логи-opentelemetry)
-[![Grafana](https://img.shields.io/badge/Grafana-Loki%20·%20Tempo-F46800?logo=grafana&logoColor=white)](docs/operations.md#эталонный-стенд-grafana)
+[![Grafana](https://img.shields.io/badge/Grafana-VictoriaMetrics%20·%20Logs%20·%20Traces-F46800?logo=grafana&logoColor=white)](docs/operations.md#эталонный-стенд-grafana)
 [![Демо](https://img.shields.io/badge/демо-.NET%20·%20Node%20·%20Go%20·%20Python-yellow)](samples/)
 
 ```mermaid
@@ -75,7 +75,7 @@ flowchart LR
 | **БД** | Встроенная SQLite (один узел) или PostgreSQL (кластер); схема создаётся и обновляется автоматически |
 | **Интеграция** | Admin API, App API, Bot API, лента событий (long-polling, SSE, вебхуки), OpenAPI + интерактивный справочник `/docs/api`, руководство `/docs` |
 | **Интерфейс** | Веб-админка; страницы входа на нескольких языках (языковые пакеты), брендирование под приложение |
-| **Наблюдаемость** | Метрики Prometheus (`/metrics`: токены, входы, события безопасности, сессии, HTTP, .NET), трассировки/метрики/логи по OpenTelemetry (OTLP), логи в Grafana Loki; уровни логирования меняются в админке без перезапуска; эталонный стенд Grafana с дашбордом |
+| **Наблюдаемость** | Метрики Prometheus (`/metrics`: токены, входы, события безопасности, сессии, HTTP, .NET), трассировки по OpenTelemetry (OTLP), логи в stdout (JSON) со сбором через Vector в VictoriaLogs; уровни логирования меняются в админке без перезапуска; эталонный стенд Grafana с дашбордом |
 
 ## Образы
 
@@ -104,7 +104,7 @@ compose задайте `Auth__Issuer` явно ([развёртывание](doc
 
 **MVP.** Все настройки, включая секреты, задаются переменными контейнера (`.env`, см. [`.env.example`](.env.example))
 или файлом настроек ([`deploy/appsettings.mvp.example.json`](deploy/appsettings.mvp.example.json)). Это касается
-мастер-ключа, пароля администратора, секрета Admin API, строки подключения к БД, паролей SMTP и Loki, токенов мониторинга.
+мастер-ключа, пароля администратора, секрета Admin API, строки подключения к БД, паролей SMTP, токенов мониторинга.
 Команды выше работают именно так. Держите `.env` и файл настроек вне репозитория с правами `0600`.
 
 **После MVP — OpenBao.** Секреты переносятся в OpenBao без изменения ключей: ключ секрета совпадает с именем
@@ -174,7 +174,7 @@ docker compose -f docker-compose.ha.yml up -d --build
 | [Администрирование](docs/administration.md) | Работа в админке: приложения, матрица доступа, пользователи, заявки, журнал, настройки |
 | [Безопасность](docs/security.md) | Модель угроз, меры защиты, результаты сканирования |
 | [Тестирование](docs/testing.md) | Пирамида тестов, как запускать, результаты нагрузки и отказоустойчивости |
-| [Эксплуатация](docs/operations.md) | Проверки состояния, журналы, мониторинг (Prometheus, OpenTelemetry, Loki, стенд Grafana), восстановление доступа, типовые проблемы |
+| [Эксплуатация](docs/operations.md) | Проверки состояния, журналы, мониторинг (метрики `/metrics`, OpenTelemetry, VictoriaMetrics/Logs/Traces, стенд Grafana), восстановление доступа, типовые проблемы |
 
 ## Структура репозитория
 
@@ -183,7 +183,7 @@ src/TslAuth/            сервис (ASP.NET Core, OpenIddict, EF Core)
 tests/                  unit, интеграционные, UI (Playwright), нагрузка (k6), отказоустойчивость
 samples/                демо-приложения: .NET MVC, Node.js SPA+API, Go API, Python
                         docflow-demo — документооборот: PWA (React) + C# API + бот безопасности
-deploy/                 конфигурации nginx (HTTP и TLS), стенд мониторинга (Prometheus, Loki, Tempo, коллектор, Grafana), пример appsettings
+deploy/                 конфигурации nginx (HTTP и TLS), стенд мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector, коллектор, Grafana), пример appsettings
 docker-compose*.yml     одиночный режим, кластер и оверлеи: HTTPS (PEM/PFX), docker secrets, доступ к узлам для диагностики, мониторинг
 scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации
 docs/                   документация

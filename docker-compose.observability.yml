@@ -1,13 +1,17 @@
-# Эталонный стенд мониторинга: Prometheus (метрики), Loki (логи), Tempo (трассировки), OpenTelemetry Collector
-# и Grafana с готовым дашбордом «TSL Auth». Накладывается на любой режим:
+# Эталонный стенд мониторинга на Victoria: VictoriaMetrics (метрики), VictoriaLogs (логи), VictoriaTraces (трассировки),
+# Vector (сбор логов контейнеров через Docker socket), OpenTelemetry Collector (приём трассировок) и Grafana
+# с готовым дашбордом «TSL Auth». Накладывается на любой режим:
 #   docker compose -f docker-compose.yml    -f docker-compose.observability.yml up -d
-#   docker compose -f docker-compose.ha.yml -f docker-compose.observability.yml up -d   (+ OBS_PROMETHEUS_CONFIG, см. ниже)
-# Сервис подключается к стенду переменными в .env (см. .env.example, блок «Мониторинг»):
-#   OBS_PROMETHEUS_ENABLED=true  OBS_OTLP_ENDPOINT=http://otel-collector:4317  OBS_OTLP_METRICS=false  OBS_OTLP_LOGS=false
-#   OBS_LOKI_URL=http://loki:3100
-# Grafana: http://localhost:3000 (admin / OBS_GRAFANA_PASSWORD, по умолчанию admin — смените; просмотр без входа разрешён).
-# Prometheus: http://localhost:9090. Порты привязаны к 127.0.0.1 — стенд для внутреннего использования.
-# Образы для закрытого контура: scripts/export-images.ps1 -Observability.
+#   docker compose -f docker-compose.ha.yml -f docker-compose.observability.yml up -d   (+ OBS_VM_SCRAPE_CONFIG, см. ниже)
+#
+# Сервисы в хранилища Victoria сами не пишут:
+#   логи    — только stdout (Logging__Format=Json), Vector читает их через /var/run/docker.sock и отправляет в VictoriaLogs;
+#   метрики — VictoriaMetrics забирает с /metrics сервиса (pull, OBS_PROMETHEUS_ENABLED=true);
+#   трассировки — OTLP в коллектор (OBS_OTLP_ENDPOINT=http://otel-collector:4317), коллектор — в VictoriaTraces.
+# Grafana: http://localhost:3000 (admin / OBS_GRAFANA_PASSWORD; просмотр без входа разрешён).
+# Встроенные интерфейсы: VictoriaMetrics http://localhost:8428/vmui, VictoriaLogs http://localhost:9428/select/vmui.
+# Порты привязаны к 127.0.0.1 — стенд для внутреннего использования.
+# Образы для закрытого контура: scripts/export-images.ps1 -Observability (Grafana собирается с плагином VictoriaLogs).
 
 x-logging: &logging
   driver: json-file
@@ -20,61 +24,74 @@ x-hardening: &hardening
   logging: *logging
 
 services:
-  prometheus:
+  victoriametrics:
     <<: *hardening
-    image: prom/prometheus:v3.15.0
-    container_name: tsl-auth-prometheus
-    user: "65534:65534"
+    image: victoriametrics/victoria-metrics:v1.153.0
+    container_name: tsl-auth-victoriametrics
     command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
-      - --web.enable-remote-write-receiver     # метрики из коллектора и span-метрики из Tempo
+      - -storageDataPath=/storage
+      - -retentionPeriod=${OBS_METRICS_RETENTION:-15d}
+      # Опрос /metrics по конфигурации в формате Prometheus (scrape_configs).
+      - -promscrape.config=/etc/vmscrape/vmscrape.yml
     ports:
-      - "127.0.0.1:${OBS_PROMETHEUS_PORT:-9090}:9090"
+      - "127.0.0.1:${OBS_VM_PORT:-8428}:8428"
     volumes:
-      # Одиночный режим — prometheus.yml (цель auth:8080); кластер — OBS_PROMETHEUS_CONFIG=deploy/observability/prometheus-ha.yml.
-      - ${OBS_PROMETHEUS_CONFIG:-./deploy/observability/prometheus.yml}:/etc/prometheus/prometheus.yml:ro
-      - prometheus-token:/etc/prometheus
-      - prometheus-data:/prometheus
+      # Одиночный режим — vmscrape.yml (цель auth:8080); кластер — OBS_VM_SCRAPE_CONFIG=deploy/observability/vmscrape-ha.yml.
+      - ${OBS_VM_SCRAPE_CONFIG:-./deploy/observability/vmscrape.yml}:/etc/vmscrape/vmscrape.yml:ro
+      - vmscrape-token:/etc/vmscrape/secret:ro
+      - victoriametrics-data:/storage
     depends_on:
-      prometheus-token:
+      vmscrape-token:
         condition: service_completed_successfully
     mem_limit: 512m
 
-  # Токен для опроса /metrics (OBS_PROMETHEUS_TOKEN) попадает в Prometheus файлом, а не через окружение.
-  prometheus-token:
-    image: prom/prometheus:v3.15.0
-    container_name: tsl-auth-prometheus-token
-    user: "65534:65534"
-    entrypoint: ["/bin/sh", "-c", "printf '%s' \"$$TOKEN\" > /etc/prometheus/token"]
+  # Токен для опроса /metrics (OBS_PROMETHEUS_TOKEN) попадает в VictoriaMetrics файлом, а не через окружение.
+  vmscrape-token:
+    image: victoriametrics/victoria-metrics:v1.153.0
+    container_name: tsl-auth-vmscrape-token
+    entrypoint: ["/bin/sh", "-c", "printf '%s' \"$$TOKEN\" > /secret/token"]
     environment:
       TOKEN: "${OBS_PROMETHEUS_TOKEN:-}"
     volumes:
-      - prometheus-token:/etc/prometheus
+      - vmscrape-token:/secret
     logging: *logging
 
-  loki:
+  victorialogs:
     <<: *hardening
-    image: grafana/loki:3.7.8
-    container_name: tsl-auth-loki
-    user: "10001:10001"
-    command: ["-config.file=/etc/loki/loki.yaml"]
+    image: victoriametrics/victoria-logs:v1.52.0
+    container_name: tsl-auth-victorialogs
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${OBS_LOGS_RETENTION:-30d}
+    ports:
+      - "127.0.0.1:${OBS_VLOGS_PORT:-9428}:9428"
     volumes:
-      - ./deploy/observability/loki.yaml:/etc/loki/loki.yaml:ro
-      - loki-data:/loki
+      - victorialogs-data:/storage
     mem_limit: 512m
 
-  tempo:
+  victoriatraces:
     <<: *hardening
-    image: grafana/tempo:2.10.8
-    container_name: tsl-auth-tempo
-    user: "10001:10001"
-    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    image: victoriametrics/victoria-traces:v0.11.1
+    container_name: tsl-auth-victoriatraces
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=${OBS_TRACES_RETENTION:-7d}
     volumes:
-      - ./deploy/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
-      - tempo-data:/var/tempo
+      - victoriatraces-data:/storage
     mem_limit: 512m
+
+  # Сбор логов: читает stdout/stderr всех контейнеров хоста через Docker socket (только чтение) — сервисы ничего не настраивают.
+  vector:
+    <<: *hardening
+    image: timberio/vector:0.58.0-distroless-libc
+    container_name: tsl-auth-vector
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ./deploy/observability/vector.yaml:/etc/vector/vector.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector-data:/var/lib/vector
+    depends_on: [victorialogs]
+    mem_limit: 256m
 
   otel-collector:
     <<: *hardening
@@ -83,12 +100,14 @@ services:
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./deploy/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    depends_on: [tempo, loki, prometheus]
+    depends_on: [victoriatraces, victoriametrics, victorialogs]
     mem_limit: 384m
 
   grafana:
     <<: *hardening
-    image: grafana/grafana:13.2.2
+    # Образ с плагином VictoriaLogs собирается локально (deploy/observability/grafana/Dockerfile).
+    build: ./deploy/observability/grafana
+    image: tsl-auth-grafana:13.2.2-vl0.32.0
     container_name: tsl-auth-grafana
     user: "472:472"
     environment:
@@ -99,6 +118,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
     ports:
       - "127.0.0.1:${OBS_GRAFANA_PORT:-3000}:3000"
@@ -106,12 +126,13 @@ services:
       - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    depends_on: [prometheus, loki, tempo]
+    depends_on: [victoriametrics, victorialogs, victoriatraces]
     mem_limit: 512m
 
 volumes:
-  prometheus-data:
-  prometheus-token:
-  loki-data:
-  tempo-data:
+  victoriametrics-data:
+  vmscrape-token:
+  victorialogs-data:
+  victoriatraces-data:
+  vector-data:
   grafana-data:

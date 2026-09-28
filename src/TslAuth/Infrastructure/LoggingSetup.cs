@@ -3,7 +3,6 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
-using Serilog.Sinks.Grafana.Loki;
 using Serilog.Sinks.OpenTelemetry;
 using TslAuth.Options;
 using TslAuth.Services;
@@ -11,7 +10,8 @@ using TslAuth.Services;
 namespace TslAuth.Infrastructure;
 
 /// <summary>
-/// Журналирование через Serilog: консоль (текст или JSON), Grafana Loki и OTLP — по настройкам Observability.
+/// Журналирование через Serilog: консоль (текст или JSON) и OTLP. В контейнере логи пишутся только в stdout (Logging__Format=Json);
+/// в VictoriaLogs их доставляет сборщик Vector, читающий логи контейнеров через Docker socket; сервис сам в хранилище логов не пишет. Приёмники — по настройкам Observability.
 /// Уровни: значения по умолчанию — из <c>Logging:LogLevel</c> (формат ASP.NET Core, совместим с прежними
 /// переменными <c>Logging__LogLevel__*</c>); поверх них — настройки из БД (админка → «Настройки» →
 /// «Журналирование»), которые меняют глубину логирования на всех узлах без перезапуска (см. <see cref="LogLevels"/>).
@@ -46,8 +46,8 @@ public static class LoggingSetup
             cfg.MinimumLevel.ControlledBy(levels.Root)
                 .Filter.With(levels)
                 .Enrich.FromLogContext()
-                // TraceId/SpanId текущего запроса — свойствами записи: по ним Grafana связывает строку лога в Loki
-                // (и в файле, и в JSON-консоли) со span'ом в Tempo.
+                // TraceId/SpanId текущего запроса — свойствами записи: по ним Grafana связывает строку лога в VictoriaLogs (доставленную из stdout)
+                // (и в файле, и в JSON-консоли) со span'ом в VictoriaTraces.
                 .Enrich.With<TraceEnricher>()
                 .Enrich.WithProperty("service", observability.ServiceName)
                 .Enrich.WithProperty("instance", instance)
@@ -64,29 +64,6 @@ public static class LoggingSetup
             var file = builder.Configuration.GetSection("Logging:File").Get<FileLogOptions>() ?? new FileLogOptions();
             if (!string.IsNullOrWhiteSpace(file.Path))
                 AddFile(cfg, file, json ? new RenderedCompactJsonFormatter() : null, template);
-
-            var loki = observability.Loki;
-            if (loki.Enabled)
-            {
-                var labels = ParseLabels(loki.Labels)
-                    .Prepend(new LokiLabel { Key = "instance", Value = instance })
-                    .Prepend(new LokiLabel { Key = "service", Value = observability.ServiceName })
-                    .ToArray();
-                cfg.WriteTo.GrafanaLoki(loki.Url!.TrimEnd('/'),
-                    labels: labels,
-                    // Уровень — метка потока: по нему Grafana раскрашивает строки и строит гистограммы без разбора текста.
-                    handleLogLevelAsLabel: true,
-                    credentials: string.IsNullOrEmpty(loki.Username) ? null
-                        : new LokiCredentials { Login = loki.Username, Password = loki.Password ?? "" },
-                    tenant: string.IsNullOrWhiteSpace(loki.Tenant) ? null : loki.Tenant,
-                    restrictedToMinimumLevel: ParseLevel(loki.MinimumLevel) ?? LogEventLevel.Information,
-                    batchSizeLimit: loki.BatchSize,
-                    queueLimit: loki.QueueLimit,
-                    period: TimeSpan.FromSeconds(Math.Max(1, loki.PeriodSeconds)),
-                    // Строка — JSON с полями сообщения (уровень, категория, параметры шаблона): Loki разбирает его
-                    // конвейером `| json`.
-                    textFormatter: new LokiJsonTextFormatter());
-            }
 
             var otlp = observability.OpenTelemetry;
             if (otlp.Enabled && otlp.Logs)
@@ -123,11 +100,6 @@ public static class LoggingSetup
     /// <summary>Идентификатор экземпляра для метрик и логов: настройка или имя хоста (в контейнере — его id).</summary>
     public static string InstanceId(ObservabilityOptions o) =>
         string.IsNullOrWhiteSpace(o.InstanceId) ? Environment.MachineName : o.InstanceId.Trim();
-
-    /// <summary>Разбирает «k=v,k2=v2» в метки Loki; элементы без «=» — ошибка старта (опечатка не должна пройти молча).</summary>
-    internal static List<LokiLabel> ParseLabels(string? value) =>
-        ObservabilitySetup.ParsePairs(value, "Observability:Loki:Labels")
-            .Select(p => new LokiLabel { Key = p.Key, Value = p.Value }).ToList();
 
     /// <summary>Уровень в терминах ASP.NET Core (Trace…Critical, None) → Serilog; неизвестный — null.</summary>
     public static LogEventLevel? ParseLevel(string? level) => level?.Trim().ToLowerInvariant() switch

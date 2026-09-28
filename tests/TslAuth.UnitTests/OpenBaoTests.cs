@@ -14,7 +14,7 @@ public class OpenBaoTests
     /// <summary>Ключ секрета в OpenBao преобразуется в ключ конфигурации .NET.</summary>
     [Theory]
     [InlineData("Encryption__MasterKey", "Encryption:MasterKey")]
-    [InlineData("Observability__Loki__Password", "Observability:Loki:Password")]
+    [InlineData("Observability__Prometheus__Token", "Observability:Prometheus:Token")]
     [InlineData("Smtp:Password", "Smtp:Password")]
     public void SecretKey_IsConfigurationKey(string key, string expected) => Assert.Equal(expected, OpenBaoConfiguration.NormalizeKey(key));
 

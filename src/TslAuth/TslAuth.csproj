@@ -32,9 +32,8 @@
     <PackageReference Include="OpenIddict.AspNetCore" Version="7.7.1" />
     <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.7.1" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.17.10" />
-    <!-- Журналирование: Serilog (консоль текст/JSON, уровни на лету) и его sink'и в Grafana Loki и OTLP. -->
+    <!-- Журналирование: Serilog (консоль текст/JSON, уровни на лету) (stdout текст/JSON; sink OTLP — по желанию). -->
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageReference Include="Serilog.Sinks.Grafana.Loki" Version="9.0.2" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
     <!-- Метрики и трассировки: OpenTelemetry → Prometheus (/metrics) и OTLP (collector, Tempo, Jaeger).
          Экспортёр Prometheus для ASP.NET Core пока выпускается только как beta — стабильного релиза у него нет. -->

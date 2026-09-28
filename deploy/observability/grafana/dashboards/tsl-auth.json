@@ -23,7 +23,7 @@
         "type": "query",
         "datasource": {
           "type": "prometheus",
-          "uid": "prometheus"
+          "uid": "victoriametrics"
         },
         "query": "label_values(tsl_auth_users{job=\"tsl-auth\"}, instance)",
         "refresh": 2,
@@ -117,7 +117,7 @@
       "title": "Запросов в секунду по маршрутам",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -126,7 +126,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -167,7 +167,7 @@
       "title": "Латентность, p50 / p95 / p99",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -176,7 +176,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -185,7 +185,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -194,7 +194,7 @@
           "refId": "C",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -235,7 +235,7 @@
       "title": "Ошибки 5xx, %",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -245,7 +245,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -301,7 +301,7 @@
       "title": "Активных запросов",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -311,7 +311,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -359,7 +359,7 @@
       "title": "Ответы по кодам",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -368,7 +368,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -409,7 +409,7 @@
       "title": "Сработавшие лимиты (429)",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -418,7 +418,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -473,7 +473,7 @@
       "title": "Выдано токенов по типу гранта",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -482,7 +482,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -524,7 +524,7 @@
       "title": "Выдано токенов по приложениям",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -533,7 +533,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -574,7 +574,7 @@
       "title": "Отклонённые запросы токенов",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -583,7 +583,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -625,7 +625,7 @@
       "title": "Входы пользователей",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -634,7 +634,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -643,7 +643,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -652,7 +652,7 @@
           "refId": "C",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -693,7 +693,7 @@
       "title": "События безопасности (Warning и выше)",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -702,7 +702,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -744,7 +744,7 @@
       "title": "Заявки, регистрации, пароли",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -753,7 +753,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -762,7 +762,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -771,7 +771,7 @@
           "refId": "C",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -825,7 +825,7 @@
       "title": "Активных сессий",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -835,7 +835,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -884,7 +884,7 @@
       "title": "Пользователей",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -894,7 +894,7 @@
           "legendFormat": "активных",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -942,7 +942,7 @@
       "title": "Заблокировано / отключено",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -952,7 +952,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1000,7 +1000,7 @@
       "title": "Приложений",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1010,7 +1010,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1058,7 +1058,7 @@
       "title": "База данных",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1068,7 +1068,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1121,7 +1121,7 @@
       "title": "Потеряно событий аудита",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1131,7 +1131,7 @@
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1184,7 +1184,7 @@
       "title": "Доставка вебхуков",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1193,7 +1193,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1235,7 +1235,7 @@
       "title": "Запросы к БД (PostgreSQL), p95",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1244,7 +1244,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1286,7 +1286,7 @@
       "title": "Соединения с БД",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1295,7 +1295,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -1304,7 +1304,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1358,7 +1358,7 @@
       "title": "Память процесса",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1367,7 +1367,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -1376,7 +1376,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1417,7 +1417,7 @@
       "title": "CPU",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1426,7 +1426,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1468,7 +1468,7 @@
       "title": "Сборки мусора и пул потоков",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "victoriametrics"
       },
       "targets": [
         {
@@ -1477,7 +1477,7 @@
           "refId": "A",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         },
         {
@@ -1486,7 +1486,7 @@
           "refId": "B",
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "victoriametrics"
           }
         }
       ],
@@ -1524,7 +1524,7 @@
     },
     {
       "type": "row",
-      "title": "Логи (Loki)",
+      "title": "Логи (VictoriaLogs)",
       "collapsed": false,
       "panels": [],
       "gridPos": {
@@ -1539,17 +1539,18 @@
       "type": "logs",
       "title": "Записи сервиса",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "targets": [
         {
-          "expr": "{service=\"tsl-auth\", instance=~\"$instance\", level=~\"$level\"} | json | line_format \"{{.SourceContext}}: {{.Message}}\"",
+          "expr": "service:\"tsl-auth\" instance:~\"$instance\" level:~\"$level\"",
           "refId": "A",
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          }
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "queryType": "instant"
         }
       ],
       "options": {
@@ -1572,18 +1573,19 @@
       "type": "timeseries",
       "title": "Объём логов по уровням",
       "datasource": {
-        "type": "loki",
-        "uid": "loki"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
       },
       "targets": [
         {
-          "expr": "sum by (level) (count_over_time({service=\"tsl-auth\", instance=~\"$instance\"}[1m]))",
+          "expr": "service:\"tsl-auth\" instance:~\"$instance\" level:~\"$level\" | stats by (level) count() hits",
           "legendFormat": "{{level}}",
           "refId": "A",
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          }
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "queryType": "statsRange"
         }
       ],
       "fieldConfig": {

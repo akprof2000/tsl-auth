@@ -3,13 +3,13 @@ namespace TslAuth.Options;
 /// <summary>
 /// Секция "Observability": подключение внешних систем мониторинга. Каждая подсистема включается отдельно и только
 /// когда она реально подключена: метрики собираются, если задан экспорт в Prometheus или OTLP; трассировки —
-/// если задан OTLP-адрес; логи в Loki — если задан его адрес. Ничего не задано — накладных расходов нет.
+/// если задан OTLP-адрес; логи сервис пишет только в stdout (JSON), их забирает сборщик через Docker socket. Ничего не задано — накладных расходов нет.
 /// </summary>
 public sealed class ObservabilityOptions
 {
     public const string Section = "Observability";
 
-    /// <summary>service.name в метриках, трассировках и логах (метка service в Loki).</summary>
+    /// <summary>service.name в метриках, трассировках и логах (поле service в записях лога).</summary>
     public string ServiceName { get; set; } = "tsl-auth";
 
     /// <summary>service.instance.id / метка instance; пусто — имя хоста (в контейнере — его id, в кластере — auth1…auth3).</summary>
@@ -20,7 +20,6 @@ public sealed class ObservabilityOptions
 
     public PrometheusOptions Prometheus { get; set; } = new();
     public OpenTelemetryOptions OpenTelemetry { get; set; } = new();
-    public LokiOptions Loki { get; set; } = new();
 
     /// <summary>Есть ли кому отдавать метрики (иначе счётчики не собираются вовсе).</summary>
     public bool MetricsEnabled => Prometheus.Enabled || (OpenTelemetry.Enabled && OpenTelemetry.Metrics);
@@ -49,7 +48,7 @@ public sealed class PrometheusOptions
 }
 
 /// <summary>
-/// Экспорт по OTLP в OpenTelemetry Collector или напрямую в бэкенд (Tempo, Jaeger, Loki ≥ 3.0 принимают OTLP).
+/// Экспорт по OTLP в OpenTelemetry Collector (в стенде — трассировки в VictoriaTraces).
 /// Включается заданием адреса; если адрес пуст, берётся стандартная переменная OTEL_EXPORTER_OTLP_ENDPOINT.
 /// </summary>
 public sealed class OpenTelemetryOptions
@@ -83,30 +82,3 @@ public sealed class OpenTelemetryOptions
                           || Protocol.Equals("http/protobuf", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>Отправка логов прямо в Grafana Loki (push API, любая версия Loki); включается заданием адреса.</summary>
-public sealed class LokiOptions
-{
-    /// <summary>Адрес Loki: <c>http://loki:3100</c>.</summary>
-    public string? Url { get; set; }
-
-    /// <summary>Статические метки потока: <c>env=prod,dc=msk</c>. Метки service, instance и level добавляются всегда.</summary>
-    public string? Labels { get; set; }
-
-    /// <summary>Идентификатор арендатора (X-Scope-OrgID) для Loki в multi-tenant режиме.</summary>
-    public string? Tenant { get; set; }
-
-    public string? Username { get; set; }
-    public string? Password { get; set; }
-    public string? PasswordFile { get; set; }
-
-    /// <summary>Минимальный уровень для отправки (Trace, Debug, Information, Warning, Error, Critical).</summary>
-    public string MinimumLevel { get; set; } = "Information";
-
-    public int BatchSize { get; set; } = 500;
-    public int PeriodSeconds { get; set; } = 2;
-
-    /// <summary>Сколько записей держать в очереди при недоступности Loki (старые отбрасываются).</summary>
-    public int QueueLimit { get; set; } = 10_000;
-
-    public bool Enabled => !string.IsNullOrWhiteSpace(Url);
-}

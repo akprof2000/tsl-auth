@@ -13,7 +13,7 @@ namespace TslAuth.Infrastructure;
 /// Метрики и трассировки через OpenTelemetry. Подключаются только к тому, что настроено:
 /// Prometheus — эндпоинт <c>/metrics</c> (pull), OTLP — отправка в коллектор (push). Без настроек ни MeterProvider,
 /// ни TracerProvider не создаются, инструменты ASP.NET Core и прикладные счётчики остаются без слушателей.
-/// Логи (Serilog → консоль/Loki/OTLP) — в <see cref="LoggingSetup"/>.
+/// Логи (Serilog → stdout; при необходимости OTLP) — в <see cref="LoggingSetup"/>.
 /// </summary>
 public static class ObservabilitySetup
 {
@@ -23,13 +23,10 @@ public static class ObservabilitySetup
         var o = config.GetSection(ObservabilityOptions.Section).Get<ObservabilityOptions>() ?? new ObservabilityOptions();
         o.Prometheus.Token = SecretFile.Read(o.Prometheus.TokenFile, "Observability:Prometheus:TokenFile") ?? o.Prometheus.Token;
         o.OpenTelemetry.Headers = SecretFile.Read(o.OpenTelemetry.HeadersFile, "Observability:OpenTelemetry:HeadersFile") ?? o.OpenTelemetry.Headers;
-        o.Loki.Password = SecretFile.Read(o.Loki.PasswordFile, "Observability:Loki:PasswordFile") ?? o.Loki.Password;
         if (string.IsNullOrWhiteSpace(o.OpenTelemetry.Endpoint))
             o.OpenTelemetry.Endpoint = Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT");
         if (o.OpenTelemetry.Enabled && !IsHttpUrl(o.OpenTelemetry.Endpoint))
             throw new InvalidOperationException($"Observability:OpenTelemetry:Endpoint: '{o.OpenTelemetry.Endpoint}' — ожидается адрес http(s)://хост:порт.");
-        if (o.Loki.Enabled && !IsHttpUrl(o.Loki.Url))
-            throw new InvalidOperationException($"Observability:Loki:Url: '{o.Loki.Url}' — ожидается адрес http(s)://хост:порт.");
         if (o.OpenTelemetry.TraceSamplingRatio is < 0 or > 1)
             throw new InvalidOperationException("Observability:OpenTelemetry:TraceSamplingRatio: значение от 0 до 1.");
         return o;

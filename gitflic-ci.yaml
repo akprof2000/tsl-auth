@@ -69,6 +69,8 @@ integration-tests:
       alias: docker
       command: ["--tls=false"]
   script:
+    # Сервис docker:dind стартует вместе с заданием: ждём демон до 60 с, иначе первая же команда падает.
+    - for i in $(seq 1 60); do wget -q -O /dev/null http://docker:2375/_ping 2>/dev/null && break; sleep 1; done; wget -q -O - http://docker:2375/_ping; echo
     - dotnet test tests/TslAuth.IntegrationTests -c Release --no-build --logger "trx;LogFileName=integration.trx" --results-directory TestResults
   artifacts:
     paths: [TestResults/]
@@ -95,6 +97,8 @@ build-image:
       alias: docker
       command: ["--tls=false"]
   script:
+    # Сервис docker:dind стартует вместе с заданием: ждём демон до 60 с, иначе первая же команда падает.
+    - for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; sleep 1; done; docker info --format '{{.ServerVersion}}'
     - docker build --pull -t "$IMAGE_SHA" --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" .
     - docker save "$IMAGE_SHA" -o image.tar
   artifacts:

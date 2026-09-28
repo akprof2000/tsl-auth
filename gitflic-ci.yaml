@@ -131,7 +131,8 @@ publish-image:
   # Образ crane:debug без /bin/sh (shell в /busybox/sh), а раннер запускает скрипт через /bin/sh — поэтому alpine + crane из apk.
   image: alpine:3.22
   tags: [tsl-auth]
-  needs: [build-image, scan-image]
+  # Публикация только после ВСЕХ проверок: без явного needs GitFlic запускал publish, пока интеграционные тесты ещё шли.
+  needs: [build-and-unit, integration-tests, build-image, scan-image]
   script:
     - apk add --no-cache crane
     - crane auth login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"

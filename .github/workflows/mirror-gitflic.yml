@@ -36,9 +36,9 @@ jobs:
           set -euo pipefail
           # origin/HEAD — символическая ссылка, а не ветка: в зеркало её не отправляем.
           git update-ref -d refs/remotes/origin/HEAD || true
-          # Токен передаётся заголовком Basic только этой команде и не попадает в конфигурацию git.
-          auth=$(printf '%s:%s' "$GITFLIC_USER" "$GITFLIC_TOKEN" | base64 -w0)
-          echo "::add-mask::$auth"
-          git -c http.extraHeader="Authorization: Basic $auth" push --force --prune \
-            https://gitflic.ru/project/akprof2000/tsl-auth.git \
-            "+refs/remotes/origin/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+          # Логин и токен — в адресе только этой команды (в .git/config не сохраняются; в журнале маскируются как секреты).
+          # Токен кодируется: спецсимволы в нём не должны ломать URL.
+          token=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["GITFLIC_TOKEN"],safe=""))')
+          user=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["GITFLIC_USER"],safe=""))')
+          echo "::add-mask::$token"
+          git -c credential.helper= push --force --prune             "https://$user:$token@gitflic.ru/project/akprof2000/tsl-auth.git"             "+refs/remotes/origin/*:refs/heads/*" "+refs/tags/*:refs/tags/*"

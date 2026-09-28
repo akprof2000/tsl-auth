@@ -38,7 +38,9 @@
        container_name: gitflic-runner-tsl-auth
        image: registry.gitflic.ru/company/gitflic/runner:latest
        environment:
-         REG_URL: "https://coordinator.gitflic.ru/-/runner/registration"   # URL со страницы «Агенты CI/CD»
+         # URL со страницы «Агенты CI/CD», но с явным портом :443: без него агент 5.0.0 сохраняет порт «-1»
+         # и падает при запросе конфигурации («Bad authority»).
+         REG_URL: "https://coordinator.gitflic.ru:443/-/runner/registration"
          REG_TOKEN: "${GITFLIC_RUNNER_TOKEN}"                                # токен — из переменной окружения
          NAME: "tsl-auth"
          TAGS: "tsl-auth"             # задания конвейера помечены этим тегом
@@ -61,7 +63,8 @@
    GITFLIC_RUNNER_TOKEN='<токен со страницы агентов>' docker compose -p gitflic-runner up -d
    ```
 
-4. Агент появится в списке «Агенты CI/CD» проекта. Следующий push в `main` на GitHub запустит конвейер на GitFlic.
+4. Агент появится в списке «Агенты CI/CD» проекта. После регистрации нажмите там «Сбросить токен»: старый токен
+   больше не нужен, а новый агент получит уже новый. Следующий push в `main` на GitHub запустит конвейер на GitFlic.
 
 Привилегированный режим нужен только агенту этого проекта: задания выполняются в отдельных контейнерах
 и используют `docker:dind`, а не Docker хоста. Выделите под агент отдельную машину или виртуальную машину.

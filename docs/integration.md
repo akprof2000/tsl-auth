@@ -31,6 +31,10 @@
 
 ## 2. Вход пользователя: authorization code + PKCE
 
+![2. Вход пользователя: authorization code + PKCE](diagrams/56b6cc3fa204.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -53,6 +57,8 @@ sequenceDiagram
     API-->>App: данные
 ```
 
+</details>
+
 * PKCE обязателен для всех клиентов (`code_challenge_method=S256`).
 * SPA обращается к `/connect/token` из браузера: разрешены origin'ы из его Redirect URI (CORS).
 * Повторный вход в другое приложение проходит без ввода пароля (SSO по cookie сервиса), пока сессия активна.
@@ -61,6 +67,10 @@ sequenceDiagram
   пользователю страницу подтверждения выхода.
 
 ## 3. Продление сессии (refresh)
+
+![3. Продление сессии (refresh)](diagrams/f09a11139a51.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -74,6 +84,8 @@ sequenceDiagram
     Auth-->>App: новый access_token + RT2
     Note over App,Auth: RT1 больше не принимается (после окна повтора 30 с)
 ```
+
+</details>
 
 Refresh отклоняется, если пользователь отключён, сменил или сбросил пароль, администратор отозвал сессию,
 отозван клиент или истёк срок. Access-токен (JWT) при этом живёт до своего `exp` — делайте его коротким
@@ -141,6 +153,10 @@ curl -X POST https://auth.corp/connect/token \
 
 ### От имени пользователя (token exchange, RFC 8693)
 
+![От имени пользователя (token exchange, RFC 8693)](diagrams/2bdb7246258d.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 sequenceDiagram
     participant SPA
@@ -154,6 +170,8 @@ sequenceDiagram
     Go->>Node: Bearer T2
     Node-->>Go: данные (видит, что вызов пришёл через demo-go-api)
 ```
+
+</details>
 
 Требования: у промежуточного сервиса включён поток `token_exchange` и разрешён scope целевого API; обмен
 токена, выданного **не для** этого сервиса, отклоняется. Цепочки вложенных вызовов сохраняются во вложенных `act`.
@@ -175,6 +193,10 @@ JWT по PAT содержит только выбранные приложени
 
 Включите в карточке приложения «Самоуправление». Токен приложения — `client_credentials`, scope `tsl-auth-app`.
 
+![7. App API — приложение управляет своими пользователями](diagrams/af93c5fb102d.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     APP["Внешнее приложение<br/>client_credentials"] -->|scope tsl-auth-app| A["/api/app/*"]
@@ -184,6 +206,8 @@ flowchart LR
     A --> AUD[Свой журнал безопасности]
     A -. нет доступа .-> OTHER["Чужие приложения и роли"]
 ```
+
+</details>
 
 | Действие | Запрос |
 |---|---|
@@ -207,6 +231,10 @@ flowchart LR
 
 Клиент бота: роль `notifier` в `tsl-auth-admin`, токен со scope `tsl-auth-admin`.
 
+![8. События для ботов и мониторинга](diagrams/c69ebe6a13a3.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     SRC[Вход/блокировка, заявки, регистрации,<br/>изменения, security.alert] --> LOG[(Лента событий в БД)]
@@ -214,6 +242,8 @@ flowchart LR
     LOG -->|GET /api/admin/events/stream| SSE[Бот: SSE + Last-Event-ID]
     LOG -->|outbox, повторы, HMAC-подпись| WH[Вебхук → Mattermost / Rocket.Chat / свой бот]
 ```
+
+</details>
 
 Каждое событие: `{ id, event, occurredAt, text, data }`; `text` — готовое сообщение (поле совместимо с incoming webhook
 Mattermost/Rocket.Chat). Курсор `id` монотонный — после перерыва бот продолжает с последнего полученного события.
@@ -226,6 +256,10 @@ Mattermost/Rocket.Chat). Курсор `id` монотонный — после �
   выполняются. Если задан `Webhooks__AllowedNetworks`, получатель должен быть в одной из этих сетей.
 
 ## 9. Сброс пароля через бота мессенджера
+
+![9. Сброс пароля через бота мессенджера](diagrams/8d0f5c0f7991.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -245,6 +279,8 @@ sequenceDiagram
     Auth-->>Bot: одноразовая ссылка сброса (2 ч)
     Bot->>U: ссылка в личные сообщения
 ```
+
+</details>
 
 ### Код второго фактора через бота
 

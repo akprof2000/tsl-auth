@@ -37,6 +37,10 @@ Docker-сокет и передаёт в VictoriaLogs, VictoriaMetrics опра�
 в VictoriaTraces. Подсистемы включаются по отдельности (см. [конфигурацию](configuration.md#мониторинг-prometheus-opentelemetry)):
 что не настроено — не собирается и ресурсов не потребляет.
 
+![Мониторинг](diagrams/963ea4e95719.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     A[TSL Auth<br/>узлы auth1..auth3]
@@ -47,6 +51,8 @@ flowchart LR
     V -- "JSON Lines" --> L[(VictoriaLogs)]
     P & T & L --> G[Grafana<br/>дашборд «TSL Auth»]
 ```
+
+</details>
 
 ### Метрики (Prometheus)
 
@@ -122,6 +128,10 @@ victoriametrics-logs-datasource), VictoriaTraces (тип jaeger, `/select/jaeger
 При каждом старте сервис проверяет БД до обновления схемы и после него. Штатный путь — миграции EF.
 Если по ним нельзя прийти к рабочей схеме, схема **пересобирается с переносом данных**.
 
+![Самовосстановление БД](diagrams/006d25ee733b.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart TD
     S[Старт узла] --> L[PostgreSQL: advisory-lock<br/>узлы кластера ждут друг друга]
@@ -139,6 +149,8 @@ flowchart TD
     V -- да --> OK[Работа]
     R[Пересборка:<br/>1. резервная копия<br/>2. новая схема миграциями<br/>3. перенос данных<br/>4. замена] --> OK
 ```
+
+</details>
 
 | Что случилось | Что делает сервис |
 |---|---|

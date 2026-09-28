@@ -2,6 +2,10 @@
 
 ## Варианты
 
+![Варианты](diagrams/1e2334854364.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     subgraph "Одиночный режим — docker-compose.yml"
@@ -13,6 +17,8 @@ flowchart LR
     end
     BAO[(OpenBao<br/>секреты)] -. "AppRole, при старте" .-> S1 & N1 & N2 & N3
 ```
+
+</details>
 
 | | Одиночный | Кластер |
 |---|---|---|
@@ -104,6 +110,10 @@ docker compose -f docker-compose.ha.yml -f docker-compose.ha-nodes.yml up -d
 Режимы не смешиваются: экземпляр работает либо с SQLite, либо с PostgreSQL (`Database__Provider`). При переключении
 на PostgreSQL данные SQLite **сами не переносятся** — для этого есть команда `admin migrate-to-postgres`.
 
+![Переход с одиночного режима на кластер](diagrams/0ddf91cd26c8.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     S[(SQLite<br/>том auth-data)] -->|admin migrate-to-postgres| C{Сверка каждой таблицы:<br/>число записей + SHA-256}
@@ -111,6 +121,8 @@ flowchart LR
     C -->|расхождение| R[откат транзакции,<br/>PostgreSQL не изменён]
     P --> N[Узлы кластера с тем же<br/>мастер-ключом]
 ```
+
+</details>
 
 1. Остановите одиночный сервис, чтобы после снимка не появилось новых записей: `docker compose stop`.
 2. Поднимите PostgreSQL (узлы кластера пока не запускайте): `docker compose -f docker-compose.ha.yml up -d postgres`.
@@ -213,6 +225,10 @@ nginx (`deploy/nginx-tls.conf`) принимает HTTPS на `:8443`, пере�
 OpenBao — единое хранилище секретов проектов ТСЛ. Сервис при старте входит в OpenBao по AppRole и читает секреты
 из KV v2 (`secret/tsl-auth`). В окружении контейнеров, в `.env` и в compose-файлах значений секретов нет.
 
+![Секреты в OpenBao (после MVP)](diagrams/a252c7790ead.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     INIT[openbao-init<br/>одноразовый контейнер] -- "инициализация, распечатывание,<br/>политики, AppRole, генерация секретов" --> BAO[(OpenBao<br/>KV v2: secret/tsl-auth)]
@@ -221,6 +237,8 @@ flowchart LR
     INIT -. "пароль файлом" .-> PG[(PostgreSQL)]
     AUTH --> PG
 ```
+
+</details>
 
 ```bash
 # одиночный режим
@@ -299,6 +317,10 @@ VictoriaLogs + VictoriaTraces + Vector + OTel Collector + Grafana с дашбо�
 
 ## Закрытый контур (без интернета)
 
+![Закрытый контур (без интернета)](diagrams/f4c726282734.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 sequenceDiagram
     participant I as Машина с интернетом
@@ -311,6 +333,8 @@ sequenceDiagram
     T->>T: ./import-images.sh (проверка SHA-256, docker load)
     T->>T: cp .env.example .env, затем docker compose up -d
 ```
+
+</details>
 
 В работе сервис не обращается во внешнюю сеть: интерфейс, справочник API, шрифты и скрипты встроены в образ,
 логотипы приложений хранятся в БД, почта — через ваш внутренний SMTP.

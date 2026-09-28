@@ -7,6 +7,10 @@ PWA-приложение документооборота (React + TypeScript), 
 - **сотрудники и назначение ролей** — внутри демо, через App API TSL Auth;
 - **бот** принудительно меняет пароль и блокирует учётные записи через Bot API TSL Auth.
 
+![Демо «Документооборот» на TSL Auth](../../docs/diagrams/fe4725b82d5e.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     U[Браузер / телефон<br/>PWA] -- "вход: code + PKCE" --> A[TSL Auth]
@@ -15,6 +19,8 @@ flowchart LR
     API -- "/api/chat → с тем же JWT" --> BOT[Docflow.Bot]
     BOT -- "Bot API (роль security-bot)<br/>link, reset, lock, force-password-change" --> A
 ```
+
+</details>
 
 ## Возможности
 

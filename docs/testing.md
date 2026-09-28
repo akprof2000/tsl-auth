@@ -1,5 +1,9 @@
 # Тестирование
 
+![Тестирование](diagrams/b9bd3ac42559.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
@@ -9,6 +13,8 @@ flowchart TB
     U["Unit — 105<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
 ```
+
+</details>
 
 | Уровень | Что проверяет | Окружение | Запуск |
 |---|---|---|---|

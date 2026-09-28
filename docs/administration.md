@@ -16,6 +16,10 @@
 
 ## Разделы
 
+![Разделы](diagrams/cf343ebd26e6.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
     O[Обзор] --- A[Приложения] --- U[Пользователи] --- R[Заявки] --- S[Сессии]
@@ -23,6 +27,8 @@ flowchart LR
     A --> M[Матрица доступа]
     A --> B[Оформление входа]
 ```
+
+</details>
 
 ### Приложения
 

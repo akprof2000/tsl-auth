@@ -40,7 +40,17 @@ foreach ($f in $files) {
             if (-not $inCode) { $inCode = $true; $lang = $Matches[1]; $block = @(); $start = $i + 1 }
             else {
                 $inCode = $false
-                if ($lang -eq "mermaid") { $mermaid.Add([pscustomobject]@{ File = $f; Line = $start; Text = ($block -join "`n") }) }
+                if ($lang -eq "mermaid") {
+                    $mermaid.Add([pscustomobject]@{ File = $f; Line = $start; Text = ($block -join "`n") })
+                    # Картинка схемы для площадок без рендера Mermaid (GitFlic): стоит перед блоком <details>,
+                    # имя — хеш исходника. Нет картинки или хеш устарел — схему изменили без scripts/render-diagrams.ps1.
+                    $text = ($block | ForEach-Object { $_.TrimEnd() }) -join "`n"
+                    $hash = ([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text.Trim())))).Substring(0, 12).ToLowerInvariant()
+                    $before = ($lines[[Math]::Max(0, $start - 7)..([Math]::Max(0, $start - 2))]) -join "`n"
+                    if ($before -notmatch "diagrams/$hash\.svg\)" -or -not (Test-Path (Join-Path $root "docs/diagrams/$hash.svg"))) {
+                        $problems.Add("${f}:${start}: нет актуальной картинки схемы docs/diagrams/$hash.svg — запустите scripts/render-diagrams.ps1")
+                    }
+                }
             }
             continue
         }

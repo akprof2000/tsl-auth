@@ -5,14 +5,17 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 кластерный режим без потери сессий, веб-админка и REST API. Работает полностью в закрытом контуре (без интернета).
 
 <!-- Сборка и качество -->
+
 [![CI](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml)
 [![E2E](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml)
 [![Тесты](https://img.shields.io/badge/тесты-unit%20·%20интеграционные%20·%20UI%20·%20нагрузка%20·%20отказы-2ea44f)](docs/testing.md)
 [![Документация](https://img.shields.io/badge/docs-проверены%20в%20CI-2ea44f?logo=markdown)](docs/)
 [![License: MIT](https://img.shields.io/github/license/akprof2000/tsl-auth?color=blue)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/akprof2000/tsl-auth)](https://github.com/akprof2000/tsl-auth/commits/main)
+[![Зеркало GitFlic](https://img.shields.io/badge/зеркало-GitFlic-1f6feb)](https://gitflic.ru/project/akprof2000/tsl-auth)
 
 <!-- Образ и безопасность -->
+
 [![GHCR](https://img.shields.io/badge/ghcr.io-akprof2000%2Ftsl--auth-2496ED?logo=github)](https://github.com/akprof2000/tsl-auth/pkgs/container/tsl-auth)
 [![Docker Hub](https://img.shields.io/docker/v/akprof2000/tsl-auth?sort=semver&label=docker%20hub&logo=docker&logoColor=white)](https://hub.docker.com/r/akprof2000/tsl-auth)
 [![Docker Pulls](https://img.shields.io/docker/pulls/akprof2000/tsl-auth?logo=docker&logoColor=white)](https://hub.docker.com/r/akprof2000/tsl-auth)
@@ -26,6 +29,7 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 [![Dependabot](https://img.shields.io/badge/Dependabot-enabled-025E8C?logo=dependabot&logoColor=white)](.github/dependabot.yml)
 
 <!-- Технологии -->
+
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![OpenIddict](https://img.shields.io/badge/OpenIddict-7.7-512BD4)](https://documentation.openiddict.com/)
 [![OAuth 2.0 / OIDC](https://img.shields.io/badge/OAuth%202.0-OpenID%20Connect-EB5424?logo=openid&logoColor=white)](docs/integration.md)
@@ -39,6 +43,10 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-OTLP-000000?logo=opentelemetry&logoColor=white)](docs/operations.md#трассировки-и-логи-opentelemetry)
 [![Grafana](https://img.shields.io/badge/Grafana-VictoriaMetrics%20·%20Logs%20·%20Traces-F46800?logo=grafana&logoColor=white)](docs/operations.md#эталонный-стенд-grafana)
 [![Демо](https://img.shields.io/badge/демо-.NET%20·%20Node%20·%20Go%20·%20Python-yellow)](samples/)
+
+![TSL Auth](docs/diagrams/5d0cf5d052fe.svg)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
 
 ```mermaid
 flowchart LR
@@ -60,6 +68,8 @@ flowchart LR
     WEB & SPA & SVC -- JWT --> API
     API -. JWKS .-> LB
 ```
+
+</details>
 
 ## Возможности
 
@@ -176,6 +186,10 @@ docker compose -f docker-compose.ha.yml up -d --build
 | [Тестирование](docs/testing.md) | Пирамида тестов, как запускать, результаты нагрузки и отказоустойчивости |
 | [Эксплуатация](docs/operations.md) | Проверки состояния, журналы, мониторинг (метрики `/metrics`, OpenTelemetry, VictoriaMetrics/Logs/Traces, стенд Grafana), восстановление доступа, типовые проблемы |
 
+Схемы Mermaid в документации дублируются картинками `docs/diagrams/*.svg`: GitHub рисует Mermaid сам, GitFlic — нет.
+Схему правят в блоке «Исходник схемы (Mermaid)», затем запускают `scripts/render-diagrams.ps1` — он обновит картинку.
+Устаревшую картинку находит проверка документации в CI.
+
 ## Структура репозитория
 
 ```
@@ -185,8 +199,8 @@ samples/                демо-приложения: .NET MVC, Node.js SPA+API
                         docflow-demo — документооборот: PWA (React) + C# API + бот безопасности
 deploy/                 конфигурации nginx (HTTP и TLS), стенд мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector, коллектор, Grafana), пример appsettings
 docker-compose*.yml     одиночный режим, кластер и оверлеи: HTTPS (PEM/PFX), docker secrets, доступ к узлам для диагностики, мониторинг
-scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации
-docs/                   документация
+scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации, картинки схем
+docs/                   документация; docs/diagrams — картинки схем Mermaid (для GitFlic)
 ```
 
 ## Лицензия

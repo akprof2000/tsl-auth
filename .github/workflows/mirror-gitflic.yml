@@ -41,4 +41,6 @@ jobs:
           token=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["GITFLIC_TOKEN"],safe=""))')
           user=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["GITFLIC_USER"],safe=""))')
           echo "::add-mask::$token"
-          git -c credential.helper= push --force --prune             "https://$user:$token@gitflic.ru/project/akprof2000/tsl-auth.git"             "+refs/remotes/origin/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+          git -c credential.helper= push --force --prune \
+            "https://$user:$token@gitflic.ru/project/akprof2000/tsl-auth.git" \
+            "+refs/remotes/origin/*:refs/heads/*" "+refs/tags/*:refs/tags/*"

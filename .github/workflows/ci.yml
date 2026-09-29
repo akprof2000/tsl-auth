@@ -122,8 +122,6 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/tsl-auth
-      GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
-      GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -248,22 +246,6 @@ jobs:
             for tag in $TAGS; do [ "${tag%:*}" = "$repo" ] && args+=(-t "$tag"); done
             docker buildx imagetools create "${args[@]}" "$GHCR_IMAGE@$DIGEST"
           done
-
-      # Реестр GitFlic (registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth): с агентов GitFlic большие передачи в реестр
-      # зависают, поэтому тот же digest копируется отсюда. Версия GitFlic своя: MAJOR.MINOR из sdk/VERSION + номер запуска CI
-      # (например 1.4.57), плюс latest на main и X.Y.Z на теге. Нужны секреты GITFLIC_PKG_USER / GITFLIC_PKG_TOKEN.
-      - name: Копия образа в реестр GitFlic
-        if: env.GITFLIC_PKG_TOKEN != ''
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-          GITFLIC_IMAGE: registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth
-        run: |
-          curl -sSL https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz | tar -xz -C /usr/local/bin crane
-          crane auth login registry.gitflic.ru -u "$GITFLIC_PKG_USER" -p "$GITFLIC_PKG_TOKEN"
-          ver="$(tr -d '[:space:]' < sdk/VERSION).$GITHUB_RUN_NUMBER"
-          crane copy "$GHCR_IMAGE@$DIGEST" "$GITFLIC_IMAGE:$ver"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then crane tag "$GITFLIC_IMAGE:$ver" "${GITHUB_REF#refs/tags/v}"; else crane tag "$GITFLIC_IMAGE:$ver" latest; fi
-          echo "GitFlic: $GITFLIC_IMAGE:$ver"
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 

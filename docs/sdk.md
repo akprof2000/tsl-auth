@@ -73,8 +73,8 @@ req.Header.Set("Authorization", "Bearer "+t.AccessToken)
 - в файлах релиза GitHub лежит `tsl-auth-sdk-<версия>.zip` — все пять пакетов и `SHA256SUMS`;
   `scripts/export-images.ps1 -Sdk` собирает тот же набор локально в `dist/sdk`;
 - на GitFlic пакеты публикуются в реестр проекта `https://registry.gitflic.ru/project/uklad/tsl-auth/package/-/<nuget|npm|pypi|maven>`
-  на каждом прогоне `main` с собственной версией `MAJOR.MINOR.<номер запуска CI>` из `sdk/VERSION` (публикует workflow `SDK`
-  на GitHub через `scripts/publish-sdk-gitflic.sh`, секреты `GITFLIC_PKG_USER` / `GITFLIC_PKG_TOKEN`); версии GitFlic и GitHub не синхронизируются;
+  на каждом прогоне `main` с собственной версией `MAJOR.MINOR.<номер конвейера>` из `sdk/VERSION` (задания `publish-sdk-*`
+  в `gitflic-ci.yaml`, переменные проекта `GITFLIC_PKG_USER` / `GITFLIC_PKG_TOKEN`); версии GitFlic и GitHub не синхронизируются;
 - локальная установка из файла: `dotnet nuget add source ./dist/sdk/nuget`, `npm install ./dist/sdk/npm/tsl-auth-client-<в>.tgz`,
   `pip install ./dist/sdk/pypi/tsl_auth_client-<в>-py3-none-any.whl`, `mvn install:install-file -Dfile=…jar -DpomFile=…pom`,
   Go — распаковать архив и добавить `replace github.com/akprof2000/tsl-auth/sdk/go => ./vendor-tsl-auth` в `go.mod`.
@@ -82,7 +82,7 @@ req.Header.Set("Authorization", "Bearer "+t.AccessToken)
 ## Версии
 
 На GitHub версия SDK совпадает с версией сервиса: тег `vX.Y.Z` собирает образ и пять пакетов одной версии (`sdk.yml`).
-На GitFlic версии свои: `MAJOR.MINOR` из `sdk/VERSION` плюс номер запуска CI GitHub, образ и пакеты одного запуска имеют одну версию. SDK совместим с сервисом той же MAJOR-версии; правила
+На GitFlic версии свои: `MAJOR.MINOR` из `sdk/VERSION` плюс номер конвейера GitFlic, образ и пакеты одного прогона имеют одну версию. SDK совместим с сервисом той же MAJOR-версии; правила
 изменения контракта — в [релизной политике](release-policy.md).
 
 ## Тесты

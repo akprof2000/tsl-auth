@@ -187,6 +187,7 @@ docker compose -f docker-compose.ha.yml up -d --build
 | [Тестирование](docs/testing.md) | Пирамида тестов, как запускать, результаты нагрузки и отказоустойчивости |
 | [Эксплуатация](docs/operations.md) | Проверки состояния, журналы, мониторинг (метрики `/metrics`, OpenTelemetry, VictoriaMetrics/Logs/Traces, стенд Grafana), восстановление доступа, типовые проблемы |
 | [Сборка на GitFlic](docs/gitflic-ci.md) | Зеркало на GitFlic, конвейер `gitflic-ci.yaml`, подключение агента, реестр GitFlic |
+| [Релизная политика](docs/release-policy.md) | Версии (semver), что блокирует релиз, обновление и откат, кто и как выпускает |
 
 Схемы Mermaid в документации дублируются картинками `docs/diagrams/*.png`: GitHub рисует Mermaid сам, GitFlic — нет.
 Схему правят в блоке «Исходник схемы (Mermaid)», затем запускают `scripts/render-diagrams.ps1` — он обновит картинку.

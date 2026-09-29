@@ -20,7 +20,7 @@ Docker HEALTHCHECK встроен в образ: в distroless-образе не
   ≤ 35 с, без перезапуска. Для разбора инцидента: `Serilog.AspNetCore.RequestLoggingMiddleware=Information` — строка на
   каждый запрос, `TslAuth=Debug` — подробности сервисов, `Microsoft.EntityFrameworkCore.Database.Command=Information` — SQL.
 * Логи не растут бесконечно: в compose драйвер `json-file` держит 5 файлов по 20 МБ на контейнер, ротированные сжаты
-  (`compress`). Вне контейнера — `Logging__File__*`: файл на день и по размеру, не более `RetainedFiles` файлов, архивы `.gz`.
+  (`compress`). Вне контейнера — `Logging__File__Enabled=true` и `Logging__File__*`: файл на день и по размеру, не более `RetainedFiles` файлов, архивы `.gz`; без явного флага журнал только в stdout.
 * Сбор логов в VictoriaLogs (через Vector), метрики и трассировки — раздел [мониторинг](#мониторинг).
 * Журнал безопасности — в БД, админка → **Журнал**, `GET /api/admin/audit`, выгрузка CSV.
 * Лента событий — для ботов/SIEM: long-polling, SSE, вебхуки (`security.alert` — важные события безопасности).

@@ -140,10 +140,12 @@
 | `Logging__LogLevel__Default` | `Information` | Уровень по умолчанию: `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`, `None` |
 | `Logging__LogLevel__<Категория>` | `Microsoft.AspNetCore`, `Microsoft.EntityFrameworkCore`, `OpenIddict`, `Serilog.AspNetCore.RequestLoggingMiddleware` — `Warning` | Уровень для категории или её префикса (самое длинное совпадение). `Serilog.AspNetCore.RequestLoggingMiddleware=Information` включает строку на каждый HTTP-запрос (метод, путь, код, время) |
 | `Logging__Format` | `Text` (в compose — `Json`, переменная `LOG_FORMAT`) | Формат консоли: `Text` — для чтения глазами, `Json` — одна строка на запись со всеми полями (компактный JSON Serilog; его разбирает Vector, подходит для драйверов Docker и SIEM) |
+| `Logging__File__Enabled` | `false` | Явное включение журнала на диске. Без него `Logging__File__Path` игнорируется: правило проекта — журнал только в stdout |
 | `Logging__File__Path` | — | Журнал на диске (для запуска вне контейнера; в контейнере ротацию делает Docker). Шаблон `logs/tsl-auth-.log` → `tsl-auth-20260925.log`, при переполнении `…_001.log` |
 | `Logging__File__SizeLimitMb` | `20` | Размер, при котором начинается новый файл |
 | `Logging__File__RetainedFiles` | `5` | Сколько файлов всего держать на диске (текущий + архивы); старые удаляются |
 | `Logging__File__Compress` | `true` | Ротированные файлы сжимаются в `.gz` |
+| `Logging__Serilog__Enabled` | `false` | Разрешить секцию `Serilog` из конфигурации (сторонние приёмники: Seq, syslog). Без флага секция не читается, чтобы приёмник не появился незаметно |
 
 Секция `Serilog` в `appsettings.json` тоже читается ([Serilog.Settings.Configuration](https://github.com/serilog/serilog-settings-configuration)) —
 через неё подключаются дополнительные приёмники (Seq, syslog, Elasticsearch) без пересборки.

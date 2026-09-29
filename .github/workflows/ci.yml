@@ -122,6 +122,8 @@ jobs:
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/tsl-auth
+      GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
+      GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -251,10 +253,8 @@ jobs:
       # зависают, поэтому тот же digest копируется отсюда. Версия GitFlic своя: MAJOR.MINOR из sdk/VERSION + номер запуска CI
       # (например 1.4.57), плюс latest на main и X.Y.Z на теге. Нужны секреты GITFLIC_PKG_USER / GITFLIC_PKG_TOKEN.
       - name: Копия образа в реестр GitFlic
-        if: ${{ secrets.GITFLIC_PKG_TOKEN != '' }}
+        if: env.GITFLIC_PKG_TOKEN != ''
         env:
-          GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
-          GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}
           DIGEST: ${{ steps.build.outputs.digest }}
           GITFLIC_IMAGE: registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth
         run: |

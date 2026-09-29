@@ -150,7 +150,7 @@ e2e-stand:
     K6_LOCAL: "1"
   script:
     - for i in $(seq 1 60); do wget -q -O /dev/null http://docker:2375/_ping 2>/dev/null && break; sleep 1; done
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends docker.io docker-compose-v2 socat golang-go python3 curl ca-certificates gnupg >/dev/null
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends docker.io docker-compose-v2 socat xxd golang-go python3 curl ca-certificates gnupg >/dev/null
     - curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null 2>&1 && apt-get install -y -qq nodejs >/dev/null
     - ln -sf /usr/bin/python3 /usr/local/bin/python
     - curl -fsSL https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz | tar -xz --strip-components=1 -C /usr/local/bin k6-v1.3.0-linux-amd64/k6 && k6 version
@@ -158,7 +158,7 @@ e2e-stand:
     - for p in $(seq 8080 8099); do socat TCP-LISTEN:$p,fork,reuseaddr TCP:docker:$p & done; sleep 1
     - export BOOTSTRAP_ADMIN_PASSWORD="Ci-$(head -c 16 /dev/urandom | xxd -p | head -c 32)!"
     - docker compose up -d --build
-    - for i in $(seq 1 90); do wget -q -O /dev/null http://localhost:8080/health/ready 2>/dev/null && break; sleep 2; done; wget -q -O - http://localhost:8080/health/ready; echo
+    - for i in $(seq 1 90); do wget -q -O /dev/null http://localhost:8080/health/ready 2>/dev/null && break; sleep 2; done; wget -q -O - http://localhost:8080/health/ready || { docker compose ps; docker compose logs --tail 30; exit 1; }; echo
     - pwsh -NoProfile -File samples/seed-demo.ps1
     - pwsh -NoProfile -File tests/e2e/start-demos.ps1
     - dotnet build tests/TslAuth.UiTests -c Release --nologo -v quiet

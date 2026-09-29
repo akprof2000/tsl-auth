@@ -21,7 +21,8 @@ del() {
 items() { jq -c 'if type=="array" then .[] elif ._embedded then (._embedded|to_entries[0].value[]) elif .content then .content[] else empty end'; }
 # Идентификатор и дата у объектов GitFlic называются по-разному; берём первое подходящее поле.
 uuid()  { jq -r '.uuid // .id // .packageUuid // .releaseUuid // empty'; }
-stamp() { jq -r '(.createdAt // .created // .creationDate // .publishedAt // .updatedAt // "") | tostring'; }
+# У версии пакета GitFlic даты нет — берём дату первого файла версии (packageFiles[0].createdAt); у релиза — createdAt.
+stamp() { jq -r '(.createdAt // .created // .publishedAt // (.packageFiles[0].createdAt // "")) | tostring'; }
 
 echo "== Реестр пакетов $PROJECT: оставляем $KEEP версий у каждого пакета"
 get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; do
@@ -33,8 +34,8 @@ get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; d
   if [ "$DRY" = "1" ]; then
     echo "    поля версии: $(head -1 "/tmp/raw.$id" | jq -c 'keys')"
     echo "    поля файла версии: $(head -1 "/tmp/raw.$id" | jq -c '.packageFiles[0] | del(.name) | keys')"
-    echo "    версии: $(jq -r '.version' "/tmp/raw.$id" | tr '
-' ' ')"
+    echo "    версии: $(jq -r '.version + " (" + (.packageFiles[0].createdAt // "?") + ")"' "/tmp/raw.$id" | tr '
+' ';')"
   fi
   while read -r v; do
     ver=$(printf '%s' "$v" | jq -r '.version // .name // .packageVersion // empty'); st=$(printf '%s' "$v" | stamp)

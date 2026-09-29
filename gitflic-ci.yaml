@@ -13,8 +13,8 @@
 
 # Стадии: build — сборка решения и образа, проверка документации (все три параллельно);
 # test — интеграционные тесты и Trivy (параллельно); publish → release.
-# Версии на GitFlic свои и от тегов GitHub не зависят: MAJOR.MINOR берётся из файла sdk/VERSION, PATCH — номер
-# конвейера ($CI_PIPELINE_ID). Каждый успешный прогон main публикует образ tsl-auth:<версия> (плюс latest) и пакеты
+# Версии на GitFlic свои и от тегов GitHub не зависят: MAJOR.MINOR берётся из файла sdk/VERSION, PATCH — число коммитов
+# в истории main (git rev-list --count HEAD; $CI_PIPELINE_ID в GitFlic — UUID). Каждый успешный прогон main публикует образ tsl-auth:<версия> (плюс latest) и пакеты
 # клиентских библиотек той же версии в реестр пакетов этого проекта (NuGet, npm, PyPI, Maven; модуль Go —
 # сам репозиторий, go.gitflic.ru/uklad/tsl-auth/sdk/go). Тег vX.Y.Z с GitHub публикует ещё и версию X.Y.Z образа.
 # Контрактные тесты SDK (sdk-contract) идут здесь же; GitHub — только копия исходников (его workflow отключены).
@@ -252,8 +252,10 @@ publish-image:
     - apk add --no-cache crane
     - crane auth login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD"
     - crane push image.tar "$IMAGE_SHA"
-    # Версия GitFlic: MAJOR.MINOR из sdk/VERSION + номер конвейера; на main — ещё latest, на теге — ещё X.Y.Z.
-    - crane tag "$IMAGE_SHA" "$(tr -d '[:space:]' < sdk/VERSION).$CI_PIPELINE_ID"
+    # Версия GitFlic: MAJOR.MINOR из sdk/VERSION + число коммитов в истории (git rev-list --count; $CI_PIPELINE_ID в GitFlic — UUID,
+    # он не годится в номер версии); на main — ещё latest, на теге — ещё X.Y.Z.
+    - apk add --no-cache git >/dev/null
+    - crane tag "$IMAGE_SHA" "$(tr -d '[:space:]' < sdk/VERSION).$(git rev-list --count HEAD)"
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
         crane tag "$IMAGE_SHA" "${CI_COMMIT_TAG#v}"
@@ -275,7 +277,7 @@ gitflic-release:
   script:
     - echo "Релиз $CI_COMMIT_TAG"
 
-# ---------- Пакеты SDK (каждый прогон main; версия = sdk/VERSION + номер конвейера, например 1.4.19) ----------
+# ---------- Пакеты SDK (каждый прогон main; версия = sdk/VERSION + число коммитов, например 1.4.219) ----------
 # Каждый пакет собирается в образе своего инструмента, поэтому заданий четыре; они идут параллельно после образа.
 # Нужны переменные проекта GITFLIC_PKG_USER / GITFLIC_PKG_TOKEN (логин и транспортный токен); без них задания пропускаются.
 .sdk-publish:
@@ -286,7 +288,8 @@ gitflic-release:
   rules:
     - if: $GITFLIC_PUBLISH_FROM_AGENT != "false" && $GITFLIC_PKG_TOKEN
   before_script:
-    - export SDK_VERSION="$(tr -d '[:space:]' < sdk/VERSION).$CI_PIPELINE_ID"
+    - command -v git >/dev/null 2>&1 || apk add --no-cache git >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq git >/dev/null)
+    - export SDK_VERSION="$(tr -d '[:space:]' < sdk/VERSION).$(git rev-list --count HEAD)"
     - echo "Версия пакетов GitFlic — $SDK_VERSION"
 
 publish-sdk-nuget:

@@ -127,7 +127,7 @@ jobs:
       - name: Сборка пакетов
         env:
           VERSION: ${{ steps.ver.outputs.version }}
-        run: ./scripts/build-sdk-packages.sh "$VERSION" dist/sdk
+        run: sh scripts/build-sdk-packages.sh "$VERSION" dist/sdk
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

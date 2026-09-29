@@ -296,7 +296,8 @@ publish-sdk-nuget:
   extends: .sdk-publish
   image: $SDK_IMAGE
   script:
-    - dotnet pack sdk/dotnet/TslAuth.Client/TslAuth.Client.csproj -c Release -p:Version="$SDK_VERSION" -o dist/nuget
+    # AssemblyVersion .NET допускает части не больше 65535, поэтому время коммита идёт только в версию пакета.
+    - dotnet pack sdk/dotnet/TslAuth.Client/TslAuth.Client.csproj -c Release -p:Version="$(tr -d '[:space:]' < sdk/VERSION).0" -p:PackageVersion="$SDK_VERSION" -o dist/nuget
     # Индекс реестра показывает адрес публикации (PackagePublish); печатается для диагностики 404 при push.
     - curl -sS -u "$GITFLIC_PKG_USER:$GITFLIC_PKG_TOKEN" "$PKG_BASE/nuget/index.json" | head -c 1500; echo
     - dotnet nuget add source "$PKG_BASE/nuget/index.json" -n gitflic -u "$GITFLIC_PKG_USER" -p "$GITFLIC_PKG_TOKEN" --store-password-in-clear-text
@@ -320,7 +321,7 @@ publish-sdk-pypi:
     - sed -i -E "s/^version = \"[^\"]+\"/version = \"$SDK_VERSION\"/" pyproject.toml
     - python -m build
     # twine — через .pypirc, как в документации GitFlic (с --repository-url он отказывает: UnsupportedConfiguration).
-    - sh scripts/gitflic-pypirc.sh
+    - sh "$CI_PROJECT_DIR/scripts/gitflic-pypirc.sh"
     - python -m twine upload --repository gitflic --skip-existing dist/*
 
 publish-sdk-maven:

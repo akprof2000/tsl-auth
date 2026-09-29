@@ -1,4 +1,4 @@
-# Конвейер GitFlic (https://gitflic.ru/project/akprof2000/tsl-auth). Что собирается на GitFlic, остаётся на GitFlic:
+# Конвейер GitFlic (https://gitflic.ru/project/uklad/tsl-auth). Что собирается на GitFlic, остаётся на GitFlic:
 # образ публикуется только в реестр GitFlic ($CI_REGISTRY_IMAGE). GitHub собирает независимо и публикует
 # в Docker Hub и GHCR (.github/workflows). Исходники приходят зеркалом с GitHub (mirror-gitflic.yml),
 # каждый push в main и тег v* запускает этот конвейер.

@@ -12,7 +12,7 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 [![Документация](https://img.shields.io/badge/docs-проверены%20в%20CI-2ea44f?logo=markdown)](docs/)
 [![License: MIT](https://img.shields.io/github/license/akprof2000/tsl-auth?color=blue)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/akprof2000/tsl-auth)](https://github.com/akprof2000/tsl-auth/commits/main)
-[![Зеркало GitFlic](https://img.shields.io/badge/зеркало-GitFlic-1f6feb)](https://gitflic.ru/project/akprof2000/tsl-auth)
+[![Зеркало GitFlic](https://img.shields.io/badge/зеркало-GitFlic-1f6feb)](https://gitflic.ru/project/uklad/tsl-auth)
 
 <!-- Образ и безопасность -->
 

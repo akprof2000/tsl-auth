@@ -1,12 +1,12 @@
 # Сборка на GitFlic
 
-Репозиторий зеркалируется с GitHub на [GitFlic](https://gitflic.ru/project/akprof2000/tsl-auth) (workflow `mirror-gitflic.yml`).
+Репозиторий зеркалируется с GitHub на [GitFlic](https://gitflic.ru/project/uklad/tsl-auth) (workflow `mirror-gitflic.yml`).
 Каждая площадка собирает сама и публикует у себя:
 
 | Площадка | Конвейер | Куда публикуется образ |
 |---|---|---|
 | GitHub | `.github/workflows/*.yml` | Docker Hub `akprof2000/tsl-auth`, GHCR `ghcr.io/akprof2000/tsl-auth` |
-| GitFlic | [`gitflic-ci.yaml`](../gitflic-ci.yaml) | Реестр GitFlic проекта: `registry.gitflic.ru/project/akprof2000/tsl-auth/tsl-auth` |
+| GitFlic | [`gitflic-ci.yaml`](../gitflic-ci.yaml) | Реестр GitFlic проекта: `registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth` |
 
 ## Конвейер GitFlic
 
@@ -93,7 +93,7 @@ docker login registry.gitflic.ru
 ```
 
 ```bash
-docker pull registry.gitflic.ru/project/akprof2000/tsl-auth/tsl-auth:latest
+docker pull registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:latest
 ```
 
 Путь образа в реестре GitFlic — `registry.gitflic.ru/project/<владелец>/<проект>/<имя образа>:<тег>`; для входа

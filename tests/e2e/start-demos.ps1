@@ -28,6 +28,10 @@ foreach ($p in 5101, 5102, 5103, 5104) {
     for ($i = 0; $i -lt 120 -and -not $up; $i++) {
         try { Invoke-WebRequest "http://localhost:$p/health" -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep 2 }
     }
-    if (-not $up) { Write-Host "Демо-приложение на порту $p не поднялось (журналы — tests/artifacts/demo)"; exit 1 }
+    if (-not $up) {
+        Write-Host "Демо-приложение на порту $p не поднялось (журналы — tests/artifacts/demo):"
+        Get-ChildItem $logs -Filter "*.log" | ForEach-Object { Write-Host "--- $($_.Name)"; Get-Content $_.FullName -Tail 20 }
+        exit 1
+    }
     Write-Host "demo $p up"
 }

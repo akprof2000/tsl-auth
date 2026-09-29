@@ -41,6 +41,8 @@ MAJOR нужен, если старая версия сервиса не смо�
    в реестр пакетов проекта. Архив `tsl-auth-sdk-X.Y.Z.zip` прикрепляется к релизу GitHub (если релиз создан позже
    workflow — вручную: `gh release upload vX.Y.Z dist/tsl-auth-sdk-X.Y.Z.zip`). Изменение контракта SDK
    (`docs/client-contract.md`) — MINOR при расширении, MAJOR при удалении или переименовании полей и кодов.
+6. GitFlic версионируется независимо: `MAJOR.MINOR` из `sdk/VERSION` плюс номер конвейера GitFlic (например `1.4.19`),
+   образ и пакеты каждого прогона `main`. При смене MAJOR или MINOR на GitHub обновляется и `sdk/VERSION`.
 
 ## Что блокирует релиз
 

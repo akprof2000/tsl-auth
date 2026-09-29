@@ -16,8 +16,8 @@
 |---|---|
 | build | Параллельно: сборка решения с `-warnaserror` и unit-тесты; сборка образа из `Dockerfile`; проверка документации |
 | test | Параллельно: интеграционные тесты (SQLite, PostgreSQL и OpenBao в Testcontainers через `docker:dind`, без пересборки — бинарники из артефакта build); Trivy — уязвимости HIGH/CRITICAL с исправлением прерывают конвейер |
-| publish | `main` — теги `latest` и `sha-<коммит>`; тег `vX.Y.Z` — тег `X.Y.Z` в реестре GitFlic. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
-| release | Релиз GitFlic для тега `vX.Y.Z`; задания `publish-sdk-nuget/npm/pypi/maven` публикуют клиентские библиотеки той же версии в реестр пакетов проекта (`…/package/-/<тип>`), если заданы переменные проекта `GITFLIC_PKG_USER` и `GITFLIC_PKG_TOKEN` (логин и транспортный токен GitFlic). Контрактные тесты SDK идут в CI GitHub (`sdk.yml`) |
+| publish | Версия GitFlic своя: `MAJOR.MINOR` из `sdk/VERSION` + номер конвейера (например `1.4.19`); `main` — ещё `latest` и `sha-<коммит>`; тег `vX.Y.Z` с GitHub — ещё `X.Y.Z`. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
+| release | Релиз GitFlic для тега `vX.Y.Z`; задания `publish-sdk-nuget/npm/pypi/maven` на каждом прогоне `main` публикуют клиентские библиотеки версии `MAJOR.MINOR.<конвейер>` (как у образа) в реестр пакетов проекта (`…/package/-/<тип>`), если заданы переменные проекта `GITFLIC_PKG_USER` и `GITFLIC_PKG_TOKEN` (логин и транспортный токен GitFlic). Контрактные тесты SDK идут в CI GitHub (`sdk.yml`) |
 
 Пакеты NuGet кэшируются между конвейерами (`cache: nuget`), поэтому `restore` после первого прогона занимает секунды.
 
@@ -76,6 +76,12 @@
 4. Агент появится в списке «Агенты CI/CD» проекта. Токен агенту нужен при каждом старте контейнера (агент 5.0.0
    регистрируется заново), поэтому не сбрасывайте его на странице, пока агент может перезапускаться; после сброса
    перезапустите агент с новым токеном. Следующий push в `main` на GitHub запустит конвейер на GitFlic.
+
+Агенты проекта работают на сервере (`~/gitflic-runner`, два контейнера `tsl-auth-srv` и `tsl-auth-srv-2`, тот же compose).
+Если с сервера не докачиваются образы из `registry.gitflic.ru` (обрыв соединения на больших слоях), образы агента,
+helper и gcli переносятся с любой машины, где они есть: `docker save registry.gitflic.ru/company/gitflic/runner:latest
+registry.gitflic.ru/company/gitflic/gitflic-runner-helper:4.8.2 registry.gitflic.ru/company/gitflic/gcli:latest -o gitflic.tar`,
+`scp` на сервер, `docker load -i gitflic.tar`. Без helper-образа каждое задание падает «без логов» через несколько минут.
 
 Координатор GitFlic выдаёт агенту по одному заданию примерно раз в минуту, и настройки частоты у агента нет, поэтому
 скорость раздачи заданий растёт с числом агентов: два агента получают задания вдвое быстрее. На одной машине

@@ -169,7 +169,7 @@ e2e-stand:
     - sh scripts/ci-check-trx.sh TestResults/ui.trx 10
     - docker compose up -d
     # Пороги k6 (p95) на загруженном агенте срабатывают ложно — нагрузка здесь информационная, результаты в tests/artifacts/load.
-    - pwsh -NoProfile -File tests/load/run-load.ps1 -Name ci-single -Vus 10 -Duration 30s || echo "k6: пороги превышены — см. tests/artifacts/load/ci-single.json"
+    - pwsh -NoProfile -File tests/load/run-load.ps1 -Name ci-single -Vus 10 -Duration 30s || echo "k6 — пороги превышены, см. tests/artifacts/load/ci-single.json"
     - docker compose down -v
     - pwsh -NoProfile -File tests/resilience/run-resilience.ps1 -Mode single
     - docker compose down -v

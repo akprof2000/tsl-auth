@@ -91,7 +91,8 @@ jobs:
   packages:
     name: Пакеты SDK → реестры
     needs: [contract]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # На теге — версия тега во все реестры; на main — версия GitFlic (sdk/VERSION + номер запуска) только в реестр GitFlic.
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -120,7 +121,9 @@ jobs:
       - name: Версия
         id: ver
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF#refs/tags/v}"; else v="${{ github.event.inputs.version }}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF#refs/tags/v}"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then v="$(tr -d '[:space:]' < sdk/VERSION).$GITHUB_RUN_NUMBER"
+          else v="${{ github.event.inputs.version }}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Версия пакетов: $v"
 
@@ -136,6 +139,16 @@ jobs:
           name: sdk-packages
           path: dist/sdk
           retention-days: 1
+
+      # ---- Реестр пакетов GitFlic (main и тег) ----
+      - name: Пакеты → реестр GitFlic
+        if: (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main') && env.GITFLIC_PKG_TOKEN != ''
+        env:
+          GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
+          GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          PKG_BASE: https://registry.gitflic.ru/project/uklad/tsl-auth/package/-
+        run: sh scripts/publish-sdk-gitflic.sh "$VERSION" dist/sdk
 
       # ---- Публикация (только по тегу) ----
       - name: NuGet → GitHub Packages

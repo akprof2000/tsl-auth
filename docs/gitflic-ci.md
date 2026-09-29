@@ -16,8 +16,8 @@
 |---|---|
 | build | Параллельно: сборка решения с `-warnaserror` и unit-тесты; сборка образа из `Dockerfile`; проверка документации |
 | test | Параллельно: интеграционные тесты (SQLite, PostgreSQL и OpenBao в Testcontainers через `docker:dind`, без пересборки — бинарники из артефакта build); Trivy — уязвимости HIGH/CRITICAL с исправлением прерывают конвейер |
-| publish | Версия GitFlic своя: `MAJOR.MINOR` из `sdk/VERSION` + номер конвейера (например `1.4.19`); `main` — ещё `latest` и `sha-<коммит>`; тег `vX.Y.Z` с GitHub — ещё `X.Y.Z`. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
-| release | Релиз GitFlic для тега `vX.Y.Z`; задания `publish-sdk-nuget/npm/pypi/maven` на каждом прогоне `main` публикуют клиентские библиотеки версии `MAJOR.MINOR.<конвейер>` (как у образа) в реестр пакетов проекта (`…/package/-/<тип>`), если заданы переменные проекта `GITFLIC_PKG_USER` и `GITFLIC_PKG_TOKEN` (логин и транспортный токен GitFlic). Контрактные тесты SDK идут в CI GitHub (`sdk.yml`) |
+| publish | С агентов выключено (переменная `GITFLIC_PUBLISH_FROM_AGENT=true` включает): образ и пакеты в реестры GitFlic кладёт CI GitHub — `ci.yml` копирует проверенный digest в `registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth`, `sdk.yml` публикует пакеты (`scripts/publish-sdk-gitflic.sh`). Версия GitFlic своя: `MAJOR.MINOR` из `sdk/VERSION` + номер запуска CI (например `1.4.57`); `main` — ещё `latest`; тег `vX.Y.Z` — ещё `X.Y.Z`. Нужны секреты GitHub `GITFLIC_PKG_USER` / `GITFLIC_PKG_TOKEN`. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
+| release | Релиз GitFlic для тега `vX.Y.Z`; задания `publish-sdk-nuget/npm/pypi/maven` (только при `GITFLIC_PUBLISH_FROM_AGENT=true`) публикуют клиентские библиотеки в реестр пакетов проекта; по умолчанию это делает `sdk.yml` на GitHub (`…/package/-/<тип>`), если заданы переменные проекта `GITFLIC_PKG_USER` и `GITFLIC_PKG_TOKEN` (логин и транспортный токен GitFlic). Контрактные тесты SDK идут в CI GitHub (`sdk.yml`) |
 
 Пакеты NuGet кэшируются между конвейерами (`cache: nuget`), поэтому `restore` после первого прогона занимает секунды.
 
@@ -78,10 +78,11 @@
    перезапустите агент с новым токеном. Следующий push в `main` на GitHub запустит конвейер на GitFlic.
 
 Агенты проекта работают на сервере (`~/gitflic-runner`, два контейнера `tsl-auth-srv` и `tsl-auth-srv-2`, тот же compose).
-Если с сервера не докачиваются образы из `registry.gitflic.ru` (обрыв соединения на больших слоях), образы агента,
-helper и gcli переносятся с любой машины, где они есть: `docker save registry.gitflic.ru/company/gitflic/runner:latest
-registry.gitflic.ru/company/gitflic/gitflic-runner-helper:4.8.2 registry.gitflic.ru/company/gitflic/gcli:latest -o gitflic.tar`,
-`scp` на сервер, `docker load -i gitflic.tar`. Без helper-образа каждое задание падает «без логов» через несколько минут.
+Если на сервере обрываются большие передачи с GitFlic (образы из `registry.gitflic.ru` не докачиваются, задания падают
+«без логов» на загрузке helper-образа, `crane push` зависает, «File download error» на артефактах), проверьте путь MTU:
+`ping -M do -s 1472 217.23.139.246` без ответа при работающем `-s 1400` — «чёрная дыра» PMTU. Лечится ограничением MSS
+на внешнем интерфейсе: `iptables -t mangle -A POSTROUTING -o eth0 -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360`
+(на сервере проекта это делает служба `mss-clamp.service`).
 
 Место на GitFlic ограничено: артефакты заданий живут от 2 часов до суток (`expire_in`), а задание `cleanup` в конце
 конвейера оставляет в реестре пакетов (образ, NuGet, npm, PyPI, Maven) и в релизах не больше трёх новейших версий

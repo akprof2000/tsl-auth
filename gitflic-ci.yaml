@@ -138,6 +138,11 @@ scan-image:
 
 publish-image:
   stage: publish
+  # С сервера агентов большие передачи в registry.gitflic.ru зависают (TCP-стойка при чистом ICMP), поэтому образ и пакеты
+  # в реестры GitFlic публикует CI GitHub (ci.yml, sdk.yml — секреты GITFLIC_PKG_USER/GITFLIC_PKG_TOKEN). Публикация с агента
+  # включается переменной проекта GITFLIC_PUBLISH_FROM_AGENT=true, когда сеть починят.
+  rules:
+    - if: $GITFLIC_PUBLISH_FROM_AGENT == "true"
   # crane — клиент реестра без демона Docker: демон dind на агенте не дожидается ответа registry.gitflic.ru
   # (curl, Go и crane из того же контейнера отвечают за 0,2 с), а crane грузит image.tar напрямую.
   # Образ crane:debug без /bin/sh (shell в /busybox/sh), а раннер запускает скрипт через /bin/sh — поэтому alpine + crane из apk.
@@ -181,7 +186,7 @@ gitflic-release:
   cache: []
   needs: [publish-image]
   rules:
-    - if: $GITFLIC_PKG_TOKEN
+    - if: $GITFLIC_PUBLISH_FROM_AGENT == "true" && $GITFLIC_PKG_TOKEN
   before_script:
     - export SDK_VERSION="$(tr -d '[:space:]' < sdk/VERSION).$CI_PIPELINE_ID"
     - echo "Версия пакетов GitFlic — $SDK_VERSION"
@@ -233,7 +238,7 @@ cleanup:
   image: alpine:3.22
   tags: [tsl-auth]
   cache: []
-  needs: [publish-image]
+  needs: [integration-tests, scan-image]
   rules:
     - if: $GITFLIC_API_TOKEN
   variables:

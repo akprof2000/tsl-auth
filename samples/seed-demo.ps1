@@ -46,6 +46,8 @@ $goSecret = Upsert-App @{ clientId = "demo-go-api"; displayName = "Демо Go A
 Upsert-App @{ clientId = "demo-node-api"; displayName = "Демо Node API"; clientType = "public"; grantTypes = @() } | Out-Null
 Matrix "demo-go-api" @("reports.view", "reports.export") @{ analyst = @{ title = "Аналитик"; perms = @("reports.view"); requestable = $true }; manager = @{ title = "Руководитель отдела"; perms = @("reports.view", "reports.export"); requestable = $false } }
 Matrix "demo-node-api" @("orders.read", "orders.write") @{ viewer = @{ title = "Просмотр заказов"; perms = @("orders.read"); requestable = $true }; operator = @{ title = "Оператор заказов"; perms = @("orders.read", "orders.write"); requestable = $false } }
+Upsert-App @{ clientId = "demo-java-api"; displayName = "Демо Java API"; clientType = "public"; grantTypes = @() } | Out-Null
+Matrix "demo-java-api" @("inventory.read", "inventory.write") @{ storekeeper = @{ title = "Кладовщик"; perms = @("inventory.read", "inventory.write"); requestable = $true } }
 
 # --- Клиенты с разными типами фронта ---
 $dotnetSecret = Upsert-App @{ clientId = "demo-dotnet"; displayName = "Демо .NET MVC"; clientType = "confidential";
@@ -72,7 +74,8 @@ function Upsert-User($name, $display, $roles) {
 }
 Upsert-User "alice" "Алиса (полный доступ)" @(
     @{ clientId = "demo-go-api"; role = "manager" }, @{ clientId = "demo-node-api"; role = "operator" },
-    @{ clientId = "demo-dotnet"; role = "user" }, @{ clientId = "demo-python"; role = "support" }) | Out-Null
+    @{ clientId = "demo-dotnet"; role = "user" }, @{ clientId = "demo-python"; role = "support" },
+    @{ clientId = "demo-java-api"; role = "storekeeper" }) | Out-Null
 Upsert-User "bob" "Боб (только заказы)" @(@{ clientId = "demo-node-api"; role = "viewer" }, @{ clientId = "demo-dotnet"; role = "user" }) | Out-Null
 
 # --- Секреты для демо-приложений ---

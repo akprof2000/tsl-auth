@@ -1,0 +1,37 @@
+{
+  "name": "@tsl/auth-client",
+  "version": "0.0.0-dev",
+  "description": "Клиентская библиотека TSL Auth: проверка access-токенов (RS256/JWKS), middleware для Express/Connect/node:http, клиент токенов и браузерный клиент PKCE. Без зависимостей.",
+  "type": "module",
+  "license": "MIT",
+  "author": "akprof2000",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akprof2000/tsl-auth"
+  },
+  "homepage": "https://github.com/akprof2000/tsl-auth/tree/main/sdk/node",
+  "keywords": ["oauth2", "oidc", "jwt", "jwks", "pkce", "tsl-auth"],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser.d.ts",
+      "default": "./src/browser.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "test": "node --test tests/vectors.test.js tests/live.test.js tests/middleware.test.js tests/browser.test.js"
+  }
+}

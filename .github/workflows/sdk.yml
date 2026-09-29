@@ -1,0 +1,204 @@
+# Клиентские библиотеки (sdk/*): контрактные тесты пяти SDK против живого контейнера из исходников на каждый push
+# и PR, сборка пакетов на тег vX.Y.Z и их публикация — GitHub Packages (NuGet, Maven), реестры по токенам
+# (nuget.org, npmjs, PyPI — только если секрет задан), тег модуля Go, архив со всеми пакетами для закрытого контура.
+# Контракт — docs/client-contract.md; что именно проверяется — там же, §8.
+name: SDK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Версия пакетов для пробной сборки без публикации (например 0.0.1)
+        default: "0.0.1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  contract:
+    name: Контрактные тесты SDK (.NET, Node, Go, Python, Java)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BOOTSTRAP_API_CLIENT_ID: admin-cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with: { dotnet-version: 10.0.x }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version: "1.24", cache-dependency-path: sdk/go/go.mod }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "22" }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { distribution: temurin, java-version: "21", cache: maven }
+
+      # Секреты стенда — случайные на каждый прогон: в репозитории и журнале их нет (в vectors.json они попадают
+      # только на диск раннера и в артефакт не выгружаются).
+      - name: Стенд TSL Auth из исходников
+        shell: pwsh
+        run: |
+          $secret = [guid]::NewGuid().ToString("N")
+          "BOOTSTRAP_API_CLIENT_SECRET=$secret" >> $env:GITHUB_ENV
+          "BOOTSTRAP_ADMIN_PASSWORD=Ci-$([guid]::NewGuid().ToString('N'))!" >> $env:GITHUB_ENV
+          $env:BOOTSTRAP_API_CLIENT_SECRET = $secret
+          $env:BOOTSTRAP_ADMIN_PASSWORD = "Ci-$([guid]::NewGuid().ToString('N'))!"
+          docker compose up -d --build
+          $up = $false
+          for ($i = 0; $i -lt 90 -and -not $up; $i++) { try { $up = (Invoke-WebRequest http://localhost:8080/health/ready -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch { Start-Sleep 2 } }
+          if (-not $up) { docker compose logs; throw "стенд не поднялся" }
+
+      # FastAPI и Flask — необязательные интеграции Python SDK; ставятся, чтобы их тесты не пропускались.
+      - name: Зависимости тестов
+        run: python -m pip install --quiet build fastapi flask httpx
+
+      - name: Векторы и тесты пяти SDK
+        shell: pwsh
+        run: ./tests/sdk-contract/run.ps1 -NoStand
+
+      - name: Журнал стенда (при ошибке)
+        if: failure()
+        run: docker compose logs --no-color > tests/artifacts/sdk-stand.log 2>&1 || true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sdk-test-results
+          path: |
+            TestResults/sdk-*.trx
+            sdk/java/target/surefire-reports/
+            tests/artifacts/sdk-stand.log
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Остановка стенда
+        if: always()
+        run: docker compose down -v
+
+  packages:
+    name: Пакеты SDK → реестры
+    needs: [contract]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # тег sdk/go/vX.Y.Z и файлы релиза
+      packages: write   # GitHub Packages: NuGet и Maven
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with: { dotnet-version: 10.0.x }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "22", registry-url: "https://registry.npmjs.org" }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      # Версия пакетов = тег без «v»; при ручном запуске — из поля формы (публикация в этом случае не выполняется).
+      - name: Версия
+        id: ver
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF#refs/tags/v}"; else v="${{ github.event.inputs.version }}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Версия пакетов: $v"
+
+      - name: Сборка пакетов
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: ./scripts/build-sdk-packages.sh "$VERSION" dist/sdk
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-packages
+          path: dist/sdk
+          retention-days: 14
+
+      # ---- Публикация (только по тегу) ----
+      - name: NuGet → GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          dotnet nuget push dist/sdk/nuget/*.nupkg --source "https://nuget.pkg.github.com/${GITHUB_REPOSITORY_OWNER}/index.json" \
+            --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+
+      - name: NuGet → nuget.org (если задан NUGET_API_KEY)
+        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: dotnet nuget push dist/sdk/nuget/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
+
+      # Scope @tsl не совпадает с владельцем репозитория, поэтому в GitHub Packages npm-пакет не публикуется —
+      # только в npmjs (по токену) и в реестр GitFlic (конвейер GitFlic); архив всегда есть в файлах релиза.
+      - name: npm → npmjs (если задан NPM_TOKEN)
+        if: startsWith(github.ref, 'refs/tags/v') && env.NODE_AUTH_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish dist/sdk/npm/*.tgz --access public
+
+      - name: PyPI (если задан PYPI_TOKEN)
+        if: startsWith(github.ref, 'refs/tags/v') && env.TWINE_PASSWORD != ''
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m pip install --quiet twine
+          python -m twine upload --skip-existing dist/sdk/pypi/*
+
+      - name: Maven → GitHub Packages
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          cd sdk/java
+          mvn -B -q -Drevision="$VERSION" -DskipTests deploy \
+            -DaltDeploymentRepository="github::https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
+
+      # Модуль Go живёт в подкаталоге: его версия — тег sdk/go/vX.Y.Z на том же коммите.
+      - name: Тег модуля Go
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "sdk/go/v$VERSION" "$GITHUB_SHA"
+          git push -f origin "sdk/go/v$VERSION"
+
+      # Один архив со всеми пакетами — для переноса в закрытый контур вместе с образами (scripts/export-images.ps1
+      # берёт его из файлов релиза). Релиз создаётся вручную после публикации образа; если его ещё нет —
+      # архив лежит в артефакте sdk-packages и прикрепляется позже (docs/release-policy.md).
+      - name: Архив пакетов → файлы релиза (если релиз уже есть)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          (cd dist/sdk && zip -qr "../tsl-auth-sdk-$VERSION.zip" .)
+          sha256sum "dist/tsl-auth-sdk-$VERSION.zip" > "dist/tsl-auth-sdk-$VERSION.zip.sha256"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "dist/tsl-auth-sdk-$VERSION.zip" "dist/tsl-auth-sdk-$VERSION.zip.sha256" --clobber
+          else
+            echo "::notice::Релиз v$VERSION ещё не создан — архив пакетов в артефакте sdk-packages; прикрепите: gh release upload v$VERSION dist/tsl-auth-sdk-$VERSION.zip"
+          fi

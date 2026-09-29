@@ -138,7 +138,10 @@ builder.Services.AddAuthorization(o =>
 ```
 
 Готовые реализации без сторонних библиотек: Go — `samples/go-api/main.go`, Node.js — `samples/node-spa/server.mjs`,
-Python — `samples/python-app/app.py`.
+Python — `samples/python-app/app.py`, Java — `samples/java-api`.
+
+Чтобы не писать проверку самому, есть [клиентские библиотеки](sdk.md) для .NET, Node.js/браузера, Go, Python и Java:
+все пункты выше они выполняют по общему [контракту](client-contract.md), а маршрут защищается одной строкой.
 
 ## 5. Сервис → сервис
 

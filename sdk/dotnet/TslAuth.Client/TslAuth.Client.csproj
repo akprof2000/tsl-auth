@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <RootNamespace>TslAuth.Client</RootNamespace>
+
+    <PackageId>TslAuth.Client</PackageId>
+    <!-- Версия по умолчанию; CI подставляет версию тега: dotnet pack -p:Version=1.2.3 -->
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <Authors>akprof2000</Authors>
+    <Description>Клиентская библиотека TSL Auth: проверка access-токенов (RS256, JWKS), principal с правами, схема аутентификации ASP.NET Core, клиент токенов.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/akprof2000/tsl-auth</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/akprof2000/tsl-auth</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>tsl-auth;oauth2;oidc;jwt;aspnetcore</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsl-auth-client"
+version = "0.0.0.dev0"
+description = "Клиент TSL Auth: проверка JWT (RS256/JWKS) без зависимостей, middleware для WSGI/FastAPI/Flask, клиент токенов"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "akprof2000" }]
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/akprof2000/tsl-auth"
+Documentation = "https://github.com/akprof2000/tsl-auth/blob/main/docs/client-contract.md"
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.100"]
+flask = ["flask>=2.3"]
+dev = ["build"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tsl_auth_client = ["py.typed"]

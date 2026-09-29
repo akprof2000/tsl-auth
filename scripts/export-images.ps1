@@ -4,12 +4,16 @@
 # -NoNginx, -NoOpenBao (используется уже развёрнутый OpenBao контура).
 # -Observability — добавить образы стенда мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector,
 #   OpenTelemetry Collector и Grafana; Grafana собирается здесь же с плагином VictoriaLogs — в контуре его не скачать).
+# -Sdk — добавить пакеты клиентских библиотек (dist/sdk: NuGet, npm, PyPI, Maven, архив модуля Go) для приложений
+#   контура; собираются scripts/build-sdk-packages.sh (нужны dotnet, node, python, maven/JDK). Без инструментов —
+#   скачайте tsl-auth-sdk-<версия>.zip из файлов релиза на GitHub и положите рядом с образами.
 param(
     [string]$Version = "latest",
     [switch]$NoPostgres,
     [switch]$NoNginx,
     [switch]$NoOpenBao,
-    [switch]$Observability
+    [switch]$Observability,
+    [switch]$Sdk
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -41,6 +45,13 @@ $gz = "$tar.gz"
 # docker load в закрытом контуре находится не на всех версиях Docker), поэтому digest фиксируется здесь.
 $images | ForEach-Object { "$_  " + (docker image inspect $_ --format '{{.Id}}  {{range .RepoDigests}}{{.}} {{end}}') } |
     Set-Content "dist/tsl-auth-images-$Version.txt"
+
+if ($Sdk) {
+    # Версия пакетов: X.Y.Z из -Version (тег vX.Y.Z), иначе 0.0.0 с пометкой latest.
+    $pkgVersion = if ($Version -match '^v?(\d+\.\d+\.\d+)$') { $Matches[1] } else { "0.0.0" }
+    sh scripts/build-sdk-packages.sh $pkgVersion dist/sdk
+    if ($LASTEXITCODE -ne 0) { throw "сборка пакетов SDK не удалась" }
+}
 
 # Вместе с образами — всё, что нужно для запуска.
 Copy-Item docker-compose*.yml, .env.example dist/ -Force

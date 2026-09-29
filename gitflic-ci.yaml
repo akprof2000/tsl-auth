@@ -13,6 +13,9 @@
 
 # Стадии: build — сборка решения и образа, проверка документации (все три параллельно);
 # test — интеграционные тесты и Trivy (параллельно); publish → release.
+# Пакеты клиентских библиотек (sdk/*) на тег vX.Y.Z уходят в реестр пакетов этого же проекта GitFlic
+# (NuGet, npm, PyPI, Maven; модуль Go — сам репозиторий, go.gitflic.ru/uklad/tsl-auth/sdk/go).
+# Контрактные тесты SDK идут в CI GitHub (sdk.yml) на каждый push; релиз без них не ставится (docs/release-policy.md).
 stages:
   - build
   - test
@@ -36,6 +39,10 @@ variables:
   # $CI_REGISTRY_IMAGE даёт только .../project/<владелец>/<проект> — имя образа добавляется здесь.
   IMAGE_REPO: $CI_REGISTRY_IMAGE/tsl-auth
   IMAGE_SHA: $CI_REGISTRY_IMAGE/tsl-auth:sha-$CI_COMMIT_SHA
+  # Реестр пакетов проекта: https://registry.gitflic.ru/project/<владелец>/<проект>/package/-/<тип>.
+  # Вход — учётная запись и транспортный токен из переменных проекта GITFLIC_PKG_USER / GITFLIC_PKG_TOKEN
+  # (Настройки → CI/CD → Переменные); без них задания публикации пакетов пропускаются.
+  PKG_BASE: https://$CI_REGISTRY_IMAGE/package/-
 
 # Кэш NuGet общий для всех заданий и конвейеров: restore из кэша — секунды вместо ~2 минут на задание.
 cache:
@@ -157,3 +164,53 @@ gitflic-release:
     tag_name: "$CI_COMMIT_TAG"
   script:
     - echo "Релиз $CI_COMMIT_TAG"
+
+# ---------- Пакеты SDK (только тег vX.Y.Z; версия = тег без «v») ----------
+# Каждый пакет собирается в образе своего инструмента, поэтому заданий четыре; они идут параллельно после образа.
+.sdk-publish:
+  stage: release
+  tags: [tsl-auth]
+  cache: []
+  needs: [publish-image]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/ && $GITFLIC_PKG_TOKEN
+  before_script:
+    - export SDK_VERSION="${CI_COMMIT_TAG#v}"
+
+publish-sdk-nuget:
+  extends: .sdk-publish
+  image: $SDK_IMAGE
+  script:
+    - dotnet pack sdk/dotnet/TslAuth.Client/TslAuth.Client.csproj -c Release -p:Version="$SDK_VERSION" -o dist/nuget
+    - dotnet nuget add source "$PKG_BASE/nuget/index.json" -n gitflic -u "$GITFLIC_PKG_USER" -p "$GITFLIC_PKG_TOKEN" --store-password-in-clear-text
+    - dotnet nuget push dist/nuget/*.nupkg -s gitflic -k "$GITFLIC_PKG_TOKEN" --skip-duplicate
+
+publish-sdk-npm:
+  extends: .sdk-publish
+  image: node:22-alpine
+  script:
+    - cd sdk/node
+    - npm version "$SDK_VERSION" --no-git-tag-version --allow-same-version
+    - echo "//${PKG_BASE#https://}/npm/:_authToken=$GITFLIC_PKG_TOKEN" > .npmrc
+    - npm publish --registry "$PKG_BASE/npm/"
+
+publish-sdk-pypi:
+  extends: .sdk-publish
+  image: python:3.12-alpine
+  script:
+    - pip install --quiet build twine
+    - cd sdk/python
+    - sed -i -E "s/^version = \"[^\"]+\"/version = \"$SDK_VERSION\"/" pyproject.toml
+    - python -m build
+    - TWINE_USERNAME="$GITFLIC_PKG_USER" TWINE_PASSWORD="$GITFLIC_PKG_TOKEN" python -m twine upload --repository-url "$PKG_BASE/pypi" --skip-existing dist/*
+
+publish-sdk-maven:
+  extends: .sdk-publish
+  image: maven:3.9-eclipse-temurin-21-alpine
+  script:
+    - cd sdk/java
+    - |
+      mkdir -p ~/.m2 && cat > ~/.m2/settings.xml <<EOF
+      <settings><servers><server><id>gitflic</id><username>$GITFLIC_PKG_USER</username><password>$GITFLIC_PKG_TOKEN</password></server></servers></settings>
+      EOF
+    - mvn -B -q -Drevision="$SDK_VERSION" -DskipTests deploy -DaltDeploymentRepository="gitflic::$PKG_BASE/maven"

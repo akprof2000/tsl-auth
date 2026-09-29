@@ -27,3 +27,24 @@ __pycache__/
 # --- Результаты тестов (генерируются) ---
 tests/artifacts/
 TestResults/
+
+# Контрактные векторы SDK: содержат живые токены и секреты тестового стенда
+tests/sdk-contract/vectors.json
+
+# Виртуальное окружение Python SDK (fastapi/flask для тестов)
+sdk/python/.venv/
+sdk/python/dist/
+sdk/python/build/
+*.egg-info/
+
+# Архивы пакетов SDK, собираемые локально
+sdk/node/*.tgz
+sdk/python/dist/
+sdk/python/.venv/
+sdk/java/target/
+samples/java-api/target/
+dist/sdk/
+
+# --- Java (Maven) ---
+target/
+.flattened-pom.xml

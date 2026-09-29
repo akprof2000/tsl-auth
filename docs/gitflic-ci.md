@@ -17,7 +17,7 @@
 | build | Параллельно: сборка решения с `-warnaserror` и unit-тесты; сборка образа из `Dockerfile`; проверка документации |
 | test | Параллельно: интеграционные тесты (SQLite, PostgreSQL и OpenBao в Testcontainers через `docker:dind`, без пересборки — бинарники из артефакта build); Trivy — уязвимости HIGH/CRITICAL с исправлением прерывают конвейер |
 | publish | `main` — теги `latest` и `sha-<коммит>`; тег `vX.Y.Z` — тег `X.Y.Z` в реестре GitFlic. Загрузка — `crane` (клиент без демона): демон `docker:dind` на агенте не дожидается ответа `registry.gitflic.ru` |
-| release | Релиз GitFlic для тега `vX.Y.Z` |
+| release | Релиз GitFlic для тега `vX.Y.Z`; задания `publish-sdk-nuget/npm/pypi/maven` публикуют клиентские библиотеки той же версии в реестр пакетов проекта (`…/package/-/<тип>`), если заданы переменные проекта `GITFLIC_PKG_USER` и `GITFLIC_PKG_TOKEN` (логин и транспортный токен GitFlic). Контрактные тесты SDK идут в CI GitHub (`sdk.yml`) |
 
 Пакеты NuGet кэшируются между конвейерами (`cache: nuget`), поэтому `restore` после первого прогона занимает секунды.
 

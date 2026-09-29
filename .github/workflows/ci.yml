@@ -251,7 +251,7 @@ jobs:
       # зависают, поэтому тот же digest копируется отсюда. Версия GitFlic своя: MAJOR.MINOR из sdk/VERSION + номер запуска CI
       # (например 1.4.57), плюс latest на main и X.Y.Z на теге. Нужны секреты GITFLIC_PKG_USER / GITFLIC_PKG_TOKEN.
       - name: Копия образа в реестр GitFlic
-        if: env.GITFLIC_PKG_TOKEN != ''
+        if: ${{ secrets.GITFLIC_PKG_TOKEN != '' }}
         env:
           GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
           GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}

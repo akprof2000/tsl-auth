@@ -142,7 +142,7 @@ jobs:
 
       # ---- Реестр пакетов GitFlic (main и тег) ----
       - name: Пакеты → реестр GitFlic
-        if: (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main') && env.GITFLIC_PKG_TOKEN != ''
+        if: (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main') && secrets.GITFLIC_PKG_TOKEN != ''
         env:
           GITFLIC_PKG_USER: ${{ secrets.GITFLIC_PKG_USER }}
           GITFLIC_PKG_TOKEN: ${{ secrets.GITFLIC_PKG_TOKEN }}
@@ -158,7 +158,7 @@ jobs:
             --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
 
       - name: NuGet → nuget.org (если задан NUGET_API_KEY)
-        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.NUGET_API_KEY != ''
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: dotnet nuget push dist/sdk/nuget/*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
@@ -166,13 +166,13 @@ jobs:
       # Scope @tsl не совпадает с владельцем репозитория, поэтому в GitHub Packages npm-пакет не публикуется —
       # только в npmjs (по токену) и в реестр GitFlic (конвейер GitFlic); архив всегда есть в файлах релиза.
       - name: npm → npmjs (если задан NPM_TOKEN)
-        if: startsWith(github.ref, 'refs/tags/v') && env.NODE_AUTH_TOKEN != ''
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.NPM_TOKEN != ''
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish dist/sdk/npm/*.tgz --access public
 
       - name: PyPI (если задан PYPI_TOKEN)
-        if: startsWith(github.ref, 'refs/tags/v') && env.TWINE_PASSWORD != ''
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.PYPI_TOKEN != ''
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}

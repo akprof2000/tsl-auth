@@ -181,6 +181,23 @@ e2e-stand:
     when: always
     expire_in: 1 day
 
+# Проверка сети сервера Hetzner (агенты с тегом tsl-auth-hel): с него TCP-сессии к registry.gitflic.ru обрываются
+# после ~19 КБ, поэтому сборка временно идёт на агентах с тегом tsl-auth (рабочая станция). Задание в каждом конвейере
+# скачивает слой публичного образа из реестра: OK — сеть починили, можно вернуть тег tsl-auth серверным агентам
+# (см. docs/gitflic-ci.md). Не блокирует конвейер (allow_failure).
+net-check-hel:
+  stage: build
+  image: alpine:3.22
+  tags: [tsl-auth-hel]
+  cache: []
+  allow_failure: true
+  script:
+    - apk add --no-cache curl >/dev/null
+    - tok=$(curl -s "https://registry.gitflic.ru/v2/token?service=service&scope=repository:company/gitflic/gitflic-runner-helper:pull" | sed -E 's/.*"token":"([^"]+)".*//')
+    - size=$(curl -sSL -o /dev/null -w '%{size_download}' --max-time 90 -H "Authorization: Bearer $tok" https://registry.gitflic.ru/v2/company/gitflic/gitflic-runner-helper/blobs/sha256:3b84935925832868d61044cb4ad9a00cc716d83a1461bdde439da834485caf46 || true)
+    - echo "скачано байт: ${size:-0} (слой ~85 МБ)"
+    - '[ "${size:-0}" -ge 50000000 ] && echo "СЕТЬ ДО РЕЕСТРА GITFLIC РАБОТАЕТ — можно вернуть сборку на сервер" || { echo "сеть до registry.gitflic.ru по-прежнему обрывается"; exit 1; }'
+
 validate-docs:
   stage: build
   image: $SDK_IMAGE

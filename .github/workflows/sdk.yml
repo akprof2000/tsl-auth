@@ -81,7 +81,7 @@ jobs:
             TestResults/sdk-*.trx
             sdk/java/target/surefire-reports/
             tests/artifacts/sdk-stand.log
-          retention-days: 3
+          retention-days: 1
           if-no-files-found: ignore
 
       - name: Остановка стенда
@@ -135,7 +135,7 @@ jobs:
         with:
           name: sdk-packages
           path: dist/sdk
-          retention-days: 14
+          retention-days: 1
 
       # ---- Публикация (только по тегу) ----
       - name: NuGet → GitHub Packages

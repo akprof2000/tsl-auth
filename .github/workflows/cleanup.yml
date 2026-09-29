@@ -38,3 +38,52 @@ jobs:
           for id in $(gh api "repos/$REPO/actions/runs?per_page=100&created=<$cutoff" --paginate --jq '.workflow_runs[] | select(.status != "in_progress" and .status != "queued") | .id'); do
             gh api -X DELETE "repos/$REPO/actions/runs/$id" && echo "  deleted run $id"
           done
+
+  # Пакеты GitHub (GHCR-образ, NuGet, Maven): не больше KEEP новейших версий. У образа вместе с версией хранятся
+  # подписи cosign (теги sha256-<digest>) и аттестации (без тегов, на них ссылается индекс образа) — они остаются
+  # только у сохраняемых версий, остальное удаляется, иначе место в GHCR растёт с каждой сборкой.
+  packages:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OWNER: ${{ github.repository_owner }}
+      KEEP: 3
+    steps:
+      - name: Образ GHCR — оставить KEEP версий с их подписями и аттестациями
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$OWNER" --password-stdin >/dev/null
+          api="users/$OWNER/packages/container/tsl-auth/versions"
+          gh api "$api?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)\t\(.created_at)\t\(.metadata.container.tags|join(","))"' > versions.tsv
+          # Основные версии — с тегами, не являющимися подписью cosign; из них оставляем KEEP новейших.
+          awk -F'\t' '$4 != "" && $4 !~ /^sha256-/' versions.tsv | sort -t$'\t' -k3 -r | head -n "$KEEP" > keep.tsv
+          : > keep-digests.txt
+          while IFS=$'\t' read -r id digest created tags; do
+            echo "$digest" >> keep-digests.txt
+            # Дочерние манифесты индекса (платформа, provenance, SBOM) — без тегов, но нужны образу.
+            docker manifest inspect "ghcr.io/$OWNER/tsl-auth@$digest" 2>/dev/null | jq -r '.manifests[]?.digest // empty' >> keep-digests.txt || true
+            echo "keep: $tags ($digest)"
+          done < keep.tsv
+          deleted=0
+          while IFS=$'\t' read -r id digest created tags; do
+            if grep -qx "$digest" keep-digests.txt; then continue; fi
+            # Подпись cosign сохраняемого образа: тег sha256-<digest без префикса>.
+            if [[ "$tags" == sha256-* ]] && grep -qx "sha256:${tags#sha256-}" keep-digests.txt; then continue; fi
+            gh api -X DELETE "$api/$id" >/dev/null && deleted=$((deleted+1)) && echo "  deleted ${tags:-<без тегов>} ($digest)"
+          done < versions.tsv
+          echo "удалено версий образа: $deleted"
+
+      - name: NuGet и Maven — оставить KEEP версий
+        run: |
+          set -euo pipefail
+          for pkg in "nuget/TslAuth.Client" "maven/ru.tsl.auth.tsl-auth-client"; do
+            api="users/$OWNER/packages/$pkg/versions"
+            gh api "$api?per_page=100" --paginate --jq '.[] | "\(.created_at)\t\(.id)\t\(.name)"' 2>/dev/null | sort -r | tail -n +$((KEEP + 1)) |
+              while IFS=$'\t' read -r created id name; do
+                gh api -X DELETE "$api/$id" >/dev/null && echo "  $pkg: deleted $name"
+              done
+            echo "$pkg: kept $(gh api "$api?per_page=$KEEP" --jq '[.[].name]|join(", ")' 2>/dev/null)"
+          done

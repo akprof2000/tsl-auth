@@ -28,14 +28,17 @@ get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; d
   id=$(printf '%s' "$pkg" | uuid); name=$(printf '%s' "$pkg" | jq -r '.name // .packageName // .alias // "?"'); type=$(printf '%s' "$pkg" | jq -r '.type // .packageType // "?"')
   [ -n "$id" ] || { echo "  пакет без идентификатора: $pkg"; continue; }
   echo "  пакет $name ($type, $id)"
-  get "/registry/project/$PROJECT/package/$id/version-list?size=200" | items | while read -r v; do
+  get "/registry/project/$PROJECT/package/$id/version-list?size=200" | items > "/tmp/raw.$id"
+  # В сухом прогоне показываем первый объект версии: имена полей GitFlic в документации не приведены.
+  [ "$DRY" = "1" ] && { echo "    поля версии: $(head -1 "/tmp/raw.$id" | jq -c 'keys')"; echo "    пример: $(head -1 "/tmp/raw.$id" | cut -c1-300)"; }
+  while read -r v; do
     ver=$(printf '%s' "$v" | jq -r '.version // .name // .packageVersion // empty'); st=$(printf '%s' "$v" | stamp)
     [ -n "$ver" ] && printf '%s\t%s\n' "$st" "$ver"
-  done | sort -r > "/tmp/versions.$id"
+  done < "/tmp/raw.$id" | sort -r > "/tmp/versions.$id"
   total=$(wc -l < "/tmp/versions.$id"); echo "    версий: $total"
   # latest — плавающий тег образа, его не трогаем; остальные — по дате, новейшие KEEP остаются.
-  grep -v "	latest$" "/tmp/versions.$id" | tail -n +$((KEEP + 1)) | while IFS="$(printf '\t')" read -r st ver; do
-    del POST "/registry/project/$PROJECT/package/$id/$ver/delete"
+  grep -v "|latest$" "/tmp/versions.$id" | tail -n +$((KEEP + 1)) | while IFS='|' read -r st ver; do
+    [ -n "$ver" ] && del POST "/registry/project/$PROJECT/package/$id/$ver/delete"
   done
 done
 
@@ -45,7 +48,7 @@ get "/project/$PROJECT/release?size=100" | items | while read -r r; do
   [ -n "$id" ] && printf '%s\t%s\t%s\n' "$st" "$id" "$tag"
 done | sort -r > /tmp/releases
 echo "  релизов: $(wc -l < /tmp/releases)"
-tail -n +$((KEEP + 1)) /tmp/releases | while IFS="$(printf '\t')" read -r st id tag; do
+tail -n +$((KEEP + 1)) /tmp/releases | while IFS='|' read -r st id tag; do
   echo "  релиз $tag"; del DELETE "/project/$PROJECT/release/$id"
 done
 echo "Готово."

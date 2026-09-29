@@ -10,9 +10,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 HOST="${PKG_BASE#https://}"
 
 echo "== NuGet → GitFlic"
-dotnet nuget push "$DIST"/nuget/*.nupkg --source "$PKG_BASE/nuget/index.json" --api-key "$GITFLIC_PKG_TOKEN" --skip-duplicate \
-  || { dotnet nuget add source "$PKG_BASE/nuget/index.json" -n gitflic -u "$GITFLIC_PKG_USER" -p "$GITFLIC_PKG_TOKEN" --store-password-in-clear-text >/dev/null 2>&1 || true
-       dotnet nuget push "$DIST"/nuget/*.nupkg --source gitflic --api-key "$GITFLIC_PKG_TOKEN" --skip-duplicate; }
+# Индекс реестра требует basic-аутентификации, поэтому источник регистрируется с логином и токеном и push идёт по имени.
+NUGET_CFG="$(mktemp -d)/nuget.config"
+cat > "$NUGET_CFG" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources><clear /><add key="gitflic" value="$PKG_BASE/nuget/index.json" /></packageSources>
+  <packageSourceCredentials><gitflic><add key="Username" value="$GITFLIC_PKG_USER" /><add key="ClearTextPassword" value="$GITFLIC_PKG_TOKEN" /></gitflic></packageSourceCredentials>
+</configuration>
+EOF
+dotnet nuget push "$DIST"/nuget/*.nupkg --source gitflic --api-key "$GITFLIC_PKG_TOKEN" --skip-duplicate --configfile "$NUGET_CFG"
+rm -rf "$(dirname "$NUGET_CFG")"
 
 echo "== npm → GitFlic"
 tmp_npmrc="$(mktemp)"; printf '//%s/npm/:_authToken=%s\n' "$HOST" "$GITFLIC_PKG_TOKEN" > "$tmp_npmrc"

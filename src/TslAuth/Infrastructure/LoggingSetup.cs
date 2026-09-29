@@ -50,8 +50,11 @@ public static class LoggingSetup
                 // (и в файле, и в JSON-консоли) со span'ом в VictoriaTraces.
                 .Enrich.With<TraceEnricher>()
                 .Enrich.WithProperty("service", observability.ServiceName)
-                .Enrich.WithProperty("instance", instance)
-                .ReadFrom.Configuration(builder.Configuration);
+                .Enrich.WithProperty("instance", instance);
+            // Секция Serilog из конфигурации (сторонние sink'и: Seq, syslog…) — только по явному флагу: правило проекта —
+            // журнал пишется в stdout, любой другой приёмник включается осознанно, а не появлением переменной Serilog__*.
+            if (builder.Configuration.GetValue<bool>("Logging:Serilog:Enabled"))
+                cfg.ReadFrom.Configuration(builder.Configuration);
 
             const string template = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
             if (json)
@@ -61,9 +64,14 @@ public static class LoggingSetup
 
             // Файл на диске (для запуска вне контейнера; в контейнере ротацию делает Docker): новый файл каждый день
             // и по достижении размера, на диске не больше RetainedFiles файлов, ротированные сжимаются в .gz.
+            // Включается только явным флагом Logging__File__Enabled=true: сам по себе заданный путь файл не включает.
             var file = builder.Configuration.GetSection("Logging:File").Get<FileLogOptions>() ?? new FileLogOptions();
-            if (!string.IsNullOrWhiteSpace(file.Path))
+            if (file.Enabled)
+            {
+                if (string.IsNullOrWhiteSpace(file.Path))
+                    throw new InvalidOperationException("Logging:File:Enabled=true, но Logging:File:Path не задан.");
                 AddFile(cfg, file, json ? new RenderedCompactJsonFormatter() : null, template);
+            }
 
             var otlp = observability.OpenTelemetry;
             if (otlp.Enabled && otlp.Logs)
@@ -77,6 +85,20 @@ public static class LoggingSetup
                 });
             }
         }, preserveStaticLogger: true);
+    }
+
+    /// <summary>
+    /// Логгер для кода, который выполняется до построения DI (инициализация шифрования, чтение секретов):
+    /// тот же Serilog и тот же формат stdout (текст или JSON по Logging:Format), чтобы стартовые строки
+    /// не отличались от остальных. Вызывающий обязан освободить фабрику.
+    /// </summary>
+    public static ILoggerFactory CreateBootstrapLoggerFactory(IConfiguration configuration)
+    {
+        var json = (configuration["Logging:Format"] ?? "Text").Equals("Json", StringComparison.OrdinalIgnoreCase);
+        var cfg = new LoggerConfiguration().MinimumLevel.Information().Enrich.FromLogContext();
+        if (json) cfg.WriteTo.Console(new RenderedCompactJsonFormatter());
+        else cfg.WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+        return new Serilog.Extensions.Logging.SerilogLoggerFactory(cfg.CreateLogger(), dispose: true);
     }
 
     /// <summary>
@@ -126,9 +148,12 @@ public sealed class TraceEnricher : ILogEventEnricher
     }
 }
 
-/// <summary>Секция Logging:File — журнал на диске (по умолчанию выключен: логи идут в stdout).</summary>
+/// <summary>Секция Logging:File — журнал на диске. По умолчанию выключен: логи идут в stdout; включается только Enabled=true.</summary>
 public sealed class FileLogOptions
 {
+    /// <summary>Явное включение файлового журнала. Без него Path игнорируется.</summary>
+    public bool Enabled { get; set; }
+
     /// <summary>Путь-шаблон: <c>logs/tsl-auth-.log</c> → <c>logs/tsl-auth-20260925.log</c>, <c>…_001.log</c> при переполнении.</summary>
     public string? Path { get; set; }
 

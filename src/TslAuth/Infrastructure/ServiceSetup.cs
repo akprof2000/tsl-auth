@@ -62,8 +62,8 @@ public static class ServiceSetup
 
         // Ключ шифрования полей нужен до первого обращения к БД.
         // FieldCrypto статический (его используют value converter'ы EF), поэтому инициализируется здесь, вне DI;
-        // логгер временный — полноценный ещё не построен.
-        using (var loggerFactory = LoggerFactory.Create(b => b.AddConsole()))
+        // логгер временный (полноценный ещё не построен) — но тот же Serilog в stdout и в том же формате.
+        using (var loggerFactory = LoggingSetup.CreateBootstrapLoggerFactory(config))
         {
             FieldCrypto.Initialize(MasterKeyResolver.Resolve(encryption, database, builder.Environment.ContentRootPath,
                 loggerFactory.CreateLogger("TslAuth.Encryption")));

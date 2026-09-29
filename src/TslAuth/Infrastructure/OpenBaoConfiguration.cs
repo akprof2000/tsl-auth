@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace TslAuth.Infrastructure;
 
@@ -56,13 +57,15 @@ public static class OpenBaoConfiguration
         var options = configuration.GetSection(OpenBaoOptions.Section).Get<OpenBaoOptions>() ?? new OpenBaoOptions();
         if (!options.Enabled) return null;
 
-        var values = LoadAsync(options, delay ?? (_ => TimeSpan.FromSeconds(2))).GetAwaiter().GetResult();
+        // Логгер до DI — тот же Serilog в stdout, чтобы предупреждения о повторах не отличались от остальных строк журнала.
+        using var loggerFactory = LoggingSetup.CreateBootstrapLoggerFactory(configuration);
+        var values = LoadAsync(options, delay ?? (_ => TimeSpan.FromSeconds(2)), loggerFactory.CreateLogger("TslAuth.OpenBao")).GetAwaiter().GetResult();
         configuration.AddInMemoryCollection(values);
         return $"OpenBao {options.Address} ({options.Mount}: {options.Path}), ключей: {values.Count}";
     }
 
     /// <summary>Вход и чтение всех путей. Исключение — секреты получить не удалось.</summary>
-    public static async Task<Dictionary<string, string?>> LoadAsync(OpenBaoOptions options, Func<int, TimeSpan> delay,
+    public static async Task<Dictionary<string, string?>> LoadAsync(OpenBaoOptions options, Func<int, TimeSpan> delay, ILogger? logger = null,
         CancellationToken ct = default)
     {
         using var http = CreateClient(options);
@@ -79,7 +82,7 @@ public static class OpenBaoConfiguration
             }
             catch (OpenBaoUnavailableException ex) when (attempt < Math.Max(1, options.Retries))
             {
-                Console.Error.WriteLine($"OpenBao недоступен ({ex.Message}), попытка {attempt}/{options.Retries}...");
+                logger?.LogWarning("OpenBao недоступен ({Reason}), попытка {Attempt}/{Retries}", ex.Message, attempt, options.Retries);
                 await Task.Delay(delay(attempt), ct);
             }
             catch (OpenBaoUnavailableException ex)

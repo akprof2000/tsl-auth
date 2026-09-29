@@ -4,6 +4,7 @@
 
 using System.Net;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Serilog.Events;
 using Serilog.Parsing;
 using TslAuth.Infrastructure;
@@ -173,7 +174,7 @@ public sealed class ObservabilitySetupTests
         Directory.CreateDirectory(dir);
         try
         {
-            var options = new FileLogOptions { Path = Path.Combine(dir, "tsl-auth-.log"), SizeLimitMb = 1, RetainedFiles = 3, Compress = true };
+            var options = new FileLogOptions { Enabled = true, Path = Path.Combine(dir, "tsl-auth-.log"), SizeLimitMb = 1, RetainedFiles = 3, Compress = true };
             var cfg = new Serilog.LoggerConfiguration();
             LoggingSetup.AddFile(cfg, options, null, "{Message}{NewLine}");
             using (var logger = cfg.CreateLogger())
@@ -192,6 +193,27 @@ public sealed class ObservabilitySetupTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    /// <summary>Правило «только stdout»: путь к файлу без Logging:File:Enabled=true файл не включает.</summary>
+    [Fact]
+    public void FileLog_IsOffWithoutExplicitFlag()
+    {
+        var o = new FileLogOptions { Path = "logs/x-.log" };
+        Assert.False(o.Enabled);
+        var bound = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Logging:File:Path"] = "logs/x-.log" }).Build().GetSection("Logging:File").Get<FileLogOptions>();
+        Assert.False(bound!.Enabled);
+    }
+
+    /// <summary>Загрузочный логгер до DI — Serilog в stdout, формат по Logging:Format.</summary>
+    [Fact]
+    public void BootstrapLogger_IsSerilogConsole()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Logging:Format"] = "Json" }).Build();
+        using var factory = LoggingSetup.CreateBootstrapLoggerFactory(config);
+        Assert.IsType<Serilog.Extensions.Logging.SerilogLoggerFactory>(factory);
+        factory.CreateLogger("probe").LogInformation("bootstrap {X}", 1); // не бросает; вывод — в stdout
     }
 
     /// <summary>Файлы конфигурации ищутся вверх по дереву каталогов.</summary>

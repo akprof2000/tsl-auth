@@ -16,6 +16,7 @@ namespace TslAuth.UiTests;
 /// </summary>
 public sealed class UiFixture : IAsyncLifetime
 {
+    public static float TimeoutMs => float.Parse(Env("UI_TIMEOUT_MS", "15000"));
     public static string Auth => Env("UI_AUTH_URL", "http://localhost:8080");
     public static string Dotnet => Env("UI_DOTNET_URL", "http://localhost:5101");
     public static string Spa => Env("UI_SPA_URL", "http://localhost:5102");
@@ -46,6 +47,9 @@ public sealed class UiFixture : IAsyncLifetime
         Directory.CreateDirectory(Artifacts);
         Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
         Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = Env("UI_HEADED", "") == "" });
+        // На загруженном агенте CI (стенд в dind, соседние задания) ответы приходят дольше 5 с по умолчанию: ожидания
+        // Playwright — UI_TIMEOUT_MS (по умолчанию 15 с), чтобы медленный стенд не выглядел как падение.
+        Microsoft.Playwright.Assertions.SetDefaultExpectTimeout(TimeoutMs);
 
         // Admin API: клиент admin-cli создаётся сервисом из Bootstrap-настроек стенда.
         Admin = new HttpClient { BaseAddress = new Uri(Auth) };
@@ -91,7 +95,9 @@ public sealed class UiFixture : IAsyncLifetime
     public async Task<IPage> NewPageAsync(string? locale = "ru-RU")
     {
         var context = await Browser.NewContextAsync(new() { Locale = locale, ViewportSize = new() { Width = 1280, Height = 900 } });
-        return await context.NewPageAsync();
+        var page = await context.NewPageAsync();
+        page.SetDefaultTimeout(TimeoutMs);
+        return page;
     }
 
     public static Task ShotAsync(IPage page, string name) =>

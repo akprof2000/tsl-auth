@@ -49,7 +49,8 @@ try {
     Run node   { npm test }
     Run go     { go test ./... -count=1 }
     Run python { python -m unittest discover -s tests -v }
-    Run java   { if (Get-Command mvn -ErrorAction SilentlyContinue) { mvn -q -B test } else { ./mvnw -q -B test } }
+    # Maven тянет плагины из Central; на агентах DNS внутри контейнера иногда отваливается («Unknown host») — одна повторная попытка.
+    Run java   { $mvn = if (Get-Command mvn -ErrorAction SilentlyContinue) { "mvn" } else { "./mvnw" }; & $mvn -q -B test; if ($LASTEXITCODE -ne 0) { Write-Host "mvn: повтор"; & $mvn -q -B test } }
 }
 finally {
     if (-not $NoStand -and -not $KeepStand) { docker compose down -v 2>&1 | Out-Null }

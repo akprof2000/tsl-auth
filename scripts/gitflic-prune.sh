@@ -30,16 +30,22 @@ get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; d
   echo "  пакет $name ($type, $id)"
   get "/registry/project/$PROJECT/package/$id/version-list?size=200" | items > "/tmp/raw.$id"
   # В сухом прогоне показываем первый объект версии: имена полей GitFlic в документации не приведены.
-  [ "$DRY" = "1" ] && { echo "    поля версии: $(head -1 "/tmp/raw.$id" | jq -c 'keys')"; echo "    пример: $(head -1 "/tmp/raw.$id" | cut -c1-300)"; }
+  if [ "$DRY" = "1" ]; then
+    echo "    поля версии: $(head -1 "/tmp/raw.$id" | jq -c 'keys')"
+    echo "    поля файла версии: $(head -1 "/tmp/raw.$id" | jq -c '.packageFiles[0] | del(.name) | keys')"
+    echo "    версии: $(jq -r '.version' "/tmp/raw.$id" | tr '
+' ' ')"
+  fi
   while read -r v; do
     ver=$(printf '%s' "$v" | jq -r '.version // .name // .packageVersion // empty'); st=$(printf '%s' "$v" | stamp)
     [ -n "$ver" ] && printf '%s\t%s\n' "$st" "$ver"
   done < "/tmp/raw.$id" | sort -r > "/tmp/versions.$id"
   total=$(wc -l < "/tmp/versions.$id"); echo "    версий: $total"
   # latest — плавающий тег образа, его не трогаем; остальные — по дате, новейшие KEEP остаются.
+  # Пустое имя версии пропускается; «|| true» — иначе ложный код возврата цикла останавливает скрипт (set -e).
   grep -v "|latest$" "/tmp/versions.$id" | tail -n +$((KEEP + 1)) | while IFS='|' read -r st ver; do
-    [ -n "$ver" ] && del POST "/registry/project/$PROJECT/package/$id/$ver/delete"
-  done
+    if [ -n "$ver" ]; then del POST "/registry/project/$PROJECT/package/$id/$ver/delete"; fi
+  done || true
 done
 
 echo "== Релизы $PROJECT: оставляем $KEEP"
@@ -50,5 +56,5 @@ done | sort -r > /tmp/releases
 echo "  релизов: $(wc -l < /tmp/releases)"
 tail -n +$((KEEP + 1)) /tmp/releases | while IFS='|' read -r st id tag; do
   echo "  релиз $tag"; del DELETE "/project/$PROJECT/release/$id"
-done
+done || true
 echo "Готово."

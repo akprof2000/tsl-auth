@@ -129,9 +129,9 @@ sdk-contract:
     expire_in: 1 day
 
 # E2E-стенд (перенесён с GitHub): сервис из исходников в docker:dind + четыре демо-приложения в контейнере задания →
-# UI-автотесты (Playwright), нагрузка (k6, локальный бинарник), сценарии отказов одиночного режима, секреты через env/файл.
+# UI-автотесты (Playwright), нагрузка (k6, локальный бинарник), сценарии отказов одиночного режима.
 # Порты стенда публикуются на хосте dind (alias docker), а скрипты и браузер ходят на localhost — их сводит socat.
-# Кластер (docker-compose.ha.yml), стенд мониторинга и OpenBao здесь не проверяются: их compose-файлы монтируют
+# Кластер (docker-compose.ha.yml), секреты из файла настроек, стенд мониторинга и OpenBao здесь не проверяются: их compose монтируют
 # каталоги репозитория, которых нет на хосте dind (bind mount) — они остаются ручной проверкой перед релизом.
 e2e-stand:
   stage: test
@@ -172,8 +172,6 @@ e2e-stand:
     - pwsh -NoProfile -File tests/load/run-load.ps1 -Name ci-single -Vus 10 -Duration 30s || echo "k6 — пороги превышены, см. tests/artifacts/load/ci-single.json"
     - docker compose down -v
     - pwsh -NoProfile -File tests/resilience/run-resilience.ps1 -Mode single
-    - docker compose down -v
-    - pwsh -NoProfile -File tests/resilience/run-env-secrets.ps1
   after_script:
     - mkdir -p tests/artifacts; docker ps -a > tests/artifacts/containers.txt 2>/dev/null; for c in $(docker ps -a --format '{{.Names}}' 2>/dev/null); do docker logs "$c" > "tests/artifacts/container-$c.log" 2>&1; done
     - docker compose down -v >/dev/null 2>&1 || true

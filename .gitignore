@@ -48,3 +48,6 @@ dist/sdk/
 # --- Java (Maven) ---
 target/
 .flattened-pom.xml
+
+# Локальные сборки пакетов и архивов релиза
+dist/

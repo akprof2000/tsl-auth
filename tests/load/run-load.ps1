@@ -45,8 +45,15 @@ foreach ($name in $pool) {
     }
 }
 
-# Образ k6 закреплён по digest: версия инструмента не меняется незаметно между прогонами, результаты сравнимы.
 $usersArg = $pool -join ","
+# K6_LOCAL=1 — локальный бинарник k6 (CI GitFlic: стенд в docker:dind, bind-mount каталога скриптов в контейнер k6 невозможен).
+if ($env:K6_LOCAL -and (Get-Command k6 -ErrorAction SilentlyContinue)) {
+    $env:BASE_URL = $api; $env:VUS = "$Vus"; $env:DURATION = $Duration; $env:CLIENT_ID = $ClientId; $env:CLIENT_SECRET = $ClientSecret
+    $env:USERS = $usersArg; $env:PASSWORD = $Password; $env:PUBLIC_CLIENT = $PublicClient
+    k6 run --summary-export (Join-Path $artifacts "$Name.json") (Join-Path $PSScriptRoot "auth-load.js")
+    exit $LASTEXITCODE
+}
+# Образ k6 закреплён по digest: версия инструмента не меняется незаметно между прогонами, результаты сравнимы.
 docker run --rm --user root --add-host=host.docker.internal:host-gateway -v "${PSScriptRoot}:/scripts" -v "${artifacts}:/out" `
     -e BASE_URL=$BaseUrl -e VUS=$Vus -e DURATION=$Duration -e CLIENT_ID=$ClientId -e CLIENT_SECRET=$ClientSecret `
     -e "USERS=$usersArg" -e PASSWORD=$Password -e PUBLIC_CLIENT=$PublicClient `

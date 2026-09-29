@@ -5,7 +5,10 @@
 # KEEP (по умолчанию 3), DRY_RUN=1 — только показать, что было бы удалено. Нужны curl и jq.
 set -eu
 API="${GITFLIC_API:-https://api.gitflic.ru}"
-PROJECT="${CI_PROJECT_PATH:?owner/project}"
+# GitFlic не даёт CI_PROJECT_PATH — владелец/проект берутся из CI_REGISTRY_IMAGE (registry.gitflic.ru/project/<владелец>/<проект>).
+PROJECT="${CI_PROJECT_PATH:-${CI_REGISTRY_IMAGE#*/project/}}"
+[ -n "$PROJECT" ] && [ "$PROJECT" != "$CI_REGISTRY_IMAGE" ] || { echo "не удалось определить владельца/проект (CI_PROJECT_PATH или CI_REGISTRY_IMAGE)"; exit 1; }
+echo "проект: $PROJECT"
 KEEP="${KEEP:-3}"
 DRY="${DRY_RUN:-0}"
 AUTH="Authorization: token ${GITFLIC_API_TOKEN:?нужен GITFLIC_API_TOKEN}"

@@ -58,4 +58,17 @@ echo "  релизов: $(wc -l < /tmp/releases)"
 tail -n +$((KEEP + 1)) /tmp/releases | while IFS='|' read -r st id tag; do
   echo "  релиз $tag"; del DELETE "/project/$PROJECT/release/$id"
 done || true
+# Конвейеры: остаются KEEP_PIPELINES новейших (по умолчанию 3), старые удаляются вместе с артефактами — именно артефакты
+# (image.tar, отчёты, журналы стенда) занимают основное место проекта. Выполняющиеся конвейеры не трогаем.
+KEEP_PIPELINES="${KEEP_PIPELINES:-3}"
+echo "== Конвейеры $PROJECT: оставляем $KEEP_PIPELINES новейших"
+get "/project/$PROJECT/cicd/pipeline?size=200" | items | while read -r p; do
+  n=$(printf '%s' "$p" | jq -r '.localId // .id // empty'); st=$(printf '%s' "$p" | jq -r '.status // "?"')
+  [ -n "$n" ] && printf '%s|%s\n' "$n" "$st"
+done | sort -t'|' -k1,1nr > /tmp/pipelines
+echo "  конвейеров: $(wc -l < /tmp/pipelines)"
+tail -n +$((KEEP_PIPELINES + 1)) /tmp/pipelines | while IFS='|' read -r n st; do
+  case "$st" in *RUN*|*PEND*|*CREATED*|*WAIT*) echo "  #$n $st — пропущен"; continue;; esac
+  del DELETE "/project/$PROJECT/cicd/pipeline/$n/delete" || echo "  #$n: удалить не удалось"
+done || true
 echo "Готово."

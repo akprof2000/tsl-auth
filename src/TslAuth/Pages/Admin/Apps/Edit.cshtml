@@ -6,7 +6,7 @@
 *@
 @{
     ViewData["Title"] = Model.IsNew ? "Новое приложение" : Model.ClientId;
-    var readOnly = !Model.CanManage || Model.IsSystem;
+    var readOnly = !Model.CanManage || Model.IsSystem || Model.IsManaged;
     var grantInfo = new Dictionary<string, string>
     {
         [AppGrantTypes.AuthorizationCode] = "вход пользователя через браузер (OIDC, PKCE)",
@@ -38,6 +38,15 @@
 @if (Model.IsSystem)
 {
     <div class="alert">Системное приложение: его матрица доступа определяет права администрирования самого сервиса. Настройки клиента изменить нельзя.</div>
+}
+@if (Model.IsManaged)
+{
+    <div class="alert">Подчинённый клиент приложения <a asp-page="Edit" asp-route-clientId="@Model.Owner"><code>@Model.Owner</code></a>:
+        его ключи, роли и секрет задаёт владелец через App API (<code>/api/app/clients</code>). Здесь доступны отключение и удаление.</div>
+}
+@if (Model.Disabled)
+{
+    <div class="alert error">Клиент отключён: токены не выдаются, выданные отозваны.</div>
 }
 
 <form method="post" asp-page-handler="Save" asp-route-clientId="@Model.ClientId">
@@ -140,6 +149,90 @@
         </div>
     }
 </form>
+
+@if (!Model.IsNew && !Model.IsSystem && Model.CanManage && Model.Owner is null)
+{
+    <div class="card">
+        <h2>Подчинённые клиенты</h2>
+        <p class="small muted mt0">Приложение-владелец через App API (<code>/api/app/clients</code>) заводит сервисных клиентов в рамках этой
+            политики: префикс <code>client_id</code>, роли только из белого списка своих ролей, поток <code>client_credentials</code>,
+            вход по ключу (<code>private_key_jwt</code>, ES256) и/или секрету. Требует confidential-клиента с самоуправлением.</p>
+        <form method="post" asp-page-handler="Policy" asp-route-clientId="@Model.ClientId">
+            <label class="inline flex"><input type="checkbox" asp-for="PolicyEnabled" /> <span>Разрешить подчинённых клиентов</span></label>
+            <div class="grid2">
+                <div><label asp-for="PolicyPrefix">Префикс client_id</label><input asp-for="PolicyPrefix" placeholder="import-agent-" /></div>
+                <div><label asp-for="PolicyManagePermission">Разрешение оператора (в матрице этого приложения)</label><input asp-for="PolicyManagePermission" /></div>
+                <div><label asp-for="PolicyMaxClients">Предел числа подчинённых</label><input asp-for="PolicyMaxClients" type="number" min="1" max="10000" /></div>
+                <div><label asp-for="PolicyAccessTokenLifetime">Access-токен подчинённых, мин</label><input asp-for="PolicyAccessTokenLifetime" type="number" min="1" max="1440" /></div>
+                <div><label asp-for="PolicyInactiveDays">Автоотключение без токенов, дней (0 — выкл.)</label><input asp-for="PolicyInactiveDays" type="number" min="0" max="3650" /></div>
+            </div>
+            <fieldset class="plain">
+                <legend>Способы входа подчинённых</legend>
+                <label class="inline"><input type="checkbox" name="PolicyAuthMethods" value="@ManagedClientsPolicy.PrivateKeyJwt" checked="@Model.PolicyAuthMethods.Contains(ManagedClientsPolicy.PrivateKeyJwt)" /> <code>private_key_jwt</code> — по ключу ES256, без секрета</label>
+                <label class="inline"><input type="checkbox" name="PolicyAuthMethods" value="@ManagedClientsPolicy.ClientSecret" checked="@Model.PolicyAuthMethods.Contains(ManagedClientsPolicy.ClientSecret)" /> <code>client_secret</code> — по секрету</label>
+            </fieldset>
+            <label class="inline flex"><input type="checkbox" asp-for="PolicyRequireDelegation" />
+                <span>Изменения только делегированным токеном оператора (token exchange); выключено — допускается и сервисный токен владельца (тестовые стенды)</span></label>
+            <fieldset class="plain">
+                <legend>Роли, которые можно выдавать подчинённым (белый список)</legend>
+                @if (Model.OwnRoles.Count == 0) { <p class="muted small">Ролей пока нет — создайте их в матрице доступа.</p> }
+                @foreach (var role in Model.OwnRoles)
+                {
+                    <label class="inline"><input type="checkbox" name="PolicyRoles" value="@role.Role" checked="@Model.PolicyRoles.Contains(role.Role)" /> @(role.DisplayName ?? role.Role) <code class="small">@role.Role</code></label>
+                }
+            </fieldset>
+            <div class="actions"><button class="primary" type="submit">Сохранить политику</button></div>
+        </form>
+
+        @if (Model.ManagedClients.Count > 0)
+        {
+            <div class="table-wrap">
+                <table class="managed-clients">
+                    <thead><tr><th>client_id</th><th>Название</th><th>Роли</th><th>Ключи (kid)</th><th>Последний токен</th><th>Статус</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var c in Model.ManagedClients)
+                    {
+                        <tr>
+                            <td><a asp-page="Edit" asp-route-clientId="@c.ClientId"><code>@c.ClientId</code></a></td>
+                            <td>@c.DisplayName</td>
+                            <td>@foreach (var r in c.Roles) { <span class="badge">@r</span> }</td>
+                            <td>@foreach (var k in c.Keys) { <code class="small">@k.Kid</code><br /> } @if (c.HasSecret) { <span class="badge">секрет</span> }</td>
+                            <td>@(c.LastTokenIssuedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                            <td>@if (c.Disabled) { <span class="badge warn">отключён</span> } else { <span class="badge ok">активен</span> }</td>
+                            <td class="row">
+                                <form method="post" asp-page-handler="Toggle" asp-route-clientId="@Model.ClientId" asp-route-target="@c.ClientId" asp-route-disabled="@(!c.Disabled)" class="inline">
+                                    <button type="submit">@(c.Disabled ? "Включить" : "Отключить")</button>
+                                </form>
+                                <form method="post" asp-page-handler="DeleteManaged" asp-route-clientId="@Model.ClientId" asp-route-target="@c.ClientId" class="inline"
+                                      data-confirm="Удалить подчинённого клиента @c.ClientId с отзывом его токенов?">
+                                    <button class="danger" type="submit">Удалить</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
+@if (!Model.IsNew && !Model.IsSystem && Model.CanManage)
+{
+    <div class="actions">
+        <form method="post" asp-page-handler="Toggle" asp-route-clientId="@Model.ClientId" asp-route-disabled="@(!Model.Disabled)" class="inline"
+              data-confirm="@(Model.Disabled ? "Включить клиента?" : "Отключить клиента? Его токены будут отозваны.")">
+            <button type="submit">@(Model.Disabled ? "Включить клиента" : "Отключить клиента")</button>
+        </form>
+        @if (Model.IsManaged)
+        {
+            <form method="post" asp-page-handler="Delete" asp-route-clientId="@Model.ClientId" class="inline"
+                  data-confirm="Удалить подчинённого клиента и отозвать его токены?">
+                <button class="danger" type="submit">Удалить клиента</button>
+            </form>
+        }
+    </div>
+}
 
 @if (!Model.IsNew && !readOnly)
 {

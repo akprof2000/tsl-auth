@@ -11,11 +11,14 @@ import (
 // Options — настройки Verifier и TokenClient (контракт §1). Нулевые значения заменяются умолчаниями,
 // явные значения имеют приоритет над переменными окружения (OptionsFromEnv читает их).
 type Options struct {
-	Issuer       string // TSL_AUTH_ISSUER — как в iss токена; обязателен
-	Audience     string // TSL_AUTH_AUDIENCE — client_id этого API; без него aud не проверяется
-	ClientID     string // TSL_AUTH_CLIENT_ID — для клиента токенов и introspection
-	ClientSecret string // TSL_AUTH_CLIENT_SECRET
-	JWKSURI      string // TSL_AUTH_JWKS_URI — обход discovery (стенды без discovery, тесты)
+	Issuer        string // TSL_AUTH_ISSUER — как в iss токена; обязателен
+	Audience      string // TSL_AUTH_AUDIENCE — client_id этого API; без него aud не проверяется
+	ClientID      string // TSL_AUTH_CLIENT_ID — для клиента токенов и introspection
+	ClientSecret  string // TSL_AUTH_CLIENT_SECRET
+	ClientKeyPEM  string // TSL_AUTH_CLIENT_KEY_PEM — закрытый ключ EC P-256 для входа по ключу (private_key_jwt), когда секрета нет
+	ClientKeyFile string // TSL_AUTH_CLIENT_KEY_FILE — путь к PEM с закрытым ключом (альтернатива ClientKeyPEM)
+	ClientKeyID   string // TSL_AUTH_CLIENT_KEY_ID — kid ключа; пусто — отпечаток RFC 7638, как присваивает сервис
+	JWKSURI       string // TSL_AUTH_JWKS_URI — обход discovery (стенды без discovery, тесты)
 
 	ClockSkew      time.Duration // TSL_AUTH_CLOCK_SKEW_SECONDS, по умолчанию 30 с
 	JWKSTTL        time.Duration // TSL_AUTH_JWKS_TTL_SECONDS, по умолчанию 600 с
@@ -36,6 +39,9 @@ func OptionsFromEnv() Options {
 		Audience:       os.Getenv("TSL_AUTH_AUDIENCE"),
 		ClientID:       os.Getenv("TSL_AUTH_CLIENT_ID"),
 		ClientSecret:   os.Getenv("TSL_AUTH_CLIENT_SECRET"),
+		ClientKeyPEM:   os.Getenv("TSL_AUTH_CLIENT_KEY_PEM"),
+		ClientKeyFile:  os.Getenv("TSL_AUTH_CLIENT_KEY_FILE"),
+		ClientKeyID:    os.Getenv("TSL_AUTH_CLIENT_KEY_ID"),
 		JWKSURI:        os.Getenv("TSL_AUTH_JWKS_URI"),
 		ClockSkew:      envSeconds("TSL_AUTH_CLOCK_SKEW_SECONDS"),
 		JWKSTTL:        envSeconds("TSL_AUTH_JWKS_TTL_SECONDS"),

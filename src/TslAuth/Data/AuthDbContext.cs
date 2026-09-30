@@ -57,6 +57,7 @@ public abstract class AuthDbContext(DbContextOptions options)
     public DbSet<BotLinkCode> BotLinkCodes { get; set; } = null!;
     public DbSet<WebhookSubscription> WebhookSubscriptions { get; set; } = null!;
     public DbSet<WebhookDelivery> WebhookDeliveries { get; set; } = null!;
+    public DbSet<ClientAssertionJti> ClientAssertionJtis { get; set; } = null!;
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     /// <summary>Настройка модели: сущности Identity и OpenIddict с ключами Guid, собственные таблицы, индексы и ограничения длин.</summary>
@@ -239,6 +240,16 @@ public abstract class AuthDbContext(DbContextOptions options)
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
             e.HasOne(x => x.Subscription).WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Event).WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Одноразовые jti клиентских assertion: первичный ключ — «client_id:jti», повтор даёт ошибку уникальности.
+        builder.Entity<ClientAssertionJti>(e =>
+        {
+            e.ToTable("ClientAssertionJtis");
+            e.HasKey(x => x.Jti);
+            e.Property(x => x.Jti).HasMaxLength(400);
+            e.Property(x => x.ClientId).HasMaxLength(100);
+            e.HasIndex(x => x.ExpiresAt);
         });
 
         builder.Entity<KeyMaterial>(e =>

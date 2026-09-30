@@ -2,6 +2,7 @@ package tslauth
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,10 +46,13 @@ type Introspection struct {
 }
 
 // TokenClient получает токены у TSL Auth от имени приложения ClientID/ClientSecret (§6).
+// Без секрета, но с ключом (ClientKeyPEM/ClientKeyFile) входит по private_key_jwt: ES256-assertion
+// с одноразовым jti, сроком 60 с и aud = issuer сервиса (как в discovery).
 // clientCredentials кэшируется до ExpiresAt − 30 с с single-flight; exchange не кэшируется.
 type TokenClient struct {
 	opts Options
 	ep   *endpoints
+	key  *ecdsa.PrivateKey // ключ для private_key_jwt; nil — вход секретом
 
 	mu       sync.Mutex
 	cache    map[string]*TokenSet
@@ -64,8 +68,15 @@ func NewTokenClient(opts Options) (*TokenClient, error) {
 	if opts.ClientID == "" {
 		return nil, errors.New("tslauth: не задан ClientID (TSL_AUTH_CLIENT_ID)")
 	}
-	return &TokenClient{opts: opts, ep: newEndpoints(opts), cache: map[string]*TokenSet{}, inflight: map[string]chan struct{}{}}, nil
+	key, err := loadClientKey(opts)
+	if err != nil {
+		return nil, err
+	}
+	return &TokenClient{opts: opts, ep: newEndpoints(opts), key: key, cache: map[string]*TokenSet{}, inflight: map[string]chan struct{}{}}, nil
 }
+
+// UsesPrivateKeyJWT — клиент входит по ключу (assertion), а не секретом.
+func (c *TokenClient) UsesPrivateKeyJWT() bool { return c.key != nil && c.opts.ClientSecret == "" }
 
 // ClientCredentials — токен самого сервиса (grant client_credentials) с кэшем по набору scope.
 func (c *TokenClient) ClientCredentials(ctx context.Context, scopes ...string) (*TokenSet, error) {
@@ -155,7 +166,7 @@ func (c *TokenClient) Introspect(ctx context.Context, token string) (*Introspect
 	if err != nil {
 		return nil, &TokenError{Code: "unavailable", Description: err.Error()}
 	}
-	body, status, err := c.post(ctx, doc.IntrospectionEndpoint, url.Values{"token": {token}})
+	body, status, err := c.post(ctx, doc.IntrospectionEndpoint, doc.Issuer, url.Values{"token": {token}})
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +187,7 @@ func (c *TokenClient) Revoke(ctx context.Context, token string) error {
 	if err != nil {
 		return &TokenError{Code: "unavailable", Description: err.Error()}
 	}
-	body, status, err := c.post(ctx, doc.RevocationEndpoint, url.Values{"token": {token}})
+	body, status, err := c.post(ctx, doc.RevocationEndpoint, doc.Issuer, url.Values{"token": {token}})
 	if err != nil {
 		return err
 	}
@@ -192,7 +203,7 @@ func (c *TokenClient) grant(ctx context.Context, form url.Values) (*TokenSet, er
 	if err != nil {
 		return nil, &TokenError{Code: "unavailable", Description: err.Error()}
 	}
-	body, status, err := c.post(ctx, doc.TokenEndpoint, form)
+	body, status, err := c.post(ctx, doc.TokenEndpoint, doc.Issuer, form)
 	if err != nil {
 		return nil, err
 	}
@@ -220,14 +231,25 @@ func (c *TokenClient) grant(ctx context.Context, form url.Values) (*TokenSet, er
 	}, nil
 }
 
-// post отправляет форму с client_id (и client_secret, если задан). Сетевые ошибки — TokenError unavailable.
-func (c *TokenClient) post(ctx context.Context, endpoint string, form url.Values) ([]byte, int, error) {
+// post отправляет форму с client_id и client_secret (если задан) либо assertion по ключу (aud = issuer из discovery).
+// Сетевые ошибки — TokenError unavailable.
+func (c *TokenClient) post(ctx context.Context, endpoint, issuer string, form url.Values) ([]byte, int, error) {
 	if endpoint == "" {
 		return nil, 0, &TokenError{Code: "unavailable", Description: "discovery: адрес endpoint не найден"}
 	}
 	form.Set("client_id", c.opts.ClientID)
 	if c.opts.ClientSecret != "" {
 		form.Set("client_secret", c.opts.ClientSecret)
+	} else if c.key != nil {
+		if issuer == "" {
+			issuer = strings.TrimSuffix(c.opts.Issuer, "/") + "/"
+		}
+		assertion, err := clientAssertion(c.key, c.opts.ClientKeyID, c.opts.ClientID, issuer, c.opts.now())
+		if err != nil {
+			return nil, 0, &TokenError{Code: "unavailable", Description: err.Error()}
+		}
+		form.Set("client_assertion_type", clientAssertionType)
+		form.Set("client_assertion", assertion)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {

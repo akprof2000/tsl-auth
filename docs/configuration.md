@@ -84,6 +84,8 @@
 |---|---|---|
 | `Security__TokenRequestsPerMinute` | `600` | Лимит запросов к `/connect/token`, `/connect/introspect` и `/connect/revoke` с одного IP в минуту (на узел) |
 | `Security__LoginAttemptsPerMinute` | `30` | Лимит POST-запросов страниц входа/сброса с одного IP в минуту |
+| `Security__ClientAuthFailuresPerMinute` | `20` | Отказов аутентификации клиента (`invalid_client`) по одному `client_id` в минуту, после которых клиент блокируется на минуту (подбор секрета или ключа); `0` — выключено |
+| `Security__ManagedClientChangesPerMinute` | `30` | Изменений подчинённых клиентов (`/api/app/clients`) на одного владельца в минуту |
 
 ### Почта (SMTP)
 
@@ -214,6 +216,8 @@
 | Сроки жизни токенов (≤ глобальных) | `PUT /api/admin/applications/{clientId}/token-lifetimes` |
 | Оформление страницы входа и язык по умолчанию | `PUT /api/admin/applications/{clientId}/branding` |
 | Матрица доступа | `PUT /api/admin/applications/{clientId}/matrix` |
+| Политика подчинённых клиентов (префикс, роли, способы входа, предел, срок токена, делегирование, неактивность) | `PUT` / `DELETE /api/admin/applications/{clientId}/managed-clients-policy`; список — `GET …/managed-clients` |
+| Отключение и включение клиента | `POST /api/admin/applications/{clientId}/disable` / `enable` |
 
 ### Языковые пакеты
 

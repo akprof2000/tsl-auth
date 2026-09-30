@@ -29,9 +29,10 @@ public sealed class TslAuthMetrics : IDisposable
     private readonly Counter<long> _auditEvents;
     private readonly Counter<long> _auditDropped;
     private readonly Counter<long> _webhookDeliveries;
+    private readonly Counter<long> _clientAssertionRejected;
 
     /// <summary>Снимок состояния БД для gauge-метрик (обновляется фоновой задачей раз в минуту).</summary>
-    private volatile Snapshot _snapshot = new(0, 0, 0, 0, false);
+    private volatile Snapshot _snapshot = new(0, 0, 0, 0, false, new Dictionary<string, long>());
 
     /// <summary>Источник собственных span'ов (обслуживание БД, доставка вебхуков).</summary>
     public static readonly ActivitySource Activities = new(ActivitySourceName, Version);
@@ -49,6 +50,8 @@ public sealed class TslAuthMetrics : IDisposable
             "Информационные события аудита, отброшенные из-за переполнения очереди (БД журнала не успевает)");
         _webhookDeliveries = _meter.CreateCounter<long>("tsl_auth.webhooks.deliveries", "{delivery}",
             "Попытки доставки вебхуков по результату");
+        _clientAssertionRejected = _meter.CreateCounter<long>("tsl_auth.client_assertion.rejected", "{request}",
+            "Отказы входа клиента по ключу (private_key_jwt) по причине: alg, lifetime, jti_replay, client_blocked и др.");
 
         _meter.CreateObservableGauge("tsl_auth.sessions.active", () => _snapshot.Sessions, "{session}",
             "Действующие сессии (авторизации с неистёкшим токеном)");
@@ -61,6 +64,9 @@ public sealed class TslAuthMetrics : IDisposable
             "Зарегистрированные приложения (клиенты OAuth)");
         _meter.CreateObservableGauge("tsl_auth.database.up", () => _snapshot.DatabaseUp ? 1 : 0, "1",
             "Доступность БД при последнем опросе (1 — доступна)");
+        _meter.CreateObservableGauge("tsl_auth.managed_clients", () => _snapshot.ManagedClients
+            .Select(m => new Measurement<long>(m.Value, new KeyValuePair<string, object?>("owner", m.Key))), "{client}",
+            "Подчинённые клиенты по приложениям-владельцам");
     }
 
     /// <summary>Выдан токен; в текущий span запроса добавляются тип гранта и приложение.</summary>
@@ -98,6 +104,13 @@ public sealed class TslAuthMetrics : IDisposable
 
     public void AuditDropped() => _auditDropped.Add(1);
 
+    /// <summary>Отказ входа клиента по ключу: причина — из ClientAssertionRules (alg, lifetime, jti_replay …) или client_blocked.</summary>
+    public void ClientAssertionRejected(string reason)
+    {
+        _clientAssertionRejected.Add(1, new KeyValuePair<string, object?>("reason", reason));
+        Activity.Current?.SetTag("tsl_auth.client_assertion.reason", reason);
+    }
+
     /// <summary>Результат попытки доставки вебхука: succeeded, retry (будет повтор) или failed (попытки исчерпаны).</summary>
     public void WebhookDelivery(string result) => _webhookDeliveries.Add(1, new KeyValuePair<string, object?>("result", result));
 
@@ -113,7 +126,17 @@ public sealed class TslAuthMetrics : IDisposable
             var active = await db.Users.CountAsync(u => u.IsActive, ct);
             var inactive = await db.Users.CountAsync(u => !u.IsActive, ct);
             var apps = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().CountAsync(ct);
-            _snapshot = new Snapshot(sessions, active, inactive, apps, true);
+            // Подчинённые клиенты по владельцам: свойство tsl_owner в JSON-колонке Properties.
+            var managed = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var properties in await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
+                         .Where(a => a.Properties != null && a.Properties.Contains(ApplicationService.OwnerProperty))
+                         .Select(a => a.Properties!).ToListAsync(ct))
+            {
+                using var json = System.Text.Json.JsonDocument.Parse(properties);
+                if (json.RootElement.TryGetProperty(ApplicationService.OwnerProperty, out var owner) && owner.GetString() is { } key)
+                    managed[key] = managed.GetValueOrDefault(key) + 1;
+            }
+            _snapshot = new Snapshot(sessions, active, inactive, apps, true, managed);
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
@@ -125,7 +148,8 @@ public sealed class TslAuthMetrics : IDisposable
 
     public void Dispose() => _meter.Dispose();
 
-    private sealed record Snapshot(long Sessions, long ActiveUsers, long InactiveUsers, long Applications, bool DatabaseUp);
+    private sealed record Snapshot(long Sessions, long ActiveUsers, long InactiveUsers, long Applications, bool DatabaseUp,
+        IReadOnlyDictionary<string, long> ManagedClients);
 }
 
 /// <summary>

@@ -30,6 +30,8 @@ public sealed class Vectors
     public required string JwksUri { get; init; }
     public required string ClientId { get; init; }
     public required string ClientSecret { get; init; }
+    /// <summary>Владелец подчинённых клиентов (id, секрет, префикс client_id, роль) для сценария private_key_jwt.</summary>
+    public required (string Id, string Secret, string Prefix, string Role) ManagedOwner { get; init; }
     public required IReadOnlyDictionary<string, (string Username, string Password)> Users { get; init; }
     public required JsonElement Expected { get; init; }
     public required IReadOnlyList<VectorCase> Cases { get; init; }
@@ -81,6 +83,9 @@ public sealed class Vectors
             JwksUri = root.GetProperty("jwksUri").GetString()!,
             ClientId = root.GetProperty("client").GetProperty("id").GetString()!,
             ClientSecret = root.GetProperty("client").GetProperty("secret").GetString()!,
+            ManagedOwner = root.TryGetProperty("managedOwner", out var owner)
+                ? (owner.GetProperty("id").GetString()!, owner.GetProperty("secret").GetString()!, owner.GetProperty("prefix").GetString()!, owner.GetProperty("role").GetString()!)
+                : ("", "", "", ""),
             Users = users,
             Expected = root.GetProperty("expected").Clone(),
             Cases = cases,

@@ -30,6 +30,9 @@ public static class AuditTypes
     public const string AppApiChange = "app_api.change";
     public const string AccessDenied = "access.denied";
 
+    /// <summary>Действие с подчинённым клиентом или политикой подчинённых (ClientId записи — владелец).</summary>
+    public const string ManagedClientChange = "managed_client.change";
+
     /// <summary>Учётная запись отключена автоматически по неактивности (решение В-10 ЧТЗ).</summary>
     public const string DisabledInactive = "user.disabled_inactive";
 

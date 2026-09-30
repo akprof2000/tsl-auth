@@ -63,7 +63,9 @@ public sealed class TokenError : Exception
 
 /// <summary>
 /// Клиент token endpoint (§6): client_credentials с кэшем и single-flight, exchange, refresh, password,
-/// authorization_code (PKCE), introspect, revoke. Потокобезопасен.
+/// authorization_code (PKCE), introspect, revoke. Потокобезопасен. Аутентификация клиента — секретом
+/// (<c>client_secret</c>) или ключом (<c>private_key_jwt</c>: ES256-assertion с <c>jti</c>, сроком 60 с и
+/// <c>aud</c> = issuer из discovery, если задан <see cref="TslAuthOptions.ClientPrivateKeyPem"/> или файл ключа).
 /// </summary>
 public sealed class TokenClient
 {
@@ -74,6 +76,7 @@ public sealed class TokenClient
     private readonly Dictionary<string, TokenSet> _cache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SemaphoreSlim> _locks = new(StringComparer.Ordinal);
     private readonly object _sync = new();
+    private readonly ClientAssertionSigner? _signer;
 
     /// <summary>Создаёт клиент; настройки должны содержать Issuer и ClientId.</summary>
     public TokenClient(TslAuthOptions options)
@@ -82,7 +85,11 @@ public sealed class TokenClient
         _options = options;
         _issuer = options.RequireIssuer();
         _http = new TslHttp(options);
+        _signer = ClientAssertionSigner.FromOptions(options);
     }
+
+    /// <summary>Клиент входит по ключу (assertion), а не секретом.</summary>
+    public bool UsesPrivateKeyJwt => _signer is not null && string.IsNullOrEmpty(_options.ClientSecret);
 
     /// <summary>Сервисный токен; кэшируется по <c>scope</c> до <c>expiresAt − 30 с</c>, параллельные вызовы делают один запрос.</summary>
     public async Task<TokenSet> ClientCredentialsAsync(IEnumerable<string>? scopes = null, CancellationToken ct = default)
@@ -96,7 +103,7 @@ public sealed class TokenClient
         try
         {
             if (TryCached(key, out cached)) return cached;
-            var set = await RequestTokenAsync(Form("client_credentials", ("scope", scope)), ct).ConfigureAwait(false);
+            var set = await RequestTokenAsync("client_credentials", ct, ("scope", scope)).ConfigureAwait(false);
             lock (_sync) _cache[key] = set;
             return set;
         }
@@ -108,29 +115,29 @@ public sealed class TokenClient
 
     /// <summary>Token exchange (RFC 8693) от имени пользователя; не кэшируется.</summary>
     public Task<TokenSet> ExchangeAsync(string subjectToken, IEnumerable<string>? scopes = null, CancellationToken ct = default) =>
-        RequestTokenAsync(Form("urn:ietf:params:oauth:grant-type:token-exchange",
+        RequestTokenAsync("urn:ietf:params:oauth:grant-type:token-exchange", ct,
             ("subject_token", subjectToken),
             ("subject_token_type", "urn:ietf:params:oauth:token-type:access_token"),
-            ("scope", Join(scopes))), ct);
+            ("scope", Join(scopes)));
 
     /// <summary>Обновление по refresh-токену; ответ содержит новый refresh-токен — сохраните его вместо старого.</summary>
     public Task<TokenSet> RefreshAsync(string refreshToken, IEnumerable<string>? scopes = null, CancellationToken ct = default) =>
-        RequestTokenAsync(Form("refresh_token", ("refresh_token", refreshToken), ("scope", Join(scopes))), ct);
+        RequestTokenAsync("refresh_token", ct, ("refresh_token", refreshToken), ("scope", Join(scopes)));
 
     /// <summary>Grant <c>password</c> — только для серверных приложений.</summary>
     public Task<TokenSet> PasswordAsync(string username, string password, IEnumerable<string>? scopes = null, CancellationToken ct = default) =>
-        RequestTokenAsync(Form("password", ("username", username), ("password", password), ("scope", Join(scopes))), ct);
+        RequestTokenAsync("password", ct, ("username", username), ("password", password), ("scope", Join(scopes)));
 
     /// <summary>Обмен authorization code с PKCE.</summary>
     public Task<TokenSet> AuthorizationCodeAsync(string code, string redirectUri, string codeVerifier, CancellationToken ct = default) =>
-        RequestTokenAsync(Form("authorization_code", ("code", code), ("redirect_uri", redirectUri), ("code_verifier", codeVerifier)), ct);
+        RequestTokenAsync("authorization_code", ct, ("code", code), ("redirect_uri", redirectUri), ("code_verifier", codeVerifier));
 
     /// <summary>Интроспекция токена.</summary>
     public async Task<TokenIntrospection> IntrospectAsync(string token, CancellationToken ct = default)
     {
         var disco = await DiscoveryAsync(ct).ConfigureAwait(false);
         var endpoint = disco.IntrospectionEndpoint ?? _issuer + "/connect/introspect";
-        using var doc = await PostFormAsync(endpoint, Form(null, ("token", token)), ct).ConfigureAwait(false);
+        using var doc = await PostFormAsync(endpoint, Form(Audience(disco), null, ("token", token)), ct).ConfigureAwait(false);
         var root = doc.RootElement;
         var active = root.TryGetProperty("active", out var a) && a.ValueKind == JsonValueKind.True;
         return new TokenIntrospection(active, root.Clone());
@@ -141,16 +148,19 @@ public sealed class TokenClient
     {
         var disco = await DiscoveryAsync(ct).ConfigureAwait(false);
         var endpoint = disco.RevocationEndpoint ?? _issuer + "/connect/revoke";
-        using var _ = await PostFormAsync(endpoint, Form(null, ("token", token)), ct).ConfigureAwait(false);
+        using var _ = await PostFormAsync(endpoint, Form(Audience(disco), null, ("token", token)), ct).ConfigureAwait(false);
     }
 
-    private async Task<TokenSet> RequestTokenAsync(Dictionary<string, string> form, CancellationToken ct)
+    private async Task<TokenSet> RequestTokenAsync(string grantType, CancellationToken ct, params (string Name, string? Value)[] fields)
     {
         var disco = await DiscoveryAsync(ct).ConfigureAwait(false);
         var endpoint = disco.TokenEndpoint ?? _issuer + "/connect/token";
-        using var doc = await PostFormAsync(endpoint, form, ct).ConfigureAwait(false);
+        using var doc = await PostFormAsync(endpoint, Form(Audience(disco), grantType, fields), ct).ConfigureAwait(false);
         return new TokenSet(doc.RootElement, _http.Now);
     }
+
+    /// <summary>aud клиентского assertion — issuer сервиса в точности как в discovery (с завершающим «/»).</summary>
+    private string Audience(Discovery disco) => disco.Issuer ?? _issuer + "/";
 
     private async Task<Discovery> DiscoveryAsync(CancellationToken ct)
     {
@@ -201,12 +211,18 @@ public sealed class TokenClient
         }
     }
 
-    private Dictionary<string, string> Form(string? grantType, params (string Name, string? Value)[] fields)
+    /// <summary>Форма запроса: client_id всегда; client_secret, если задан, иначе assertion по ключу (aud = issuer).</summary>
+    private Dictionary<string, string> Form(string audience, string? grantType, params (string Name, string? Value)[] fields)
     {
         if (string.IsNullOrEmpty(_options.ClientId))
             throw new InvalidOperationException("TSL Auth: не задан ClientId (TSL_AUTH_CLIENT_ID).");
         var form = new Dictionary<string, string> { ["client_id"] = _options.ClientId };
         if (!string.IsNullOrEmpty(_options.ClientSecret)) form["client_secret"] = _options.ClientSecret;
+        else if (_signer is not null)
+        {
+            form["client_assertion_type"] = ClientAssertionSigner.AssertionType;
+            form["client_assertion"] = _signer.Create(_options.ClientId, audience, _http.Now);
+        }
         if (grantType is not null) form["grant_type"] = grantType;
         foreach (var (name, value) in fields)
             if (!string.IsNullOrEmpty(value)) form[name] = value;

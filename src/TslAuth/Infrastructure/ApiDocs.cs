@@ -29,6 +29,8 @@ public static class ApiDocs
 
                     * **Admin** — администрирование (роль `administrator`/`auditor` в приложении `tsl-auth-admin`, scope `tsl-auth-admin`).
                     * **App (self-management)** — приложение управляет своими пользователями и ролями (scope `tsl-auth-app`, флаг «Самоуправление»).
+                    * **App (managed clients)** — подчинённые клиенты владельца (`/api/app/clients`): чтение — сервисный токен владельца,
+                      изменения — делегированный токен оператора (token exchange, `act.sub` = владелец) с разрешением политики.
                     * **Events** — лента событий для ботов: long-polling, SSE, вебхуки (роль `notifier`).
                     * **Bot** — привязка мессенджера и сброс пароля через бота (роль `reset-bot`).
 

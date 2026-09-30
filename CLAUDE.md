@@ -41,7 +41,7 @@
 | `samples/` | демо: dotnet-mvc 5101, node-spa 5102, go-api 5103, python-app 5104, java-api 5105, docflow-demo; `seed-demo.ps1` |
 | `docs/` | ЧТЗ (`tz.md` + Word), архитектура, развёртывание, конфигурация, интеграция, SDK, тестирование, релизная политика, GitFlic |
 | `deploy/` | nginx, примеры appsettings, стенд мониторинга (Victoria), OpenBao |
-| `scripts/` | экспорт/импорт образов, проверка документации, утилиты GitFlic (см. ниже) |
+| `scripts/` | экспорт/импорт образов, проверка документации, `build-tz-docx.py` (Word-версия ЧТЗ), утилиты GitFlic (см. ниже) |
 | `gitflic-ci.yaml` | единственный рабочий конвейер CI/CD |
 
 ## Команды
@@ -54,6 +54,8 @@ docker compose up -d --build                         # стенд на http://lo
 ./samples/seed-demo.ps1                              # демо-приложения, матрицы, alice/bob
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
+./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
+python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx)
 ```
 
 После изменения схем Mermaid в документации — `scripts/render-diagrams.ps1` (картинки в `docs/diagrams`).
@@ -121,78 +123,49 @@ pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря,
 - GitFlic сам не удаляет просроченные артефакты — их убирает удаление старых конвейеров (задание `cleanup`).
 - Координатор выдаёт агенту примерно одно задание в минуту: статус «Ожидает выполнения» между заданиями — норма.
 
-## Текущая задача: подчинённые клиенты и вход по ключу (в коде не начата)
+## Подчинённые клиенты и вход по ключу (выполнено, версия 1.5.0)
 
-Постановка — [`docs/task-managed-clients.md`](docs/task-managed-clients.md) (от 30.09.2026, закрывает РС-16 проекта 1c-import).
-Код ещё не менялся; ниже — что уже выяснено и план. Выполнять по порядку, после каждого этапа — сборка и тесты.
+Постановка — [`docs/task-managed-clients.md`](docs/task-managed-clients.md) (раздел 7 — итог и отличия); закрывает РС-16
+проекта 1c-import. Описание для интеграторов — `docs/integration.md` §11, архитектура — `docs/architecture.md`
+(«Подчинённые клиенты и вход по ключу»), ЧТЗ — Ф-28…Ф-30, Б-11, В-11.
 
-### Что выяснено в коде (OpenIddict 7.7.1)
+### Где что в коде
 
-- **`private_key_jwt` поддерживается из коробки:** у приложения есть `OpenIddictApplicationDescriptor.JsonWebKeySet`
-  (колонка `JsonWebKeySet` в таблице приложений уже есть в миграциях), сервер сам извлекает и проверяет `client_assertion`
-  (обработчики `ValidateClientAssertion`, `…Audience`, `…Issuer`, `…WellknownClaims`), discovery публикует методы через
-  `AttachClientAuthenticationMethods`. Confidential-клиенту достаточно JWKS без секрета — проверить тестом.
-- **Не делает сам OpenIddict** (дописать): ограничение алгоритма ES256 (отклонять `none`, HS*, RSA, другую кривую),
-  срок `exp − iat ≤ 5 мин`, одноразовый `jti` для всех узлов, публикация `token_endpoint_auth_signing_alg_values_supported: ES256`,
-  подробная причина отказа в аудите (OpenIddict отдаёт общее «client assertion is invalid»).
-- **DPoP (этап 2) в OpenIddict 7.7.1 нет** (в XML-документации пакетов упоминаний нет) — отложить и записать в ЧТЗ.
-- Token Exchange уже есть (`AuthorizationController.Exchange`, ветка `IsTokenExchangeGrantType`): токен с `sub` = пользователь,
-  `act.sub` = клиент-обменщик; для App API — scope `tsl-auth-app` (resource `tsl-auth-app`).
-- Флаги приложения хранятся в `Properties` OpenIddict (`tsl_system`, `tsl_self_management`, `tsl_self_registration`) —
-  по тому же образцу добавить `tsl_managed_clients` (политика JSON), `tsl_owner`, `tsl_disabled`.
-- Отзыв токенов клиента — `SessionService.RevokeByClientAsync`; сроки токена приложения — `TokenLifetimeService.SetForAppAsync`
-  (не больше глобальных); роли сервисной учётной записи — `AccessService.SetAssignmentsAsync(SubjectType.Client, …)`;
-  проверка права пользователя по БД — `AccessService.HasPermissionAsync` (как в `AdminPermissionHandler`).
-- Аудит ошибок токен-эндпоинта — `TokenErrorAuditHandler` (`Infrastructure/AuditHooks.cs`); метрики — `TslAuthMetrics`;
-  лимиты — `SecurityMiddleware` (политики RateLimiter); неактивность пользователей — `TokenPruningService` + `UserService.DisableInactiveAsync`.
-- Миграции EF — две ветки: `Data/Migrations/Sqlite` и `Data/Migrations/Postgres`
-  (`dotnet tool restore`, затем `dotnet ef migrations add … --context SqliteAuthDbContext` и `PostgresAuthDbContext`).
-- Интеграционные тесты: `AuthScenarios<TFixture>` запускаются на SQLite и PostgreSQL; `fx.Start()` — второй узел на той же БД
-  (для общего кэша `jti`); помощники `TestApi` (`TokenAsync`, `AdminAsync`, `PostJsonAsync`, `Unique`, `NewPassword`).
+- `Services/ManagedClientsPolicy.cs` — политика (`tsl_managed_clients`), разбор JWKS (`ManagedClientKeys`, только EC P-256,
+  `kid` = отпечаток RFC 7638, ≤ 2 ключей), правила assertion (`ClientAssertionRules`: ES256, `exp − iat ≤ 5 мин`, `jti`).
+- `Services/ManagedClientService.cs` — CRUD подчинённых (владелец из токена, чужой → 404), аудит `managed_client.change`
+  с `ClientId` = владелец, предел неактивности (`DisableInactiveAsync`, вызывается из `TokenPruningService`).
+- `Services/ApplicationService.cs` — свойства `tsl_owner`, `tsl_disabled`, `tsl_created_at`; `SetDisabledAsync`
+  (отзыв токенов + вебхуки `application.disabled/enabled`), запрет `UpdateAsync`/`RegenerateSecretAsync` для подчинённых,
+  каскадное удаление подчинённых вместе с владельцем, `ListManagedClientsAsync` (фильтр по JSON-колонке `Properties`).
+- `Api/ManagedClientsApi.cs` — группа `/api/app/clients` с политикой `app-managed-clients` (`ManagedClientsHandler`:
+  сервисный токен — чтение, делегированный `act.sub` = владелец + `managePermission` по БД — изменения) и фильтром
+  лимита 30 изменений/мин на владельца.
+- `Infrastructure/ClientAuthHandlers.cs` — обработчики OpenIddict: `ClientAssertionPolicyHandler` (перед `ValidateClientId`;
+  `jti` → таблица `ClientAssertionJtis`), `ClientAssertionErrorNormalizer` (`invalid_token` → `invalid_client`),
+  `ClientAssertionMetadataHandler` (discovery), `DisabledClientHandler` (token и authorize), `ClientFailureLimiter`
+  + `ClientFailureLimitHandler` (блок `client_id` после `Security__ClientAuthFailuresPerMinute` отказов).
+- Admin API: `…/managed-clients-policy` (GET/PUT/DELETE), `…/managed-clients`, `…/disable`, `…/enable`; `service-roles`
+  проверяет белый список. Админка: `Pages/Admin/Apps/Edit` (политика, таблица подчинённых, отключение), `Index` (владелец/статус).
+- SDK: .NET `ClientKeys` + `Internal/ClientAssertionSigner`, Go `clientkeys.go`; настройки `TSL_AUTH_CLIENT_KEY_PEM|FILE|ID`.
+  Node/Python/Java входят секретом (не реализовано — «по возможности»).
+- Тесты: `tests/TslAuth.UnitTests/ManagedClientsTests.cs`, `tests/TslAuth.IntegrationTests/ManagedClientScenarios.cs`
+  (SQLite + PostgreSQL, `fx.Start(extra)` — узел с другими настройками), UI `Admin_ManagedClients_*`,
+  контрактные тесты SDK (.NET `Private_key_jwt_managed_client`, Go `TestPrivateKeyJWTManagedClient`; вектор `managedOwner`
+  в `make-vectors.py`), нагрузка `tests/load/run-managed-load.ps1` (k6, WebCrypto ES256, 200 подчинённых).
 
-### План
+### Проверено на OpenIddict 7.7.1 (не очевидно из документации)
 
-1. **Модель.** Свойства приложения: `tsl_managed_clients` — политика `{prefix, roles[], grantTypes: ["client_credentials"],
-   authMethods: ["private_key_jwt" | "client_secret"], maxClients, accessTokenLifetime (мин, по умолчанию 5), requireDelegation (true),
-   managePermission ("agents.manage"), inactiveDays (0 — выкл.)}`; у подчинённого `tsl_owner`, у любого приложения `tsl_disabled`.
-   Новая таблица `ClientAssertionJti` (Jti PK, ClientId, ExpiresAt) + миграции SQLite и PostgreSQL; очистка просроченных — в `TokenPruningService`.
-2. **`ManagedClientService`** (Services): политика (пишет только админ); создание подчинённого — префикс, `[a-z0-9-]`, длина ≤ 64,
-   генерация суффикса, лимит `maxClients`, роли только из белого списка своего приложения, JWKS (только EC P-256,
-   `kid` = отпечаток RFC 7638, до 2 ключей) или секрет, если политика разрешает; дескриптор: confidential, только
-   `client_credentials`, scope только владельца, без redirect URI; срок токена из политики. Список, карточка (отпечатки ключей,
-   последний выданный токен — по таблице токенов), смена ключей, disable/enable, новый секрет, удаление с отзывом токенов.
-   Чужой или не подчинённый клиент — всегда 404.
-3. **Защита от обхода:** `ApplicationService.UpdateAsync` и Admin API `service-roles` для подчинённых — только отключение/удаление
-   и роли из белого списка владельца; `tsl-auth-admin`, `tsl-auth-app` и чужие приложения — 400 во всех API.
-4. **App API `/api/app/clients*`** (отдельная группа и политика): GET — сервисный токен владельца или делегированный;
-   изменения — только делегированный токен (`sub` = пользователь, `act.sub` = владелец, `aud` содержит `tsl-auth-app`),
-   пользователь активен и имеет `managePermission` в матрице владельца (проверка по БД на каждый запрос), иначе 403;
-   `requireDelegation=false` разрешает сервисный токен (тестовые стенды). Лимит 30 изменений/мин на владельца (RateLimiter).
-5. **Вход по ключу:** обработчик OpenIddict на этапе аутентификации клиента после встроенных проверок assertion:
-   `alg == ES256`, `exp − iat ≤ 300 с`, `jti` одноразовый через `ClientAssertionJti` (вставка по уникальному ключу — общая для узлов);
-   отказ — `invalid_client` без подробностей, причина — в аудит (Warning) и метрику `tsl_auth.client_assertion.rejected{reason}`.
-   Обработчик discovery добавляет `token_endpoint_auth_signing_alg_values_supported: ["ES256"]`; проверить, что
-   `token_endpoint_auth_methods_supported` содержит `private_key_jwt`.
-6. **Отключение клиента:** в `AuthorizationController` (token и authorize) отключённый клиент получает `invalid_client`;
-   при отключении — `RevokeByClientAsync` (introspection старых токенов → `active=false`); вебхуки `application.disabled`
-   и `application.enabled`, в `application.deleted` добавить `owner`. Доступно админу и владельцу.
-7. **Предел по client_id на токен-эндпоинте** при ошибках входа (счётчик отказов из `TokenErrorAuditHandler`, блокировка на минуту).
-8. **Аудит:** каждое действие с подчинённым — кто (`sub`), через кого (`act.sub`), что, клиент, отпечаток ключа;
-   `ClientId` записи = владелец, чтобы запись была видна в `/api/app/audit`. Метрика — число подчинённых по владельцам (gauge в снимке).
-9. **Admin API и админка:** `GET/PUT /api/admin/applications/{id}/managed-clients-policy`, `GET …/{id}/managed-clients`,
-   `POST …/{id}/disable` и `…/enable`; в `ApplicationDto` — `Owner`, `Disabled`, `ManagedClients`. Страница Apps/Edit — блок политики
-   и список подчинённых с кнопками «Отключить / Включить / Удалить»; Apps/Index — владелец и статус.
-10. **Этап 2:** неактивность подчинённых (`inactiveDays`) → автоотключение с событием, как у пользователей. DPoP отложен (см. выше).
-11. **Тесты (полная пирамида, SQLite и PostgreSQL):** юнит — политика и проверка assertion (подпись, `aud`, `exp`, повтор `jti`,
-    `alg=none`, HS256 с открытым ключом как секретом, ключ другой кривой); интеграционные — все сценарии раздела 4 постановки,
-    включая два узла и общий `jti`; нагрузка k6 — 200 подчинённых, токен каждому раз в 5 минут (сжатый сценарий);
-    UI Playwright — владелец и подчинённые в админке, отключение; контрактные тесты SDK — вход по `private_key_jwt`.
-12. **SDK:** в `TokenClient` .NET и Go — `private_key_jwt` (ES256, `jti`, `exp` = +60 с, `aud` = token endpoint); описать
-    в `docs/client-contract.md`; остальные SDK — по возможности тем же контрактом.
-13. **Документы:** `docs/integration.md` (подчинённые клиенты, `private_key_jwt`, делегирование), `docs/security.md`,
-    `docs/tz.md` (+ Word), `docs/configuration.md`, `docs/client-contract.md`, этот файл.
-14. **Выпуск:** `sdk/VERSION` → `1.5`, тег `v1.5.0` на `main` в GitFlic; сообщить версию образа и отличия от постановки
-    (раздел 5 постановки), в том числе что DPoP отложен.
+- Assertion принимается **только с заголовком `typ: client-authentication+jwt`**; без `typ` или с `typ: JWT` — «token is not
+  of the expected type» (ID2089). Confidential-клиент с `JsonWebKeySet` и без секрета создаётся и входит нормально.
+- `aud` assertion — только issuer в точности как в discovery (`http://localhost/`); адрес token endpoint отвергается
+  («doesn't contain any valid audience»); отказ встроенной проверки `aud`/`exp` идёт как
+  `invalid_token` — нормализуется в `invalid_client`. `invalid_client` OpenIddict отдаёт со статусом **401** (и на authorize).
+- Порядок обработчиков: `ValidateClientAssertion` → `…WellknownClaims` → `…Issuer` → `…Audience` (устаревший класс, не
+  ссылаться) → `ValidateClientId` → `ValidateClientType` → `ValidateClientSecret`; свой — `ValidateClientId.Order − 500`.
+  Класс обработчиков authorize-эндпоинта называется `OpenIddictServerHandlers.Authentication` (не `Authorization`).
+- `OpenIddictParameter` для массива строк — `new OpenIddictParameter(ImmutableArray.Create<string?>(…))`.
+- Через Bash-инструмент heredoc с python-кодом иногда обрывается («unexpected EOF») — патчи класть в файл `*.py` и запускать.
 
 ## Открытые темы
 

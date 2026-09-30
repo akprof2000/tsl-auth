@@ -23,6 +23,7 @@ SDK читают переменные окружения (полный спис�
 TSL_AUTH_ISSUER=https://auth.corp/        # адрес сервиса (как iss в токене)
 TSL_AUTH_AUDIENCE=orders-api              # client_id этого API — токен принимается только с таким aud
 TSL_AUTH_CLIENT_ID=orders-api             # для клиента токенов: client_credentials, exchange, introspection
+TSL_AUTH_CLIENT_KEY_FILE=/etc/agent/key.pem  # .NET, Go: вход по ключу (private_key_jwt) вместо TSL_AUTH_CLIENT_SECRET
 TSL_AUTH_CLIENT_SECRET=...                # секрет confidential-клиента
 TSL_AUTH_INTROSPECT=false                 # true — дополнительно спрашивать сервис (мгновенный отзыв)
 ```

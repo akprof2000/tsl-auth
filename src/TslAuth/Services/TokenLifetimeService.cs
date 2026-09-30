@@ -48,6 +48,10 @@ public sealed class TokenLifetimeService(SettingsService settings, IOpenIddictAp
     {
         if (await applications.FindByClientIdAsync(clientId) is not { } app) return new AppTokenLifetimes();
         var properties = await applications.GetPropertiesAsync(app);
+        // Срок токена подчинённого клиента задаёт политика владельца (свойство самого подчинённого не хранится).
+        if (ApplicationService.OwnerOf(properties) is { } owner && await applications.FindByClientIdAsync(owner) is { } ownerApp &&
+            ManagedClientsPolicy.From(await applications.GetPropertiesAsync(ownerApp)) is { } policy)
+            return new AppTokenLifetimes(policy.AccessTokenLifetime, null, null);
         return properties.TryGetValue(AppProperty, out var json) && json.ValueKind == JsonValueKind.Object
             ? json.Deserialize<AppTokenLifetimes>() ?? new AppTokenLifetimes()
             : new AppTokenLifetimes();

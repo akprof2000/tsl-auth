@@ -113,6 +113,21 @@ if errors.As(err, &te) { log.Println(te.Code, te.Status) }  // invalid_grant, in
 
 `TokenSet`: `AccessToken`, `RefreshToken`, `IDToken`, `ExpiresAt`, `Scope`, `TokenType`.
 
+### Вход по ключу (private_key_jwt)
+
+Подчинённый клиент (агент) входит без секрета — закрытым ключом EC P-256, который не покидает машину:
+
+```go
+pemText, _ := tslauth.GenerateClientKeyPEM()             // один раз; сохранить в файл 0600
+key, _ := tslauth.ParseClientKeyPEM(pemText)
+jwks := tslauth.PublicJWKS(key)                           // открытая часть → владельцу: POST /api/app/clients {"jwks": …}
+tc, err := tslauth.NewTokenClient(tslauth.Options{Issuer: issuer, ClientID: "import-agent-7f3a", ClientKeyPEM: pemText})
+ts, err := tc.ClientCredentials(ctx, "import-api")        // client_assertion ES256: jti, exp = +60 с, aud = issuer
+```
+
+Переменные: `TSL_AUTH_CLIENT_KEY_PEM` или `TSL_AUTH_CLIENT_KEY_FILE` вместо `TSL_AUTH_CLIENT_SECRET`, необязательно
+`TSL_AUTH_CLIENT_KEY_ID` (по умолчанию — отпечаток RFC 7638, как у сервиса).
+
 ## Тесты
 
 Контрактные тесты (`docs/client-contract.md` §8) идут против живого TSL Auth и `tests/sdk-contract/vectors.json`:

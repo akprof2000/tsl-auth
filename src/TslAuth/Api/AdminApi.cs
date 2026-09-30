@@ -103,6 +103,38 @@ public static class AdminApi
         apps.MapPost("/{clientId}/secret", async (string clientId, ApplicationService s, CancellationToken ct) =>
             Results.Ok(new { clientSecret = await s.RegenerateSecretAsync(clientId, ct) })).RequireAuthorization(AdminPolicies.ApiManage);
 
+        // ---------- Отключение клиента и подчинённые клиенты ----------
+        // Отключённый клиент не получает токены, выданные отзываются; доступно для любого приложения, кроме системного.
+        apps.MapPost("/{clientId}/disable", async (string clientId, ApplicationService s, CancellationToken ct) =>
+        {
+            await s.SetDisabledAsync(clientId, true, ct);
+            return Results.Ok(await s.GetAsync(clientId, ct));
+        }).RequireAuthorization(AdminPolicies.ApiManage);
+        apps.MapPost("/{clientId}/enable", async (string clientId, ApplicationService s, CancellationToken ct) =>
+        {
+            await s.SetDisabledAsync(clientId, false, ct);
+            return Results.Ok(await s.GetAsync(clientId, ct));
+        }).RequireAuthorization(AdminPolicies.ApiManage);
+        // Политика подчинённых клиентов задаётся только здесь и в админке; тело null (или DELETE) — выключить.
+        apps.MapGet("/{clientId}/managed-clients-policy", async (string clientId, ApplicationService a, ManagedClientService s,
+            CancellationToken ct) =>
+        {
+            await EnsureAppAsync(a, clientId, ct);
+            return Results.Ok(await s.GetPolicyAsync(clientId, ct));
+        });
+        apps.MapPut("/{clientId}/managed-clients-policy", async (string clientId, ManagedClientsPolicy? policy, ManagedClientService s,
+            CancellationToken ct) => Results.Ok(await s.SetPolicyAsync(clientId, policy, ct))).RequireAuthorization(AdminPolicies.ApiManage);
+        apps.MapDelete("/{clientId}/managed-clients-policy", async (string clientId, ManagedClientService s, CancellationToken ct) =>
+        {
+            await s.SetPolicyAsync(clientId, null, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AdminPolicies.ApiManage);
+        apps.MapGet("/{clientId}/managed-clients", async (string clientId, ApplicationService a, ManagedClientService s, CancellationToken ct) =>
+        {
+            await EnsureAppAsync(a, clientId, ct);
+            return await s.ListAsync(clientId, ct);
+        });
+
         // ---------- Сроки жизни токенов приложения (не больше глобальных) ----------
         apps.MapGet("/{clientId}/token-lifetimes", (string clientId, TokenLifetimeService s) => s.GetForAppAsync(clientId));
         apps.MapPut("/{clientId}/token-lifetimes", async (string clientId, AppTokenLifetimes input, TokenLifetimeService s,
@@ -174,9 +206,11 @@ public static class AdminApi
             return await s.GetAssignmentsAsync(SubjectType.Client, clientId, ct);
         });
         apps.MapPut("/{clientId}/service-roles", async (string clientId, List<RoleRef> roles, ApplicationService a, AccessService s,
-            CancellationToken ct) =>
+            ManagedClientService m, CancellationToken ct) =>
         {
             await EnsureAppAsync(a, clientId, ct);
+            // Подчинённому клиенту — только роли владельца из белого списка политики (защита от обхода App API).
+            await m.EnsureServiceRolesAllowedAsync(clientId, roles, ct);
             await s.SetAssignmentsAsync(SubjectType.Client, clientId, roles, ct);
             return await s.GetAssignmentsAsync(SubjectType.Client, clientId, ct);
         }).RequireAuthorization(AdminPolicies.ApiManage);

@@ -17,6 +17,8 @@
 | `TSL_AUTH_AUDIENCE` | для API | — | `client_id` этого API: токен принимается, только если `aud` его содержит |
 | `TSL_AUTH_CLIENT_ID` | для клиента токенов | — | `client_id` приложения (client_credentials, exchange, refresh, introspection) |
 | `TSL_AUTH_CLIENT_SECRET` | для confidential-клиента | — | Секрет приложения |
+| `TSL_AUTH_CLIENT_KEY_PEM` / `TSL_AUTH_CLIENT_KEY_FILE` | для входа по ключу (.NET, Go) | — | Закрытый ключ EC P-256 в PEM (строкой или файлом): вместо секрета клиент подписывает assertion `private_key_jwt` |
+| `TSL_AUTH_CLIENT_KEY_ID` | нет | отпечаток RFC 7638 | `kid` ключа в заголовке assertion |
 | `TSL_AUTH_JWKS_URI` | нет | из discovery | Прямой адрес JWKS (стенды без discovery, тесты) |
 | `TSL_AUTH_CLOCK_SKEW_SECONDS` | нет | `30` | Допуск на расхождение часов при проверке `exp`/`nbf` |
 | `TSL_AUTH_JWKS_TTL_SECONDS` | нет | `600` | Срок кэша ключей |
@@ -130,6 +132,16 @@ SDK есть способ подменить `now` (нужно тестам и �
 | `authorizationCode(code, redirectUri, codeVerifier)` | `authorization_code` | PKCE обязателен |
 | `introspect(token)` | — | `POST introspection_endpoint`, `token` |
 | `revoke(token)` | — | `POST revocation_endpoint`, `token`; успех — `200` |
+
+**Вход по ключу (`private_key_jwt`, RFC 7523; реализовано в .NET и Go).** Если секрет не задан, а задан
+`TSL_AUTH_CLIENT_KEY_PEM`/`_FILE`, каждый запрос к token/introspection/revocation endpoint вместо `client_secret` несёт
+`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` и `client_assertion` — JWS ES256:
+заголовок `{"alg":"ES256","typ":"client-authentication+jwt","kid":<отпечаток RFC 7638 или TSL_AUTH_CLIENT_KEY_ID>}`,
+payload `iss = sub = client_id`, `aud` = issuer из discovery (с завершающим «/»), случайный `jti` (новый на каждый запрос), `iat`/`nbf` = сейчас,
+`exp = iat + 60 с`. Помощники: `ClientKeys.GeneratePrivateKeyPem()`, `ClientKeys.PublicJwks(pem)`, `ClientKeys.KeyId(pem)`
+(.NET); `tslauth.GenerateClientKeyPEM()`, `tslauth.PublicJWKS(key)`, `tslauth.KeyID(key)` (Go) — открытый JWK передаётся
+владельцу для регистрации подчинённого клиента (`POST /api/app/clients`, см. `integration.md`, §11). Остальные SDK
+(Node.js, Python, Java) входят секретом; вход по ключу в них — по мере необходимости тем же контрактом.
 
 Ответ — `TokenSet`: `accessToken`, `refreshToken?`, `idToken?`, `expiresAt` (вычислен из `expires_in` в момент
 получения), `scope`, `tokenType`. Ошибка (`4xx` с JSON `error`) — исключение `TokenError` с полями `error`,

@@ -20,6 +20,18 @@ public sealed class TslAuthOptions
     /// <summary>Секрет confidential-клиента (<c>TSL_AUTH_CLIENT_SECRET</c>).</summary>
     public string? ClientSecret { get; set; }
 
+    /// <summary>
+    /// Закрытый ключ EC P-256 в PEM для входа по ключу (<c>private_key_jwt</c>, <c>TSL_AUTH_CLIENT_KEY_PEM</c>).
+    /// Используется, когда секрет не задан: клиент подписывает assertion ES256 вместо передачи секрета.
+    /// </summary>
+    public string? ClientPrivateKeyPem { get; set; }
+
+    /// <summary>Путь к файлу PEM с закрытым ключом (<c>TSL_AUTH_CLIENT_KEY_FILE</c>); альтернатива <see cref="ClientPrivateKeyPem"/>.</summary>
+    public string? ClientPrivateKeyFile { get; set; }
+
+    /// <summary><c>kid</c> ключа (<c>TSL_AUTH_CLIENT_KEY_ID</c>); пусто — отпечаток RFC 7638, как присваивает сервис.</summary>
+    public string? ClientKeyId { get; set; }
+
     /// <summary>Прямой адрес JWKS в обход discovery (<c>TSL_AUTH_JWKS_URI</c>).</summary>
     public string? JwksUri { get; set; }
 
@@ -76,6 +88,9 @@ public sealed class TslAuthOptions
         Audience = Get("AUDIENCE", "Audience") ?? Audience;
         ClientId = Get("CLIENT_ID", "ClientId") ?? ClientId;
         ClientSecret = Get("CLIENT_SECRET", "ClientSecret") ?? ClientSecret;
+        ClientPrivateKeyPem = Get("CLIENT_KEY_PEM", "ClientPrivateKeyPem") ?? ClientPrivateKeyPem;
+        ClientPrivateKeyFile = Get("CLIENT_KEY_FILE", "ClientPrivateKeyFile") ?? ClientPrivateKeyFile;
+        ClientKeyId = Get("CLIENT_KEY_ID", "ClientKeyId") ?? ClientKeyId;
         JwksUri = Get("JWKS_URI", "JwksUri") ?? JwksUri;
         ClockSkew = Seconds(Get("CLOCK_SKEW_SECONDS", "ClockSkewSeconds"), ClockSkew);
         JwksTtl = Seconds(Get("JWKS_TTL_SECONDS", "JwksTtlSeconds"), JwksTtl);

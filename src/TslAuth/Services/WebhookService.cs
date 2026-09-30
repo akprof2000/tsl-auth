@@ -18,6 +18,10 @@ public static class WebhookEvents
     public const string UserLockedOut = "user.locked_out";
     public const string ApplicationCreated = "application.created";
     public const string ApplicationDeleted = "application.deleted";
+
+    /// <summary>Клиент отключён/включён (в данных — client_id и владелец подчинённого): сервисы отсекают выданные JWT.</summary>
+    public const string ApplicationDisabled = "application.disabled";
+    public const string ApplicationEnabled = "application.enabled";
     public const string Test = "test";
 
     /// <summary>События журнала безопасности уровня warning/critical.</summary>
@@ -26,7 +30,7 @@ public static class WebhookEvents
     public static readonly string[] All =
     [
         SecurityAlert, AccessRequestCreated, AccessRequestApproved, AccessRequestRejected, UserRegistered, UserCreated,
-        UserDeleted, UserLockedOut, ApplicationCreated, ApplicationDeleted, Test
+        UserDeleted, UserLockedOut, ApplicationCreated, ApplicationDeleted, ApplicationDisabled, ApplicationEnabled, Test
     ];
 }
 

@@ -39,7 +39,8 @@ internal sealed class TslHttp
                 var root = doc.RootElement;
                 d = new Discovery(
                     Get(root, "jwks_uri"), Get(root, "token_endpoint"), Get(root, "introspection_endpoint"),
-                    Get(root, "revocation_endpoint"), Get(root, "authorization_endpoint"), Get(root, "end_session_endpoint"));
+                    Get(root, "revocation_endpoint"), Get(root, "authorization_endpoint"), Get(root, "end_session_endpoint"),
+                    Get(root, "issuer"));
                 _discovery = d;
                 _discoveryLoadedAt = Now;
                 return d;
@@ -69,4 +70,4 @@ internal sealed class TslHttp
 
 internal sealed record Discovery(
     string? JwksUri, string? TokenEndpoint, string? IntrospectionEndpoint,
-    string? RevocationEndpoint, string? AuthorizationEndpoint, string? EndSessionEndpoint);
+    string? RevocationEndpoint, string? AuthorizationEndpoint, string? EndSessionEndpoint, string? Issuer = null);

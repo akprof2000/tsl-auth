@@ -82,6 +82,64 @@ public sealed class UiScenarios(UiFixture fx)
     }
 
     /// <summary>
+    /// Подчинённые клиенты в админке: владелец с политикой (задана через Admin API) и подчинённый (создан через App API
+    /// сервисным токеном владельца) видны на странице владельца; «Отключить» в таблице отключает подчинённого —
+    /// подтверждается через Admin API; список приложений показывает владельца и статус.
+    /// </summary>
+    [Fact]
+    public async Task Admin_ManagedClients_ListedOnOwnerPage_AndDisabledFromUi()
+    {
+        var owner = Unique("ui-owner");
+        var created = await (await fx.Admin.PostAsJsonAsync("/api/admin/applications", new
+        {
+            clientId = owner, displayName = "UI-тест владелец", clientType = "confidential",
+            grantTypes = new[] { "client_credentials" }, selfManagement = true
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var secret = created.GetProperty("clientSecret").GetString()!;
+        await fx.Admin.PostAsJsonAsync($"/api/admin/applications/{owner}/permissions", new { name = "upload" });
+        await fx.Admin.PostAsJsonAsync($"/api/admin/applications/{owner}/roles", new { name = "uploader", permissions = new[] { "upload" } });
+        (await fx.Admin.PutAsJsonAsync($"/api/admin/applications/{owner}/managed-clients-policy", new
+        {
+            prefix = "ui-agent-", roles = new[] { "uploader" }, authMethods = new[] { "private_key_jwt", "client_secret" }, requireDelegation = false
+        })).EnsureSuccessStatusCode();
+
+        // Подчинённый — через App API сервисным токеном владельца (requireDelegation=false, как на тестовом стенде).
+        using var http = new HttpClient { BaseAddress = new Uri(UiFixture.Auth) };
+        var token = await (await http.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["grant_type"] = "client_credentials", ["client_id"] = owner, ["client_secret"] = secret, ["scope"] = "tsl-auth-app"
+        }))).Content.ReadFromJsonAsync<JsonElement>();
+        http.DefaultRequestHeaders.Authorization = new("Bearer", token.GetProperty("access_token").GetString());
+        var managed = await (await http.PostAsJsonAsync("/api/app/clients", new { clientIdSuffix = Unique("x")[2..], roles = new[] { "uploader" }, requestSecret = true }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var managedId = managed.GetProperty("client").GetProperty("clientId").GetString()!;
+
+        var page = await fx.NewPageAsync();
+        await page.GotoAsync($"{UiFixture.Auth}/Admin/Apps/Edit?clientId={owner}");
+        await UiFixture.LoginAsync(page, UiFixture.UiAdmin, UiFixture.UiAdminPassword);
+        await Expect(page.Locator("#PolicyPrefix")).ToHaveValueAsync("ui-agent-");
+        await Expect(page.Locator("table.managed-clients")).ToContainTextAsync(managedId);
+        await UiFixture.ShotAsync(page, "90-managed-clients");
+
+        await page.Locator("table.managed-clients tr", new() { HasText = managedId }).Locator("form[action*=Toggle] button").ClickAsync();
+        await Expect(page.Locator(".alert.ok")).ToContainTextAsync("отключён");
+        await Expect(page.Locator("table.managed-clients tr", new() { HasText = managedId })).ToContainTextAsync("отключён");
+        await UiFixture.ShotAsync(page, "91-managed-client-disabled");
+        var dto = await fx.Admin.GetFromJsonAsync<JsonElement>($"/api/admin/applications/{managedId}");
+        Assert.True(dto.GetProperty("disabled").GetBoolean());
+        Assert.Equal(owner, dto.GetProperty("owner").GetString());
+
+        // Карточка подчинённого — только чтение, со ссылкой на владельца; список приложений показывает владельца и статус.
+        await page.GotoAsync($"{UiFixture.Auth}/Admin/Apps/Edit?clientId={managedId}");
+        await Expect(page.Locator(".alert").First).ToContainTextAsync(owner);
+        await page.GotoAsync($"{UiFixture.Auth}/Admin/Apps");
+        await Expect(page.Locator("tr", new() { HasText = managedId })).ToContainTextAsync("отключён");
+        await UiFixture.ShotAsync(page, "92-apps-owner-status");
+
+        await fx.Admin.DeleteAsync($"/api/admin/applications/{owner}");
+    }
+
+    /// <summary>
     /// Регистрация приложения через UI показывает секрет один раз; затем в матрице создаются разрешение и роль,
     /// связь сохраняется, и результат подтверждается через Admin API.
     /// </summary>

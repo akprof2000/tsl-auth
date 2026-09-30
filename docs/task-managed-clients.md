@@ -148,3 +148,26 @@
   `agent-rollout.md`, ТЗ (РС-16 закрывается), CLAUDE.md.
 
 До выпуска tsl-auth текущая схема (РС-16) остаётся в силе для MVP.
+
+## 7. Итог реализации (tsl-auth 1.5.0, 30.09.2026)
+
+Сделано всё из разделов 3.1–3.5 и этап 2 в части предела неактивности. Отличия и уточнения:
+
+| Пункт | Как сделано |
+|---|---|
+| 3.3, заголовок assertion | OpenIddict 7.7 принимает assertion только с явным типом `typ: client-authentication+jwt` (без `typ` или с `typ: JWT` — отказ). SDK .NET и Go ставят его сами; агенту 1c-import — ставить тоже |
+| 3.3, `aud` | принимается issuer в точности как в discovery (`https://auth.corp/`); адрес token endpoint OpenIddict 7.7 отвергает («no valid audience») — SDK берут `issuer` из discovery |
+| 3.3, EdDSA | не поддерживается: только ES256 (P-256) |
+| 3.3, ответ | `invalid_client` всегда со статусом HTTP 401 (так отвечает OpenIddict); описание одинаковое, причина — в журнале (`token.rejected`, warning, `details.reason`: `alg`, `lifetime`, `jti_replay`, `server_validation` …) и метрике `tsl_auth.client_assertion.rejected{reason}` |
+| 3.1, владелец | политика ставится только confidential-клиенту с включённым самоуправлением (App API); поток `token_exchange` нужен владельцу для делегированного токена |
+| 3.1, удаление владельца | удаляет и его подчинённых |
+| 3.5, предел на токен-эндпоинт | 20 отказов `invalid_client` за минуту по `client_id` → блокировка на минуту (`Security__ClientAuthFailuresPerMinute`), считается на узел |
+| 3.5, предел App API | 30 изменений в минуту на владельца (`Security__ManagedClientChangesPerMinute`), GET не считается |
+| 3.6, DPoP | отложен — в OpenIddict 7.7 нет поддержки; зафиксировано в ЧТЗ (В-11) |
+| 3.6, неактивность | `inactiveDays` в политике; отключение при обслуживании БД (раз в час) с событием `security.alert` и записью `managed_client.change` |
+| SDK | вход по ключу — .NET и Go (`ClientKeys` / `tslauth.GenerateClientKeyPEM`); Node.js, Python, Java входят секретом |
+| Admin API | `GET/PUT/DELETE …/managed-clients-policy`, `GET …/managed-clients`, `POST …/disable|enable`; в `ApplicationDto` — `owner`, `disabled`, `managedClients` |
+
+Для 1c-import (раздел 6): регистрация `import-api` — `selfManagement: true`, `grantTypes: ["client_credentials","token_exchange"]`,
+затем `PUT /api/admin/applications/import-api/managed-clients-policy` с `prefix: "import-agent-"`, `roles: ["uploader"]`,
+`managePermission: "agents.manage"` (разрешение и роль оператора завести в матрице `import-api`).

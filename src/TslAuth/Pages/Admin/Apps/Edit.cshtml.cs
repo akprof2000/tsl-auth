@@ -7,11 +7,13 @@ namespace TslAuth.Pages.Admin.Apps;
 /// <summary>
 /// Создание (ClientId пуст) и редактирование приложения — OIDC-клиента: тип, redirect URI, grant types, scopes,
 /// сервисные роли (для client_credentials), флаги самоуправления/саморегистрации и сроки жизни токенов;
-/// перевыпуск секрета и удаление. Просмотр — политика UiView, изменения — UiManage.
-/// Использует ApplicationService, AccessService, AuthDbContext, TokenLifetimeService и SettingsService.
+/// перевыпуск секрета, отключение и удаление; политика подчинённых клиентов и список подчинённых владельца.
+/// Подчинённый клиент показывается только для чтения (его настройки задаёт владелец через App API).
+/// Просмотр — политика UiView, изменения — UiManage.
+/// Использует ApplicationService, ManagedClientService, AccessService, AuthDbContext, TokenLifetimeService и SettingsService.
 /// </summary>
-public sealed class EditModel(ApplicationService apps, AccessService access, AuthDbContext db, TokenLifetimeService lifetimes,
-    SettingsService settings) : AdminPageModel
+public sealed class EditModel(ApplicationService apps, ManagedClientService managed, AccessService access, AuthDbContext db,
+    TokenLifetimeService lifetimes, SettingsService settings) : AdminPageModel
 {
     [BindProperty(SupportsGet = true)] public string? ClientId { get; set; }
 
@@ -31,10 +33,31 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
     /// <summary>Глобальные сроки жизни токенов — подсказка, что будет действовать, если поле приложения пустое.</summary>
     public TokenPolicy GlobalTokens { get; private set; } = new();
 
+    // ---------- Политика подчинённых клиентов (только администратор) ----------
+    [BindProperty] public bool PolicyEnabled { get; set; }
+    [BindProperty] public string? PolicyPrefix { get; set; }
+    [BindProperty] public List<string> PolicyRoles { get; set; } = [];
+    [BindProperty] public List<string> PolicyAuthMethods { get; set; } = [ManagedClientsPolicy.PrivateKeyJwt];
+    [BindProperty] public int PolicyMaxClients { get; set; } = 200;
+    [BindProperty] public int PolicyAccessTokenLifetime { get; set; } = 5;
+    [BindProperty] public bool PolicyRequireDelegation { get; set; } = true;
+    [BindProperty] public string PolicyManagePermission { get; set; } = "agents.manage";
+    [BindProperty] public int PolicyInactiveDays { get; set; }
+
     public bool IsNew => string.IsNullOrEmpty(ClientId);
     public bool IsSystem { get; private set; }
+
+    /// <summary>Владелец, если это подчинённый клиент; такой клиент в админке только читается, отключается и удаляется.</summary>
+    public string? Owner { get; private set; }
+    public bool Disabled { get; private set; }
+    public bool IsManaged => Owner is not null;
+    public ManagedClientsPolicy? Policy { get; private set; }
+    public List<ManagedClientDto> ManagedClients { get; private set; } = [];
     public List<string> AvailableScopes { get; private set; } = [];
     public List<RoleOption> AllRoles { get; private set; } = [];
+
+    /// <summary>Роли этого приложения — белый список политики подчинённых.</summary>
+    public List<RoleOption> OwnRoles => AllRoles.Where(r => r.ClientId == ClientId).ToList();
 
     /// <summary>Секрет показывается один раз — сразу после создания/перевыпуска.</summary>
     public string? Secret => TempData["Secret"] as string;
@@ -94,6 +117,41 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
         return RedirectToPage(new { clientId = result.Application.ClientId });
     }
 
+    /// <summary>Сохраняет или снимает политику подчинённых клиентов этого приложения.</summary>
+    public async Task<IActionResult> OnPostPolicyAsync(CancellationToken ct)
+    {
+        var policy = PolicyEnabled
+            ? new ManagedClientsPolicy(PolicyPrefix ?? "", PolicyRoles, [AppGrantTypes.ClientCredentials], PolicyAuthMethods,
+                PolicyMaxClients, PolicyAccessTokenLifetime, PolicyRequireDelegation, PolicyManagePermission, PolicyInactiveDays)
+            : null;
+        if (!await TryAsync(() => managed.SetPolicyAsync(ClientId!, policy, ct)))
+            return await OnGetAsync(ct);
+        Flash(PolicyEnabled ? "Политика подчинённых клиентов сохранена." : "Подчинённые клиенты выключены.");
+        return RedirectToPage(new { clientId = ClientId });
+    }
+
+    /// <summary>Отключает или включает клиента: само приложение (target пуст) или его подчинённого.</summary>
+    public async Task<IActionResult> OnPostToggleAsync(string? target, bool disabled, CancellationToken ct)
+    {
+        var ok = await TryAsync(async () =>
+        {
+            if (string.IsNullOrEmpty(target) || target == ClientId) await apps.SetDisabledAsync(ClientId!, disabled, ct);
+            else await managed.SetDisabledAsync(ClientId!, target, disabled, ct: ct);
+        });
+        if (!ok) return await OnGetAsync(ct);
+        Flash(disabled ? $"Клиент {target ?? ClientId} отключён, его токены отозваны." : $"Клиент {target ?? ClientId} включён.");
+        return RedirectToPage(new { clientId = ClientId });
+    }
+
+    /// <summary>Удаляет подчинённого клиента этого приложения с отзывом его токенов.</summary>
+    public async Task<IActionResult> OnPostDeleteManagedAsync(string target, CancellationToken ct)
+    {
+        if (!await TryAsync(() => managed.DeleteAsync(ClientId!, target, ct: ct)))
+            return await OnGetAsync(ct);
+        Flash($"Подчинённый клиент {target} удалён, его токены отозваны.");
+        return RedirectToPage(new { clientId = ClientId });
+    }
+
     /// <summary>Перевыпускает client_secret (старый сразу перестаёт действовать); новый показывается один раз.</summary>
     public async Task<IActionResult> OnPostSecretAsync(CancellationToken ct)
     {
@@ -124,6 +182,21 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
         IsSystem = app.IsSystem;
         SelfManagement = app.SelfManagement;
         SelfRegistration = app.SelfRegistration;
+        Owner = app.Owner;
+        Disabled = app.Disabled;
+        Policy = app.ManagedClients;
+        if (Policy is not null)
+        {
+            PolicyEnabled = true;
+            PolicyPrefix = Policy.Prefix;
+            PolicyRoles = Policy.Roles ?? [];
+            PolicyAuthMethods = Policy.AuthMethods ?? [ManagedClientsPolicy.PrivateKeyJwt];
+            PolicyMaxClients = Policy.MaxClients;
+            PolicyAccessTokenLifetime = Policy.AccessTokenLifetime;
+            PolicyRequireDelegation = Policy.RequireDelegation;
+            PolicyManagePermission = Policy.ManagePermission;
+            PolicyInactiveDays = Policy.InactiveDays;
+        }
     }
 
     /// <summary>
@@ -137,7 +210,14 @@ public sealed class EditModel(ApplicationService apps, AccessService access, Aut
         AvailableScopes = (await apps.ListAvailableScopesAsync(ct)).Where(s => s != SystemApp.AppApiScope).ToList();
         AllRoles = db.AccessRoles.OrderBy(r => r.ClientId).ThenBy(r => r.Name)
             .Select(r => new RoleOption(r.ClientId, r.Name, r.DisplayName)).ToList();
-        if (!IsNew) IsSystem = (await apps.GetAsync(ClientId!, ct))?.IsSystem == true;
+        if (!IsNew && await apps.GetAsync(ClientId!, ct) is { } current)
+        {
+            IsSystem = current.IsSystem;
+            Owner = current.Owner;
+            Disabled = current.Disabled;
+            Policy = current.ManagedClients;
+            if (Owner is null) ManagedClients = await managed.ListAsync(ClientId!, ct);
+        }
     }
 
     /// <summary>Значение чекбокса роли: "client_id|role" ('|' не допускается в именах).</summary>

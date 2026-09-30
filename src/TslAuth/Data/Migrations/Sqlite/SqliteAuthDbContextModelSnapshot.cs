@@ -695,6 +695,27 @@ namespace TslAuth.Data.Migrations.Sqlite
                     b.ToTable("BotLinkCodes", (string)null);
                 });
 
+            modelBuilder.Entity("TslAuth.Data.ClientAssertionJti", b =>
+                {
+                    b.Property<string>("Jti")
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Jti");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("ClientAssertionJtis", (string)null);
+                });
+
             modelBuilder.Entity("TslAuth.Data.ExternalIdentity", b =>
                 {
                     b.Property<Guid>("Id")

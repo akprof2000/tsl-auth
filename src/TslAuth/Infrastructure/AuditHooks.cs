@@ -114,7 +114,8 @@ public sealed class AuditingAuthorizationResultHandler : IAuthorizationMiddlewar
 /// (неверный секрет клиента, недопустимый grant/scope, отозванный refresh-токен и т.п.).
 /// Встраивается в конвейер OpenIddict через <see cref="Descriptor"/> (AddEventHandler в ServiceSetup).
 /// </summary>
-public sealed class TokenErrorAuditHandler(AuditService audit, TslAuthMetrics metrics) : IOpenIddictServerHandler<ApplyTokenResponseContext>
+public sealed class TokenErrorAuditHandler(AuditService audit, TslAuthMetrics metrics, ClientFailureLimiter limiter)
+    : IOpenIddictServerHandler<ApplyTokenResponseContext>
 {
     // Самый ранний порядок: обработчик должен увидеть ответ до того, как встроенные обработчики его отправят.
     public static OpenIddictServerHandlerDescriptor Descriptor { get; } =
@@ -130,8 +131,13 @@ public sealed class TokenErrorAuditHandler(AuditService audit, TslAuthMetrics me
         if (string.IsNullOrEmpty(context.Response.Error)) return;
         metrics.TokenRejected(context.Request?.GrantType, context.Response.Error, context.Request?.ClientId);
 
-        // Неверные учётные данные клиента — повод насторожиться (подбор секрета).
+        // Неверные учётные данные клиента — повод насторожиться (подбор секрета или ключа): считаем отказы
+        // по client_id, после порога клиент временно блокируется (ClientFailureLimitHandler).
         var severity = context.Response.Error is Errors.InvalidClient ? AuditSeverity.Warning : AuditSeverity.Info;
+        if (context.Response.Error is Errors.InvalidClient && context.Request?.ClientId is { Length: > 0 } blockedClient &&
+            limiter.RecordFailure(blockedClient))
+            await audit.WriteAsync(AuditTypes.TokenRejected, false, AuditSeverity.Warning, blockedClient,
+                details: new { reason = "client_blocked", failuresPerMinute = limiter.FailuresPerMinute });
         await audit.WriteAsync(AuditTypes.TokenRejected, false, severity, context.Request?.ClientId, details: new
         {
             grantType = context.Request?.GrantType,

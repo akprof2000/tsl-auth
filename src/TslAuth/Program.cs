@@ -75,6 +75,7 @@ app.MapControllers();
 app.MapRazorPages();
 app.MapAdminApi();
 app.MapAppApi();
+app.MapManagedClientsApi();
 app.MapEventsApi();
 app.MapBotApi();
 app.MapTslApiDocs();

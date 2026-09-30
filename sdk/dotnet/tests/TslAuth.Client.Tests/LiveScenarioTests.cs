@@ -77,6 +77,56 @@ public class LiveScenarioTests
         Assert.NotEqual(a.AccessToken, c.AccessToken);
     }
 
+    /// <summary>
+    /// §6 private_key_jwt: владелец регистрирует подчинённого с открытым ключом SDK, подчинённый получает токен
+    /// без секрета (ES256-assertion), в токене роль владельца; тот же клиент с секретом «wrong» — invalid_client.
+    /// </summary>
+    [Fact]
+    public async Task Private_key_jwt_managed_client()
+    {
+        var (ownerId, ownerSecret, prefix, role) = V.ManagedOwner;
+        Assert.False(string.IsNullOrEmpty(ownerId), "в vectors.json нет managedOwner — обновите make-vectors.py");
+        var owner = new TokenClient(new TslAuthOptions { Issuer = V.Issuer, ClientId = ownerId, ClientSecret = ownerSecret });
+        var ownerToken = await owner.ClientCredentialsAsync(new[] { "tsl-auth-app" });
+
+        var pem = ClientKeys.GeneratePrivateKeyPem();
+        using var http = new HttpClient { BaseAddress = new Uri(V.Issuer) };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ownerToken.AccessToken);
+        using var jwks = System.Text.Json.JsonDocument.Parse(ClientKeys.PublicJwks(pem));
+        var body = new { clientIdSuffix = "dotnet-" + Guid.NewGuid().ToString("N")[..8], displayName = "SDK .NET", roles = new[] { role }, jwks = jwks.RootElement };
+        var response = await http.PostAsync("/api/app/clients", new StringContent(System.Text.Json.JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"));
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var created = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var clientId = created.RootElement.GetProperty("client").GetProperty("clientId").GetString()!;
+        Assert.StartsWith(prefix, clientId);
+        Assert.Equal(ClientKeys.KeyId(pem), created.RootElement.GetProperty("client").GetProperty("keys")[0].GetProperty("kid").GetString());
+
+        try
+        {
+            var agent = new TokenClient(new TslAuthOptions { Issuer = V.Issuer, ClientId = clientId, ClientPrivateKeyPem = pem });
+            Assert.True(agent.UsesPrivateKeyJwt);
+            var set = await agent.ClientCredentialsAsync(new[] { ownerId });
+            var claims = System.Text.Json.JsonDocument.Parse(Convert.FromBase64String(Pad(set.AccessToken.Split('.')[1]))).RootElement;
+            Assert.Equal(clientId, claims.GetProperty("sub").GetString());
+            // Claim с одним значением сериализуется строкой, с несколькими — массивом.
+            var roles = claims.GetProperty("role");
+            Assert.Contains($"{ownerId}:{role}", roles.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? roles.EnumerateArray().Select(r => r.GetString()) : new[] { roles.GetString() });
+            Assert.True((await agent.IntrospectAsync(set.AccessToken)).Active);
+
+            // Другой ключ с тем же client_id — отказ.
+            var impostor = new TokenClient(new TslAuthOptions { Issuer = V.Issuer, ClientId = clientId, ClientPrivateKeyPem = ClientKeys.GeneratePrivateKeyPem() });
+            var err = await Assert.ThrowsAsync<TokenError>(() => impostor.ClientCredentialsAsync(new[] { ownerId }));
+            Assert.Equal("invalid_client", err.Error);
+        }
+        finally
+        {
+            await http.DeleteAsync($"/api/app/clients/{clientId}");
+        }
+    }
+
+    private static string Pad(string b64) => b64.Replace('-', '+').Replace('_', '/') + new string('=', (4 - b64.Length % 4) % 4);
+
     [Fact]
     public async Task Jwks_rotation()
     {

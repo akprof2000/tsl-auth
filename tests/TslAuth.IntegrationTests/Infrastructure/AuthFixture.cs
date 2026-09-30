@@ -49,7 +49,8 @@ public abstract class AuthFixture : IAsyncLifetime
     /// Настройки передаются этому экземпляру (UseSetting), а не через переменные окружения процесса:
     /// фикстуры и тесты с особыми настройками не влияют друг на друга.
     /// </summary>
-    public WebApplicationFactory<Program> Start()
+    /// <param name="extra">Настройки поверх базовых (например, более строгие лимиты для одного теста).</param>
+    public WebApplicationFactory<Program> Start(Dictionary<string, string>? extra = null)
     {
         var settings = new Dictionary<string, string>
         {
@@ -70,7 +71,7 @@ public abstract class AuthFixture : IAsyncLifetime
         return new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Testing");
-            foreach (var (k, v) in settings.Concat(_database).Concat(ExtraSettings())) b.UseSetting(k.Replace("__", ":"), v);
+            foreach (var (k, v) in settings.Concat(_database).Concat(ExtraSettings()).Concat(extra ?? [])) b.UseSetting(k.Replace("__", ":"), v);
         });
     }
 

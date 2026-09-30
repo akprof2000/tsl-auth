@@ -26,7 +26,8 @@ Start-Demo dotnet-mvc dotnet @('run', '-c', 'Release') samples/dotnet-mvc
 foreach ($p in 5101, 5102, 5103, 5104) {
     $up = $false
     for ($i = 0; $i -lt 120 -and -not $up; $i++) {
-        try { Invoke-WebRequest "http://localhost:$p/health" -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep 2 }
+        # 127.0.0.1, а не localhost: Python-демо слушает только IPv4, а HttpClient PowerShell сначала идёт на ::1 и ждёт таймаут.
+        try { Invoke-WebRequest "http://127.0.0.1:$p/health" -UseBasicParsing -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep 2 }
     }
     if (-not $up) {
         Write-Host "Демо-приложение на порту $p не поднялось (журналы — tests/artifacts/demo):"

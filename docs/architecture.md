@@ -2,7 +2,7 @@
 
 ## Компоненты
 
-![Компоненты](diagrams/9b657ff93bef.png)
+![Компоненты](diagrams/2665298590fe.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -15,11 +15,11 @@ flowchart TB
         CTRL[AuthorizationController<br/>выдача токенов, claims из матрицы]
         UI[Razor Pages<br/>вход, регистрация, личный кабинет, админка]
         ADMIN[Admin API /api/admin]
-        APP[App API /api/app]
+        APP[App API /api/app<br/>+ /api/app/clients — подчинённые клиенты]
         BOT[Bot API /api/bot]
         EVT[Events API<br/>long-polling / SSE / вебхуки]
         DOCS[OpenAPI + Scalar<br/>/docs, /docs/api]
-        SVC[Сервисы: Access, Application, User, Session,<br/>Pat, Bot, Audit, Webhook, Settings, Localization]
+        SVC[Сервисы: Access, Application, ManagedClient, User,<br/>Session, Pat, Bot, Audit, Webhook, Settings, Localization]
         BG[Фоновые задачи: доставка вебхуков,<br/>пакетная запись аудита, очистка по срокам]
         EF[EF Core + шифрование полей<br/>AES-256-GCM / HMAC]
         OBS[Наблюдаемость: Serilog,<br/>OpenTelemetry — метрики и трассировки]
@@ -181,6 +181,44 @@ sequenceDiagram
 
 * доставка вебхуков — экземпляр «захватывает» доставку условным `UPDATE`, поэтому каждое событие отправляется ровно одним узлом; если узел упал, блокировка истекает и доставку подхватывает другой;
 * очистка по срокам хранения стартует со случайной задержкой, повторный запуск безопасен.
+
+## Подчинённые клиенты и вход по ключу
+
+Приложение-владелец заводит технических клиентов через App API в рамках политики администратора; подчинённые входят
+по ключу (`private_key_jwt`), а не по общему секрету. Проверки, которых нет в OpenIddict «из коробки», добавлены
+обработчиками его конвейера.
+
+![Подчинённые клиенты и вход по ключу](diagrams/a4557af41539.png)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
+```mermaid
+flowchart LR
+    subgraph Владелец
+        POL["Политика tsl_managed_clients<br/>(задаёт администратор)"]
+        MC["/api/app/clients<br/>ManagedClientsHandler: сервисный токен — чтение,<br/>делегированный (act.sub = владелец) — изменения"]
+    end
+    subgraph Подчинённый клиент OpenIddict
+        DESC["confidential, client_credentials,<br/>scope владельца, JsonWebKeySet,<br/>tsl_owner / tsl_disabled"]
+    end
+    subgraph "Токен-эндпоинт (конвейер OpenIddict)"
+        FL["ClientFailureLimitHandler<br/>блок client_id после N отказов"]
+        VA["OpenIddict: подпись по JWKS,<br/>iss/sub/aud/exp"]
+        CP["ClientAssertionPolicyHandler<br/>alg=ES256, exp−iat ≤ 5 мин,<br/>jti → ClientAssertionJtis (БД)"]
+        DC["DisabledClientHandler<br/>tsl_disabled → invalid_client"]
+        EN["ClientAssertionErrorNormalizer<br/>наружу только invalid_client,<br/>причина — в аудит и метрику"]
+    end
+    POL --> MC --> DESC
+    DESC --> VA
+    FL --> VA --> CP --> DC --> EN
+    CP --> DB[(ClientAssertionJtis —<br/>общая для узлов)]
+```
+
+</details>
+
+Одноразовость `jti` обеспечивает первичный ключ таблицы `ClientAssertionJtis` («client_id:jti»): вставка на любом узле
+кластера конфликтует с уже использованным значением; просроченные записи удаляет обслуживание БД. Срок access-токена
+подчинённого берётся из политики владельца (`TokenLifetimeService`), роли — только роли владельца из белого списка.
 
 ## Хранение секретов
 

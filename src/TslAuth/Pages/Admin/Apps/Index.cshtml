@@ -14,7 +14,7 @@
 <div class="table-wrap">
     <table>
         <thead>
-        <tr><th>client_id</th><th>Название</th><th>Тип</th><th>Потоки</th><th>Scopes</th><th></th></tr>
+        <tr><th>client_id</th><th>Название</th><th>Тип</th><th>Потоки</th><th>Scopes</th><th>Владелец / статус</th><th></th></tr>
         </thead>
         <tbody>
         @foreach (var app in Model.Items)
@@ -26,6 +26,11 @@
                 <td><span class="badge">@app.ClientType</span></td>
                 <td>@foreach (var g in app.GrantTypes) { <span class="badge">@g</span> }</td>
                 <td>@foreach (var s in app.Scopes) { <span class="badge">@s</span> }</td>
+                <td>
+                    @if (app.Owner is not null) { <span class="badge">подчинённый: <a asp-page="Edit" asp-route-clientId="@app.Owner">@app.Owner</a></span> }
+                    @if (app.ManagedClients is not null) { <span class="badge">владелец подчинённых</span> }
+                    @if (app.Disabled) { <span class="badge warn">отключён</span> }
+                </td>
                 <td><a asp-page="Matrix" asp-route-clientId="@app.ClientId">Матрица доступа</a></td>
             </tr>
         }

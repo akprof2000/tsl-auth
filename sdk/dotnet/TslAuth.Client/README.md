@@ -37,6 +37,7 @@ app.UseAuthorization();
 | `TSL_AUTH_ISSUER` | — (обязательна) | адрес сервиса, как в `iss` токена |
 | `TSL_AUTH_AUDIENCE` | — | `client_id` этого API (проверка `aud`, обрезка префиксов прав) |
 | `TSL_AUTH_CLIENT_ID` / `TSL_AUTH_CLIENT_SECRET` | — | приложение для `TokenClient` и интроспекции |
+| `TSL_AUTH_CLIENT_KEY_PEM` / `TSL_AUTH_CLIENT_KEY_FILE` / `TSL_AUTH_CLIENT_KEY_ID` | — | вход по ключу (`private_key_jwt`) вместо секрета: закрытый ключ EC P-256 в PEM; `kid` по умолчанию — отпечаток RFC 7638 |
 | `TSL_AUTH_JWKS_URI` | из discovery | прямой адрес JWKS |
 | `TSL_AUTH_CLOCK_SKEW_SECONDS` | `30` | допуск на часы при `exp`/`nbf` |
 | `TSL_AUTH_JWKS_TTL_SECONDS` | `600` | срок кэша ключей и discovery |
@@ -105,6 +106,15 @@ await tokens.RevokeAsync(refreshToken);
 
 Ошибки — `TokenError` с `Error` (`invalid_grant`, … или `unavailable` для сети/5xx), `ErrorDescription`, `Status`.
 Секреты и токены SDK не логирует.
+
+### Вход по ключу (private_key_jwt)
+
+```csharp
+var pem = ClientKeys.GeneratePrivateKeyPem();             // один раз; хранить в файле 0600
+var jwks = ClientKeys.PublicJwks(pem);                      // открытая часть → владельцу: POST /api/app/clients {"jwks": …}
+var agent = new TokenClient(new TslAuthOptions { Issuer = issuer, ClientId = "import-agent-7f3a", ClientPrivateKeyPem = pem });
+var set = await agent.ClientCredentialsAsync(new[] { "import-api" }); // client_assertion ES256: jti, exp = +60 с, aud = issuer
+```
 
 ## Тесты
 

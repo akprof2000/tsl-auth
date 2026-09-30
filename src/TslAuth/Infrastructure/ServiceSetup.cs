@@ -186,6 +186,14 @@ public static class ServiceSetup
                 if (!server.RequireHttps) aspNetCore.DisableTransportSecurityRequirement();
 
                 o.AddEventHandler(TokenErrorAuditHandler.Descriptor);
+                // Вход клиента по ключу (private_key_jwt): ES256, срок ≤ 5 мин, одноразовый jti; метаданные discovery;
+                // отключённые клиенты; блокировка client_id после серии отказов.
+                o.AddEventHandler(ClientAssertionPolicyHandler.Descriptor);
+                o.AddEventHandler(ClientAssertionErrorNormalizer.Descriptor);
+                o.AddEventHandler(ClientAssertionMetadataHandler.Descriptor);
+                o.AddEventHandler(DisabledClientHandler.TokenDescriptor);
+                o.AddEventHandler(DisabledClientHandler.AuthorizationDescriptor);
+                o.AddEventHandler(ClientFailureLimitHandler.Descriptor);
                 o.AddEventHandler(IntrospectionErrorAuditHandler.Descriptor);
                 o.AddEventHandler(RevocationErrorAuditHandler.Descriptor);
             })
@@ -221,6 +229,7 @@ public static class ServiceSetup
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
         services.AddScoped<AppSelfService>();
+        services.AddScoped<ManagedClientService>();
         services.AddScoped<BotService>();
         services.AddScoped<BrandingService>();
         services.AddSingleton<Localization.LocalizationService>();
@@ -246,10 +255,12 @@ public static class ServiceSetup
             });
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AdminPermissionHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Api.AppSelfHandler>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Api.ManagedClientsHandler>();
         services.AddAuthorization(o =>
         {
             AdminPolicies.Register(o);
             Api.AppApi.AddAppApiPolicy(o);
+            Api.ManagedClientsApi.AddManagedClientsPolicy(o);
             Api.BotApi.AddBotPolicy(o);
         });
         services.AddHostedService<TokenPruningService>();
@@ -259,6 +270,8 @@ public static class ServiceSetup
         // атрибут политики на них не повесить. Глобальный лимитер по IP (тот же лимит, что у /connect/token)
         // не даёт перебирать секреты клиентов через эти эндпоинты.
         var security = config.GetSection(SecurityOptions.Section).Get<SecurityOptions>() ?? new SecurityOptions();
+        services.AddSingleton(new ClientFailureLimiter(security.ClientAuthFailuresPerMinute));
+        services.AddSingleton(new ManagedClientRateLimiter(security.ManagedClientChangesPerMinute));
         services.Configure<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>(o =>
             o.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
                 ctx.Request.Path.StartsWithSegments("/connect/introspect") || ctx.Request.Path.StartsWithSegments("/connect/revoke")

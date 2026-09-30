@@ -55,6 +55,10 @@ public sealed class TokenPruningService(IServiceScopeFactory scopes, ILogger<Tok
         var eventsThreshold = DateTime.UtcNow.AddDays(-settings.EventsRetentionDays);
         var events = await sp.GetRequiredService<AuthDbContext>().WebhookEvents
             .Where(e => e.OccurredAt < eventsThreshold).ExecuteDeleteAsync(ct);
+        // Использованные jti клиентских assertion нужны только до истечения самого assertion (≤ 5 минут).
+        var jtiThreshold = DateTime.UtcNow;
+        var assertions = await sp.GetRequiredService<AuthDbContext>().ClientAssertionJtis
+            .Where(j => j.ExpiresAt < jtiThreshold).ExecuteDeleteAsync(ct);
 
         // Отключение неактивных учётных записей (решение В-10 ЧТЗ). Параллельный запуск на других узлах безопасен:
         // SetActiveAsync возвращает false для уже отключённой записи, поэтому аудит пишется один раз на запись.
@@ -74,7 +78,18 @@ public sealed class TokenPruningService(IServiceScopeFactory scopes, ILogger<Tok
             }
         }
 
-        var result = new { tokens, authorizations, audit, events, inactive };
+        // Подчинённые клиенты без токенов дольше предела политики владельца — отключаются (этап 2 постановки).
+        var inactiveClients = 0;
+        var webhooksService = sp.GetRequiredService<WebhookService>();
+        foreach (var (owner, clientId) in await sp.GetRequiredService<ManagedClientService>().DisableInactiveAsync(ct))
+        {
+            inactiveClients++;
+            await webhooksService.PublishAsync(WebhookEvents.SecurityAlert,
+                $"⏸ Подчинённый клиент {clientId} ({owner}) отключён: не получал токены дольше предела неактивности.",
+                new { clientId, owner, reason = "inactive" }, ct);
+        }
+
+        var result = new { tokens, authorizations, audit, events, assertions, inactive, inactiveClients };
         logger.LogInformation("Обслуживание БД: {@Result}", result);
         return result;
     }

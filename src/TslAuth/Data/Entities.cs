@@ -355,3 +355,16 @@ public sealed class KeyMaterial
     public required string Value { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Использованный <c>jti</c> клиентского assertion (вход клиента по ключу, <c>private_key_jwt</c>, RFC 7523).
+/// Одноразовость проверяется вставкой по первичному ключу — общая для всех узлов кластера; просроченные записи
+/// удаляет <see cref="Infrastructure.TokenPruningService"/>.
+/// </summary>
+public sealed class ClientAssertionJti
+{
+    /// <summary>«client_id:jti» — уникальность jti требуется в пределах издателя (клиента).</summary>
+    public required string Jti { get; set; }
+    public required string ClientId { get; set; }
+    public DateTime ExpiresAt { get; set; }
+}

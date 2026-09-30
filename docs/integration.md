@@ -315,3 +315,108 @@ sequenceDiagram
 «запрашиваемые». На странице входа приложения появится «Зарегистрироваться»; пользователь выбирает роли
 (самого приложения и API, на scope которых у приложения есть доступ) — они назначаются после одобрения
 в админке (**Заявки**), через Admin API или самим приложением через App API.
+
+## 11. Подчинённые клиенты и вход по ключу (private_key_jwt)
+
+Сервис, которому нужно заводить своих технических клиентов (агенты импорта, воркеры, коннекторы), делает это не через
+Admin API, а через **App API подчинённых клиентов** — в рамках политики, которую задал администратор TSL Auth.
+Ключ такого сервиса не может ничего, кроме клиентов с его же префиксом и ролями из белого списка; подчинённый входит
+по ключу (`private_key_jwt`, RFC 7523): закрытый ключ не покидает машину агента, на сервере хранится только открытый JWK.
+
+![11. Подчинённые клиенты и вход по ключу (private_key_jwt)](diagrams/35228f4c526b.png)
+
+<details><summary>Исходник схемы (Mermaid)</summary>
+
+```mermaid
+sequenceDiagram
+    participant Op as Оператор (браузер)
+    participant Imp as import-api (владелец)
+    participant Auth as TSL Auth
+    participant Ag as Агент (подчинённый)
+    Op->>Imp: одобрить агента (токен оператора, aud import-api)
+    Imp->>Auth: token exchange: subject_token оператора, scope tsl-auth-app
+    Auth-->>Imp: T (sub=оператор, act.sub=import-api, aud tsl-auth-app)
+    Imp->>Auth: POST /api/app/clients {roles:[uploader], jwks} + Bearer T
+    Auth->>Auth: политика import-api — префикс, роль из белого списка, предел<br/>оператор активен и имеет agents.manage в матрице import-api
+    Auth-->>Imp: 201 {clientId: import-agent-…, keys:[{kid}]}
+    Ag->>Auth: POST /connect/token client_credentials +<br/>client_assertion (ES256, iss=sub=client_id, jti, exp≤5 мин)
+    Auth->>Auth: подпись по JWKS клиента, alg=ES256, jti одноразовый (общая таблица кластера)
+    Auth-->>Ag: access-токен (aud import-api, role import-api:uploader, 5 минут)
+```
+
+</details>
+
+### Политика владельца (только администратор)
+
+Карточка приложения → «Подчинённые клиенты», либо `PUT /api/admin/applications/{owner}/managed-clients-policy`:
+
+```json
+{ "prefix": "import-agent-", "roles": ["uploader"], "grantTypes": ["client_credentials"],
+  "authMethods": ["private_key_jwt"], "maxClients": 200, "accessTokenLifetime": 5,
+  "requireDelegation": true, "managePermission": "agents.manage", "inactiveDays": 0 }
+```
+
+Владелец — confidential-клиент с включённым самоуправлением (App API) и потоком `token_exchange`; `roles` — только его
+роли; `authMethods` — `private_key_jwt` и/или `client_secret`; `inactiveDays` > 0 отключает подчинённого, не получавшего
+токены дольше N дней (обслуживание БД, событие `security.alert`). Снять политику — `DELETE …/managed-clients-policy`.
+
+### Маршруты `/api/app/clients`
+
+| Метод | Путь | Что |
+|---|---|---|
+| GET | `/api/app/clients` | список своих подчинённых (роли, отпечатки ключей, признак секрета, последний токен, статус) |
+| POST | `/api/app/clients` | создать: `clientIdSuffix` или `clientId` с префиксом (пусто — случайный суффикс), `displayName`, `roles`, `jwks` (открытые ключи EC P-256, до 2) и/или `requestSecret: true` |
+| GET | `/api/app/clients/{clientId}` | карточка |
+| PUT | `/api/app/clients/{clientId}/keys` | `{"jwks": {...}}` — заменить ключи (два `kid` одновременно — для плавной смены) |
+| POST | `/api/app/clients/{clientId}/disable` / `enable` | отключить (токены отзываются) / включить |
+| POST | `/api/app/clients/{clientId}/secret` | новый секрет (если политика разрешает `client_secret`) |
+| DELETE | `/api/app/clients/{clientId}` | удалить с отзывом токенов |
+
+Правила доступа (проверяются по БД на каждый запрос):
+
+- **чтение** — сервисный токен владельца (`client_credentials`, scope `tsl-auth-app`) или делегированный;
+- **изменения** — только **делегированный токен оператора**: токен пользователя, обменянный владельцем через
+  token exchange на scope `tsl-auth-app` (`sub` = пользователь, `act.sub` = владелец). Пользователь должен быть активен и
+  иметь разрешение `managePermission` в матрице владельца, иначе 403. `requireDelegation: false` (тестовые стенды)
+  разрешает изменения и сервисным токеном;
+- чужой или не подчинённый клиент — всегда **404**; роль вне белого списка, чужой scope, `tsl-auth-admin` — **400**
+  (в том числе через Admin API: подчинённого нельзя «расширить», только отключить или удалить);
+- не больше 30 изменений в минуту на владельца (`429`); `client_id` — префикс политики, `[a-z0-9-]`, до 64 символов;
+- каждое действие — в журнале безопасности (`managed_client.change`): кто (`sub`), через кого (`act.sub`), клиент,
+  отпечатки ключей; записи видны владельцу в `GET /api/app/audit?type=managed_client.change`.
+
+### Вход по ключу
+
+Подчинённый (или любой confidential-клиент, которому администратор задал JWKS) получает токен без секрета:
+
+```bash
+curl -X POST https://auth.corp/connect/token \
+  -d grant_type=client_credentials -d client_id=import-agent-7f3a -d scope=import-api \
+  -d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer \
+  -d client_assertion=$JWT
+```
+
+Требования к `client_assertion` (иначе `invalid_client` без подробностей; причина — в журнале безопасности):
+
+| Поле | Значение |
+|---|---|
+| заголовок | `alg: ES256` (ключ EC P-256; `none`, `HS*`, `RS*` отклоняются), `typ: client-authentication+jwt`, `kid` — отпечаток RFC 7638 (его возвращает сервис при регистрации ключа) |
+| `iss`, `sub` | `client_id` |
+| `aud` | issuer сервиса в точности как в discovery (например `https://auth.corp/`); адрес token endpoint OpenIddict 7.7 не принимает |
+| `iat`, `exp` | `exp − iat` ≤ 5 минут (SDK ставят 60 с) |
+| `jti` | уникальный: повтор отклоняется на любом узле кластера |
+
+Discovery объявляет `token_endpoint_auth_methods_supported: [... "private_key_jwt"]` и
+`token_endpoint_auth_signing_alg_values_supported: ["ES256"]`. После 20 отказов `invalid_client` за минуту `client_id`
+блокируется на минуту (`Security__ClientAuthFailuresPerMinute`).
+
+SDK .NET и Go входят по ключу сами: задайте `TSL_AUTH_CLIENT_KEY_PEM` (или `_FILE`) вместо секрета; генерация ключа и
+открытый JWK для регистрации — `ClientKeys.GeneratePrivateKeyPem()` / `ClientKeys.PublicJwks(pem)` (.NET),
+`tslauth.GenerateClientKeyPEM()` / `tslauth.PublicJWKS(key)` (Go). См. [контракт, §6](client-contract.md#6-клиент-токенов).
+
+### Отключение клиента
+
+Любого клиента (кроме системного) можно отключить: администратор — в карточке или `POST /api/admin/applications/{id}/disable`,
+владелец — для своих подчинённых. Отключённый клиент получает `invalid_client` на token и authorize endpoint, его сессии и
+токены отзываются (introspection → `active: false`), публикуются события `application.disabled` / `application.enabled`
+(в данных `clientId` и `owner`), в `application.deleted` добавлен `owner` — сервисы отсекают уже выданные JWT до истечения.

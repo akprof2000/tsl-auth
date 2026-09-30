@@ -16,6 +16,12 @@ public sealed class SecurityOptions
 
     /// <summary>Лимит попыток входа/сброса пароля с одного IP в минуту (на экземпляр).</summary>
     public int LoginAttemptsPerMinute { get; set; } = 30;
+
+    /// <summary>Отказов аутентификации клиента (invalid_client) по одному client_id в минуту, после которых клиент блокируется на минуту; 0 — выключено.</summary>
+    public int ClientAuthFailuresPerMinute { get; set; } = 20;
+
+    /// <summary>Изменений подчинённых клиентов (App API /api/app/clients) на одного владельца в минуту.</summary>
+    public int ManagedClientChangesPerMinute { get; set; } = 30;
 }
 
 /// <summary>

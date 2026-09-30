@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,6 +35,12 @@ type vectors struct {
 		ID     string `json:"id"`
 		Secret string `json:"secret"`
 	} `json:"client"`
+	ManagedOwner struct {
+		ID     string `json:"id"`
+		Secret string `json:"secret"`
+		Prefix string `json:"prefix"`
+		Role   string `json:"role"`
+	} `json:"managedOwner"`
 	Users map[string]struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -327,5 +334,107 @@ func TestClientCredentialsCache(t *testing.T) {
 	var te *TokenError
 	if !errors.As(err, &te) || te.Code == "" || te.Status != http.StatusUnauthorized && te.Status != http.StatusBadRequest {
 		t.Fatalf("ожидался TokenError 4xx, получено %v", err)
+	}
+}
+
+// TestPrivateKeyJWTManagedClient — §6 private_key_jwt: владелец регистрирует подчинённого с открытым ключом SDK,
+// подчинённый получает токен без секрета (ES256-assertion) с ролью владельца; чужой ключ — invalid_client.
+func TestPrivateKeyJWTManagedClient(t *testing.T) {
+	v := loadVectors(t)
+	if v.ManagedOwner.ID == "" {
+		t.Skip("в vectors.json нет managedOwner — обновите make-vectors.py")
+	}
+	ctx := context.Background()
+	owner, err := NewTokenClient(Options{Issuer: v.Issuer, ClientID: v.ManagedOwner.ID, ClientSecret: v.ManagedOwner.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerToken, err := owner.ClientCredentials(ctx, "tsl-auth-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pemText, err := GenerateClientKeyPEM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ParseClientKeyPEM(pemText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{
+		// Суффикс — только [a-z0-9-]: отпечаток ключа (base64url) сюда не годится.
+		"clientIdSuffix": fmt.Sprintf("go-%x", time.Now().UnixNano()%1_000_000_007), "displayName": "SDK Go", "roles": []string{v.ManagedOwner.Role}, "jwks": PublicJWKS(key),
+	})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(v.Issuer, "/")+"/api/app/clients", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer "+ownerToken.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var created struct {
+		Client struct {
+			ClientID string `json:"clientId"`
+			Keys     []struct {
+				Kid string `json:"kid"`
+			} `json:"keys"`
+		} `json:"client"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("создание подчинённого: %d %v", resp.StatusCode, err)
+	}
+	clientID := created.Client.ClientID
+	defer func() {
+		del, _ := http.NewRequest(http.MethodDelete, strings.TrimSuffix(v.Issuer, "/")+"/api/app/clients/"+clientID, nil)
+		del.Header.Set("Authorization", "Bearer "+ownerToken.AccessToken)
+		if r, err := http.DefaultClient.Do(del); err == nil {
+			r.Body.Close()
+		}
+	}()
+	if !strings.HasPrefix(clientID, v.ManagedOwner.Prefix) || created.Client.Keys[0].Kid != KeyID(key) {
+		t.Fatalf("неожиданный подчинённый: %+v", created.Client)
+	}
+
+	agent, err := NewTokenClient(Options{Issuer: v.Issuer, ClientID: clientID, ClientKeyPEM: pemText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !agent.UsesPrivateKeyJWT() {
+		t.Fatal("ожидался вход по ключу")
+	}
+	set, err := agent.ClientCredentials(ctx, v.ManagedOwner.ID)
+	if err != nil {
+		t.Fatalf("private_key_jwt: %v", err)
+	}
+	claims := payloadOf(t, set.AccessToken)
+	if claims["sub"] != clientID {
+		t.Fatalf("sub = %v", claims["sub"])
+	}
+	// Claim с одним значением приходит строкой, с несколькими — массивом.
+	var roles []any
+	switch r := claims["role"].(type) {
+	case []any:
+		roles = r
+	case string:
+		roles = []any{r}
+	}
+	found := false
+	for _, r := range roles {
+		if r == v.ManagedOwner.ID+":"+v.ManagedOwner.Role {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("нет роли владельца в токене: %v", claims["role"])
+	}
+	// Чужой ключ с тем же client_id — invalid_client.
+	otherPEM, _ := GenerateClientKeyPEM()
+	impostor, _ := NewTokenClient(Options{Issuer: v.Issuer, ClientID: clientID, ClientKeyPEM: otherPEM})
+	_, err = impostor.ClientCredentials(ctx, v.ManagedOwner.ID)
+	var te *TokenError
+	if !errors.As(err, &te) || te.Code != "invalid_client" {
+		t.Fatalf("ожидался invalid_client, получено %v", err)
 	}
 }

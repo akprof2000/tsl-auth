@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Abstractions;
+using OpenIddict.EntityFrameworkCore.Models;
 using TslAuth.Data;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
@@ -33,7 +34,10 @@ public sealed record ApplicationDto(
     List<string> Scopes,
     bool IsSystem,
     bool SelfManagement,
-    bool SelfRegistration);
+    bool SelfRegistration,
+    string? Owner = null,
+    bool Disabled = false,
+    ManagedClientsPolicy? ManagedClients = null);
 
 /// <summary>Входные данные для создания/изменения приложения (Admin API и страница Admin/Apps/Edit).</summary>
 /// <param name="SelfManagement">
@@ -41,6 +45,10 @@ public sealed record ApplicationDto(
 /// Требует confidential-клиента; client_credentials и scope tsl-auth-app добавляются автоматически.
 /// </param>
 /// <param name="SelfRegistration">На странице входа приложения доступна самостоятельная регистрация с запросом ролей.</param>
+/// <remarks>
+/// В <see cref="ApplicationDto"/> дополнительно: <c>Owner</c> — владелец подчинённого клиента (свойство <c>tsl_owner</c>),
+/// <c>Disabled</c> — клиент отключён (<c>tsl_disabled</c>), <c>ManagedClients</c> — политика подчинённых (<c>tsl_managed_clients</c>).
+/// </remarks>
 public sealed record ApplicationInput(
     string ClientId,
     string? DisplayName,
@@ -73,6 +81,18 @@ public sealed class ApplicationService(
     private const string SystemProperty = "tsl_system";
     private const string SelfManagementProperty = "tsl_self_management";
     private const string SelfRegistrationProperty = "tsl_self_registration";
+
+    /// <summary>Политика подчинённых клиентов (JSON <see cref="ManagedClientsPolicy"/>); задаёт только администратор.</summary>
+    public const string ManagedClientsProperty = "tsl_managed_clients";
+
+    /// <summary>client_id владельца у подчинённого клиента.</summary>
+    public const string OwnerProperty = "tsl_owner";
+
+    /// <summary>Клиент отключён: токены не выдаются, выданные отозваны.</summary>
+    public const string DisabledProperty = "tsl_disabled";
+
+    /// <summary>Время создания подчинённого клиента (для предела неактивности).</summary>
+    public const string CreatedAtProperty = "tsl_created_at";
 
     /// <summary>Стандартные scope OIDC, которые можно разрешать клиентам в дополнение к scope приложений.</summary>
     public static readonly string[] StandardScopes = [Scopes.Profile, Scopes.Email, Scopes.Roles];
@@ -143,8 +163,14 @@ public sealed class ApplicationService(
     public async Task<ApplicationSecretResult> UpdateAsync(string clientId, ApplicationInput input, CancellationToken ct = default)
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
-        if (IsSystem(await applications.GetPropertiesAsync(app, ct)))
+        var properties = await applications.GetPropertiesAsync(app, ct);
+        if (IsSystem(properties))
             throw new AdminException("Настройки системного приложения изменить нельзя.");
+        // Подчинённый клиент нельзя «расширить» через Admin API (другие потоки, чужие scope, redirect URI):
+        // его настройки определяет политика владельца; администратору доступны отключение и удаление.
+        if (OwnerOf(properties) is { } owner)
+            throw new AdminException($"Клиент подчинён приложению {owner}: настройки задаёт владелец через App API, " +
+                                     "администратору доступны отключение, включение и удаление.");
 
         var descriptor = new OpenIddictApplicationDescriptor();
         await applications.PopulateAsync(descriptor, app, ct);
@@ -178,6 +204,9 @@ public sealed class ApplicationService(
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
         if (!await applications.HasClientTypeAsync(app, ClientTypes.Confidential, ct))
             throw new AdminException("Секрет есть только у confidential-клиентов.");
+        // Секрет подчинённого выдаётся владельцем по политике (она может запрещать вход по секрету).
+        if (OwnerOf(await applications.GetPropertiesAsync(app, ct)) is { } owner)
+            throw new AdminException($"Секрет подчинённого клиента выдаёт владелец {owner} через App API.");
 
         var secret = GenerateSecret();
         await applications.UpdateAsync(app, secret, ct);
@@ -188,8 +217,14 @@ public sealed class ApplicationService(
     public async Task DeleteAsync(string clientId, CancellationToken ct = default)
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
-        if (IsSystem(await applications.GetPropertiesAsync(app, ct)))
+        var properties = await applications.GetPropertiesAsync(app, ct);
+        if (IsSystem(properties))
             throw new AdminException("Системное приложение нельзя удалить.");
+        var owner = OwnerOf(properties);
+
+        // Подчинённые клиенты без владельца бессмысленны и стали бы «ничьими» — удаляются вместе с ним.
+        foreach (var managed in await ListManagedClientIdsAsync(clientId, ct))
+            await DeleteAsync(managed, ct);
 
         // Одна транзакция: сбой на середине не должен оставлять «полуудалённое» приложение (например, клиента
         // без scope или матрицу без клиента). Менеджеры OpenIddict работают через тот же DbContext и попадают в неё.
@@ -208,8 +243,65 @@ public sealed class ApplicationService(
             await db.ExternalIdentities.Where(e => e.LinkedByClientId == clientId).ExecuteDeleteAsync(ct);
             await tx.CommitAsync(ct);
         }
-        await webhooks.PublishAsync(WebhookEvents.ApplicationDeleted, $"🗑 Удалено приложение {clientId}.", new { clientId }, ct);
+        await webhooks.PublishAsync(WebhookEvents.ApplicationDeleted, $"🗑 Удалено приложение {clientId}.", new { clientId, owner }, ct);
     }
+
+    /// <summary>
+    /// Отключает или включает клиента (свойство <c>tsl_disabled</c>). Отключённый не получает токены; при отключении
+    /// его сессии и токены отзываются (introspection → active=false). Публикует application.disabled / .enabled.
+    /// </summary>
+    /// <returns>false, если состояние уже было таким.</returns>
+    public async Task<bool> SetDisabledAsync(string clientId, bool disabled, CancellationToken ct = default)
+    {
+        var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
+        var properties = await applications.GetPropertiesAsync(app, ct);
+        if (IsSystem(properties)) throw new AdminException("Системное приложение нельзя отключить.");
+        if (IsDisabled(properties) == disabled) return false;
+
+        var descriptor = new OpenIddictApplicationDescriptor();
+        await applications.PopulateAsync(descriptor, app, ct);
+        if (disabled) descriptor.Properties[DisabledProperty] = JsonSerializer.SerializeToElement(true);
+        else descriptor.Properties.Remove(DisabledProperty);
+        await applications.UpdateAsync(app, descriptor, ct);
+        if (disabled) await sessions.RevokeByClientAsync(clientId, ct);
+
+        var owner = OwnerOf(properties);
+        await webhooks.PublishAsync(disabled ? WebhookEvents.ApplicationDisabled : WebhookEvents.ApplicationEnabled,
+            disabled ? $"⛔ Клиент {clientId} отключён, его токены отозваны." : $"✅ Клиент {clientId} включён.",
+            new { clientId, owner }, ct);
+        return true;
+    }
+
+    /// <summary>Отключён ли клиент (проверка на токен-эндпоинте и authorize).</summary>
+    public async Task<bool> IsDisabledAsync(string clientId, CancellationToken ct = default) =>
+        await applications.FindByClientIdAsync(clientId, ct) is { } app && IsDisabled(await applications.GetPropertiesAsync(app, ct));
+
+    /// <summary>client_id подчинённых клиентов владельца.</summary>
+    public async Task<List<string>> ListManagedClientIdsAsync(string owner, CancellationToken ct = default) =>
+        (await ListManagedClientsAsync(ct)).Where(m => m.Owner == owner).Select(m => m.ClientId).ToList();
+
+    /// <summary>Все подчинённые клиенты (владелец, client_id) — по свойству tsl_owner в колонке Properties.</summary>
+    public async Task<List<(string Owner, string ClientId)>> ListManagedClientsAsync(CancellationToken ct = default)
+    {
+        // Properties — JSON-строка; предварительный фильтр по подстроке отсекает обычные приложения без разбора JSON.
+        var rows = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
+            .Where(a => a.Properties != null && a.Properties.Contains(OwnerProperty) && a.ClientId != null)
+            .Select(a => new { a.ClientId, a.Properties }).ToListAsync(ct);
+        var result = new List<(string, string)>();
+        foreach (var row in rows)
+        {
+            using var json = JsonDocument.Parse(row.Properties!);
+            if (json.RootElement.TryGetProperty(OwnerProperty, out var owner) && owner.ValueKind == JsonValueKind.String)
+                result.Add((owner.GetString()!, row.ClientId!));
+        }
+        return result;
+    }
+
+    /// <summary>Владелец подчинённого клиента из свойств; null — обычное приложение.</summary>
+    public static string? OwnerOf(IReadOnlyDictionary<string, JsonElement> properties) =>
+        properties.TryGetValue(OwnerProperty, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    public static bool IsDisabled(IReadOnlyDictionary<string, JsonElement> properties) => Flag(properties, DisabledProperty);
 
     /// <summary>Переносит входные настройки в дескриптор OpenIddict (permissions, requirements, URI, флаги) с валидацией.</summary>
     /// <returns>true, если клиент confidential.</returns>
@@ -322,7 +414,10 @@ public sealed class ApplicationService(
                 .Select(p => p[Permissions.Prefixes.Scope.Length..]).ToList(),
             IsSystem(properties),
             Flag(properties, SelfManagementProperty),
-            Flag(properties, SelfRegistrationProperty));
+            Flag(properties, SelfRegistrationProperty),
+            OwnerOf(properties),
+            IsDisabled(properties),
+            ManagedClientsPolicy.From(properties));
     }
 
     /// <summary>Включена ли для приложения самостоятельная регистрация (ссылка «Регистрация» на странице входа).</summary>

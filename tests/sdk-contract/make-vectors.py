@@ -26,6 +26,9 @@ OUT = os.environ.get("OUT", os.path.join(os.path.dirname(os.path.abspath(__file_
 
 API = "sdk-contract-api"
 CLIENT = "sdk-contract-client"
+# Владелец подчинённых клиентов: SDK регистрируют подчинённого со своим ключом и входят по private_key_jwt.
+OWNER = "sdk-contract-owner"
+OWNER_PREFIX = "sdk-agent-"
 # Пароли пользователей генерируются на каждый запуск: в репозитории литеральных паролей нет.
 PASSWORD = "Sdk-" + secrets.token_urlsafe(12) + "!1"
 
@@ -106,6 +109,20 @@ if policy.get("accessTokenMinutes", 15) < 60 or policy.get("exchangeTokenMinutes
     policy["accessTokenMinutes"] = max(60, policy.get("accessTokenMinutes", 15))
     policy["exchangeTokenMinutes"] = max(60, policy.get("exchangeTokenMinutes", 15))
     api("PUT", "/settings", {**settings, "tokenPolicy": policy})
+
+# --- Владелец подчинённых клиентов (private_key_jwt в SDK) ---
+owner_secret = upsert_app({
+    "clientId": OWNER, "displayName": "SDK contract owner", "clientType": "confidential",
+    "grantTypes": ["client_credentials", "token_exchange"], "selfManagement": True})
+owner_matrix = api("GET", f"/applications/{OWNER}/matrix")
+if "upload" not in [x["name"] for x in owner_matrix["permissions"]]:
+    api("POST", f"/applications/{OWNER}/permissions", {"name": "upload"})
+if "uploader" not in [x["name"] for x in owner_matrix["roles"]]:
+    api("POST", f"/applications/{OWNER}/roles", {"name": "uploader", "displayName": "uploader", "permissions": ["upload"]})
+# requireDelegation=False: контрактные тесты создают подчинённых сервисным токеном владельца (тестовый стенд).
+api("PUT", f"/applications/{OWNER}/managed-clients-policy", {
+    "prefix": OWNER_PREFIX, "roles": ["uploader"], "authMethods": ["private_key_jwt", "client_secret"],
+    "maxClients": 500, "accessTokenLifetime": 5, "requireDelegation": False})
 
 # --- Пользователи ---
 for name, role in (("sdk-operator", "operator"), ("sdk-viewer", "viewer")):
@@ -193,6 +210,7 @@ cases = [
 vectors = {
     "issuer": ISSUER, "audience": API, "jwksUri": disco["jwks_uri"],
     "client": {"id": CLIENT, "secret": client_secret},
+    "managedOwner": {"id": OWNER, "secret": owner_secret, "prefix": OWNER_PREFIX, "role": "uploader"},
     "users": {"operator": {"username": "sdk-operator", "password": PASSWORD}, "viewer": {"username": "sdk-viewer", "password": PASSWORD}},
     "expected": {
         "ok_user": {"subjectType": "user", "username": "sdk-operator", "permissions": ["orders.read", "orders.write"], "roles": ["operator"]},

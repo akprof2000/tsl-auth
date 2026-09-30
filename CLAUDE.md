@@ -121,7 +121,11 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   пользователь загружает его в ssh-agent Windows (`ssh-add`), подключаться через `ssh.exe` из PowerShell (Git Bash агент не видит).
 - На сервере живут чужие сервисы (`uklad-gitflic-runner`, plaudio, youtrack, platform_dev) — их не трогать.
 - Задания с docker:dind оставляют анонимные тома (до 100 ГБ в сутки): чистить висячие тома, в которых есть
-  `overlay2`, `containers`, `image`. Теги уже зарегистрированного агента меняются через API (`runner-tags`), а не `TAGS` в compose.
+  `overlay2`, `containers`, `image`. С 30.09.2026 это делает cron на сервере каждые 3 часа —
+  `~/gitflic-runner/hel-cleanup.sh` (копия `scripts/hel-cleanup.sh`, журнал `~/gitflic-runner/hel-cleanup.log`): только
+  анонимные висячие тома (пустые или dind) и образы без тега старше суток, именованные тома чужих сервисов не трогает.
+  После своих заданий и выпусков — проверить `df -h /` и при нехватке запустить скрипт вручную; при изменении скрипта —
+  заново `scp` на сервер (команды — в заголовке скрипта). Теги уже зарегистрированного агента меняются через API (`runner-tags`), а не `TAGS` в compose.
 - `net-check-hel` в каждом конвейере проверяет, что с сервера качается слой из реестра GitFlic (раньше путь обрывался).
 - **30.09.2026 путь снова оборвался**: `net-check-hel` — WARNING, `publish-image` (crane с сервера) падает на тайм-аутах
   PATCH blob. Выпуск 1.5.0 опубликован с рабочей станции: `docker login registry.gitflic.ru` (логин `GITFLIC_API_USER`,

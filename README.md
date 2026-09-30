@@ -6,13 +6,12 @@ OAuth 2.0 / OpenID Connect, JWT, ролевая модель с матрицей
 
 <!-- Сборка и качество -->
 
-[![CI](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/ci.yml)
-[![E2E](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml/badge.svg)](https://github.com/akprof2000/tsl-auth/actions/workflows/e2e.yml)
 [![Тесты](https://img.shields.io/badge/тесты-unit%20·%20интеграционные%20·%20UI%20·%20нагрузка%20·%20отказы-2ea44f)](docs/testing.md)
 [![Документация](https://img.shields.io/badge/docs-проверены%20в%20CI-2ea44f?logo=markdown)](docs/)
 [![License: MIT](https://img.shields.io/github/license/akprof2000/tsl-auth?color=blue)](LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/akprof2000/tsl-auth)](https://github.com/akprof2000/tsl-auth/commits/main)
-[![Зеркало GitFlic](https://img.shields.io/badge/зеркало-GitFlic-1f6feb)](https://gitflic.ru/project/uklad/tsl-auth)
+[![Исходники: GitFlic](https://img.shields.io/badge/исходники%20и%20CI-GitFlic-1f6feb)](https://gitflic.ru/project/uklad/tsl-auth)
+[![Зеркало: GitHub](https://img.shields.io/badge/зеркало-GitHub-555)](https://github.com/akprof2000/tsl-auth)
 
 <!-- Образ и безопасность -->
 

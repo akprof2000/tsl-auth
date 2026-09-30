@@ -1,7 +1,6 @@
-# Конвейер GitFlic (https://gitflic.ru/project/uklad/tsl-auth). Что собирается на GitFlic, остаётся на GitFlic:
-# образ публикуется только в реестр GitFlic ($CI_REGISTRY_IMAGE). GitHub собирает независимо и публикует
-# в Docker Hub и GHCR (.github/workflows). Исходники приходят зеркалом с GitHub (mirror-gitflic.yml),
-# каждый push в main и тег v* запускает этот конвейер.
+# Конвейер GitFlic (https://gitflic.ru/project/uklad/tsl-auth) — основной и единственный: GitFlic хранит исходники,
+# собирает, тестирует и публикует образ и пакеты в свои реестры. GitHub — зеркало исходников (задание mirror-github),
+# его workflow отключены. Каждый push в main и тег v* запускает этот конвейер.
 #
 # Агента на gitflic.ru нужно подключить свой (общих агентов нет): Docker-агент с PRIVILEGED=true для docker:dind —
 # инструкция в docs/gitflic-ci.md. Задания помечены тегом tsl-auth, чтобы попадать только на этот агент.
@@ -193,6 +192,20 @@ net-check-hel:
   script:
     - apk add --no-cache curl >/dev/null
     - sh scripts/gitflic-net-check.sh
+
+# Зеркало исходников на GitHub: main и теги. Нужна переменная проекта GITHUB_MIRROR_TOKEN (токен GitHub с записью
+# в репозиторий); без неё задание пропускается. Не блокирует конвейер.
+mirror-github:
+  stage: build
+  image: alpine:3.22
+  tags: [tsl-auth]
+  cache: []
+  allow_failure: true
+  rules:
+    - if: $GITHUB_MIRROR_TOKEN
+  script:
+    - apk add --no-cache git >/dev/null
+    - sh scripts/mirror-github.sh
 
 validate-docs:
   stage: build

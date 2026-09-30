@@ -1,16 +1,23 @@
 # Сборка на GitFlic
 
-Репозиторий зеркалируется с GitHub на [GitFlic](https://gitflic.ru/project/uklad/tsl-auth) (workflow `mirror-gitflic.yml`).
-Каждая площадка собирает сама и публикует у себя:
+Основной репозиторий проекта — [GitFlic](https://gitflic.ru/project/uklad/tsl-auth): сюда идут коммиты, здесь собираются,
+тестируются и публикуются образ и пакеты. GitHub (`github.com/akprof2000/tsl-auth`) — зеркало исходников: задание
+`mirror-github` конвейера отправляет туда `main` и теги (`scripts/mirror-github.sh`, переменная проекта
+`GITHUB_MIRROR_TOKEN`); workflow на GitHub отключены.
 
-| Площадка | Конвейер | Куда публикуется образ |
-|---|---|---|
-| GitHub | `.github/workflows/*.yml` | Docker Hub `akprof2000/tsl-auth`, GHCR `ghcr.io/akprof2000/tsl-auth` |
-| GitFlic | [`gitflic-ci.yaml`](../gitflic-ci.yaml) | Реестр GitFlic проекта: `registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth` |
+| Что | Где |
+|---|---|
+| Исходники, конвейер [`gitflic-ci.yaml`](../gitflic-ci.yaml), релизы | GitFlic |
+| Образ | `registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth` |
+| Пакеты SDK (NuGet, npm, PyPI, Maven) | реестр пакетов проекта GitFlic |
+| Копия исходников | GitHub (зеркало) |
+
+Работа с GitFlic без браузера — `scripts/gitflic.ps1` (REST API: конвейеры, задания, агенты, очистка); git по HTTPS —
+помощник `scripts/git-credential-gitflic.sh` (токен из локального файла вне репозитория).
 
 ## Конвейер GitFlic
 
-Запускается на push в `main` и на тег `v*` — они приходят на GitFlic зеркалом с GitHub.
+Запускается на push в `main` и на тег `v*`.
 
 | Этап | Задания |
 |---|---|

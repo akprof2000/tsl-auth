@@ -4,10 +4,9 @@
 # в журнале шага они маскируются, в .git/config не сохраняются.
 name: mirror-gitflic
 
+# Основной репозиторий теперь GitFlic, GitHub — зеркало (scripts/mirror-github.sh): обратная отправка отключена,
+# workflow оставлен только для ручного запуска на случай восстановления GitFlic из копии.
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

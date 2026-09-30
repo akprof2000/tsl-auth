@@ -22,7 +22,7 @@ TSL Auth выполняет единую идентификацию и ауте�
 | Параметр | Значение |
 |---|---|
 | Место в архитектуре ERP | Компонент «Управление идентификацией» (04.02); в базовой архитектуре ТСЛ — «Авторизатор» |
-| Исходный код | https://github.com/akprof2000/tsl-auth, лицензия MIT |
+| Исходный код | https://gitflic.ru/project/uklad/tsl-auth (основной репозиторий, сборка и реестры); зеркало — https://github.com/akprof2000/tsl-auth; лицензия MIT |
 | Поставка | Docker-образ `akprof2000/tsl-auth` (Docker Hub, GHCR), подписанный cosign |
 | Технологии | .NET 10, ASP.NET Core, OpenIddict 7, ASP.NET Core Identity, EF Core; SQLite или PostgreSQL 14+ |
 | Очередь | Первая: вход пользователей ERP, технические клиенты Flowable, обработчиков обмена, DWH и импорта из 1С |

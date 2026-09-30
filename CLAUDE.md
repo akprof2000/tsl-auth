@@ -71,8 +71,13 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 - Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/demo.* -Build`).
 - Демо-приложения проверяются по `127.0.0.1`, а не `localhost`: Python-демо слушает только IPv4, а HttpClient PowerShell
   сначала пробует `::1` и ждёт таймаут.
-- Локально после работы оставлять в Docker только контейнер стенда `tsl-auth`; лишние образы и тома — удалять
-  (`docker image prune -a`, висячие тома); в реестре GitFlic — только текущий образ выпуска и пакеты SDK (≤ 3 версий).
+- Локально после работы оставлять в Docker только контейнер стенда `tsl-auth` **этого проекта**: удалять свои лишние
+  образы (k6, trivy, mermaid, postgres тестов, промежуточные tsl-auth) и свои тома, `docker builder prune`. На машине
+  идут и другие проекты (1c-import, tsl-dev, tslmesh) — их контейнеры и тома не трогать: никаких `docker rm` по всем
+  контейнерам и `docker volume prune -a` (30.09.2026 так были потеряны стенды 1c-import и tsl-dev). В реестре GitFlic —
+  только текущий образ выпуска (`X.Y.Z` + `latest`) и последняя версия пакетов SDK:
+  `KEEP=1 KEEP_PIPELINES=1 CI_REGISTRY_IMAGE=registry.gitflic.ru/project/uklad/tsl-auth CI_PROJECT_PATH=uklad/tsl-auth sh scripts/gitflic-prune.sh`
+  (с `GITFLIC_API_TOKEN` в окружении; сначала `DRY_RUN=1`).
 - Место ограничено: артефакты CI живут до суток, в реестрах и релизах — не больше трёх версий.
 - Релизная политика — `docs/release-policy.md` (semver, что блокирует релиз, откат).
 
@@ -124,6 +129,7 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   `sha-<sha>`, `MAJOR.MINOR.<unix-время коммита>`, `X.Y.Z`, `latest`; пакеты SDK — теми же командами, что в заданиях
   `publish-sdk-*` (`PKG_BASE=https://registry.gitflic.ru/project/uklad/tsl-auth/package/-`, `GITFLIC_PKG_USER/TOKEN`).
   Когда `net-check-hel` снова зелёный — публикация возвращается на агент (ничего менять не нужно).
+  Так же опубликован 1.5.1 (30.09.2026): образ `1.5.1`/`latest` (digest `sha256:97640efb…`), пакеты SDK `1.5.1790790170`.
 - GitFlic **не создаёт конвейер на push тега** (`git push origin vX.Y.Z` — в списке конвейеров ничего), а
   `POST …/cicd/pipeline/start` с `{"ref":"vX.Y.Z"}` запускает обычный прогон `main`. Релиз GitFlic через
   `POST /project/uklad/tsl-auth/release` тоже не создаётся (500 на любые поля) — страницу релиза заводить в веб-интерфейсе.

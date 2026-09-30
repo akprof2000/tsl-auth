@@ -81,8 +81,16 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   (с `GITFLIC_API_TOKEN` в окружении; сначала `DRY_RUN=1`).
 - Место ограничено: артефакты CI живут до суток, в реестрах и релизах — не больше трёх версий.
 - `*.docx` хранятся в **Git LFS** (`.gitattributes`): после клона — `git lfs install --local` и `git lfs pull`.
-  `git push origin` отправляет LFS-объекты только на GitFlic (адрес LFS берётся из URL `origin`); на GitHub их
-  переносит задание `mirror-github` (`git lfs push`). Другие большие двоичные файлы — тоже через LFS, добавив шаблон.
+  Другие большие двоичные файлы — тоже через LFS, добавив шаблон. Обязательная настройка рабочей копии (проверено
+  30.09.2026): у `origin` два push-URL, и без неё git-lfs шлёт объекты на **последний** (GitHub), а GitFlic остаётся
+  с указателями без содержимого (404 при скачивании); проверку блокировок GitFlic отвергает (403):
+  ```
+  git config remote.origin.lfsurl https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs
+  git config remote.origin.lfspushurl https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs
+  git config lfs.https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs.locksverify false
+  ```
+  На GitHub объекты переносит задание `mirror-github` (`git lfs push`), вручную — `git lfs push https://github.com/akprof2000/tsl-auth.git main`.
+  Проверка — чистый клон GitFlic и `git lfs pull`: файлы полного размера, а не указатели по 130 байт.
 - Релизная политика — `docs/release-policy.md` (semver, что блокирует релиз, откат).
 
 ## Репозитории и CI

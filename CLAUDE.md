@@ -162,7 +162,8 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 - Тесты: `tests/TslAuth.UnitTests/ManagedClientsTests.cs`, `tests/TslAuth.IntegrationTests/ManagedClientScenarios.cs`
   (SQLite + PostgreSQL, `fx.Start(extra)` — узел с другими настройками), UI `Admin_ManagedClients_*`,
   контрактные тесты SDK (.NET `Private_key_jwt_managed_client`, Go `TestPrivateKeyJWTManagedClient`; вектор `managedOwner`
-  в `make-vectors.py`), нагрузка `tests/load/run-managed-load.ps1` (k6, WebCrypto ES256, 200 подчинённых).
+  в `make-vectors.py`), нагрузка `tests/load/run-managed-load.ps1` (k6, WebCrypto ES256, 200 подчинённых),
+  сквозной сценарий «внешний сервис» `tests/e2e/external-service` (`go run .` при поднятом стенде; образец для 1c-import).
 
 ### Проверено на OpenIddict 7.7.1 (не очевидно из документации)
 

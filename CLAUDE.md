@@ -78,7 +78,8 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   зеркалирует (переменная проекта `GITHUB_MIRROR_TOKEN`).
 - Учётные данные git для GitFlic: `git config credential.https://gitflic.ru.helper '!sh scripts/git-credential-gitflic.sh'` —
   берёт токен из `C:\Projects\TSL\Key\gitflic-tokens.env` (строка `GITFLIC_API_TOKEN=…`, файл вне репозитория).
-- Релиз: тег `vX.Y.Z` на `main` → конвейер по тегу → образ и пакеты в реестры GitFlic + релиз GitFlic.
+- Релиз: тег `vX.Y.Z` на `main` → конвейер по тегу → образ и пакеты в реестры GitFlic + релиз GitFlic
+  (фактически на 30.09.2026 конвейер по тегу не запускается — см. ниже про публикацию с рабочей станции).
   Версия прогонов `main` на GitFlic: `sdk/VERSION` + unix-время коммита (например `1.4.1790745826`).
 - Реестры GitFlic: образ `registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth`, пакеты
   `https://registry.gitflic.ru/project/uklad/tsl-auth/package/-/<nuget|npm|pypi|maven>`.
@@ -111,6 +112,15 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 - Задания с docker:dind оставляют анонимные тома (до 100 ГБ в сутки): чистить висячие тома, в которых есть
   `overlay2`, `containers`, `image`. Теги уже зарегистрированного агента меняются через API (`runner-tags`), а не `TAGS` в compose.
 - `net-check-hel` в каждом конвейере проверяет, что с сервера качается слой из реестра GitFlic (раньше путь обрывался).
+- **30.09.2026 путь снова оборвался**: `net-check-hel` — WARNING, `publish-image` (crane с сервера) падает на тайм-аутах
+  PATCH blob. Выпуск 1.5.0 опубликован с рабочей станции: `docker login registry.gitflic.ru` (логин `GITFLIC_API_USER`,
+  пароль `GITFLIC_TRANSPORT_TOKEN` из `C:\Projects\TSL\Key\gitflic-tokens.env`), `docker push` образа с тегами
+  `sha-<sha>`, `MAJOR.MINOR.<unix-время коммита>`, `X.Y.Z`, `latest`; пакеты SDK — теми же командами, что в заданиях
+  `publish-sdk-*` (`PKG_BASE=https://registry.gitflic.ru/project/uklad/tsl-auth/package/-`, `GITFLIC_PKG_USER/TOKEN`).
+  Когда `net-check-hel` снова зелёный — публикация возвращается на агент (ничего менять не нужно).
+- GitFlic **не создаёт конвейер на push тега** (`git push origin vX.Y.Z` — в списке конвейеров ничего), а
+  `POST …/cicd/pipeline/start` с `{"ref":"vX.Y.Z"}` запускает обычный прогон `main`. Релиз GitFlic через
+  `POST /project/uklad/tsl-auth/release` тоже не создаётся (500 на любые поля) — страницу релиза заводить в веб-интерфейсе.
 
 ### Особенности GitFlic (проверено)
 

@@ -142,7 +142,10 @@ public sealed class AppSelfHandler(ApplicationService apps) : AuthorizationHandl
         var clientId = context.User.GetClaim(Claims.Subject);
         // Системное приложение исключено (у него есть полноценный Admin API); флаг читается из БД на каждый
         // запрос, чтобы выключение самоуправления действовало сразу, не дожидаясь истечения токенов.
+        // Клиентский токен, полученный обменом (есть act), принадлежит приложению-актору, а не клиенту из sub:
+        // App API клиента sub он не открывает.
         if (clientId is not null && clientId != SystemApp.ClientId &&
+            context.User.GetClaim(CustomClaims.Actor) is not { Length: > 0 } &&
             context.User.GetAudiences().Contains(SystemApp.AppApiScope) &&
             await apps.IsSelfManagementEnabledAsync(clientId))
         {

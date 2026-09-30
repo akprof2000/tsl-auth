@@ -178,11 +178,14 @@ payload `iss = sub = client_id`, `aud` = issuer из discovery (с заверш�
 1. `make-vectors.py` (stdlib) через Admin API создаёт приложение-API `sdk-contract-api` (разрешения `orders.read`,
    `orders.write`; роли `viewer` → read, `operator` → read+write), клиент `sdk-contract-client` (confidential,
    `password`, `refresh_token`, `client_credentials`, `token_exchange`; scope `sdk-contract-api`), пользователей
-   `sdk-operator` (operator) и `sdk-viewer` (viewer), получает токены и пишет `vectors.json`:
+   `sdk-operator` (operator) и `sdk-viewer` (viewer), владельца подчинённых клиентов `sdk-contract-owner` (самоуправление,
+   роль `uploader`, политика: префикс `sdk-agent-`, вход по ключу и секрету, `requireDelegation=false`), получает
+   токены и пишет `vectors.json`:
 
    ```json
    { "issuer": "...", "audience": "sdk-contract-api", "jwksUri": "...",
      "client": { "id": "sdk-contract-client", "secret": "..." },
+     "managedOwner": { "id": "sdk-contract-owner", "secret": "...", "prefix": "sdk-agent-", "role": "uploader" },
      "users": { "operator": { "username": "sdk-operator", "password": "..." }, "viewer": { ... } },
      "cases": [ { "name": "ok_user", "token": "...", "expect": "ok" },
                 { "name": "alg_none", "token": "...", "expect": "unsupported_alg" }, ... ] }
@@ -216,6 +219,9 @@ payload `iss = sub = client_id`, `aud` = issuer из discovery (с заверш�
    - `client_credentials_cache`: два вызова подряд возвращают один и тот же токен; после подмены часов на `exp` — новый.
    - `jwks_rotation`: заглушка JWKS в тесте сначала отдаёт пустой набор, затем настоящий: первая проверка — `unknown_key`,
      вторая (после `JWKS_MIN_REFRESH`) — `ok`; счётчик обращений к заглушке подтверждает лимит частоты.
+   - `private_key_jwt` (.NET, Go): SDK генерирует ключ P-256, сервисным токеном `managedOwner` регистрирует подчинённого
+     (`POST /api/app/clients` с открытым JWK), получает токен без секрета — в нём роль `sdk-contract-owner:uploader`;
+     клиент с тем же `client_id`, но другим ключом получает `invalid_client`; подчинённый удаляется.
    - `middleware`: HTTP-сервер SDK: без токена `401`+`missing`; `ok_viewer` на маршрут с `orders.write` — `403`
      `insufficient_permissions`; `ok_user` — `200` и тело с `username`; заголовок `WWW-Authenticate` по §5.
 

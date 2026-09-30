@@ -18,15 +18,49 @@ public static class ClientKeys
         return ecdsa.ExportPkcs8PrivateKeyPem();
     }
 
-    /// <summary>Загружает ключ из PEM (PKCS#8 «PRIVATE KEY» или SEC1 «EC PRIVATE KEY»); кривая должна быть P-256.</summary>
+    /// <summary>
+    /// Загружает закрытый ключ из PEM (PKCS#8 «PRIVATE KEY» или SEC1 «EC PRIVATE KEY»). Кривая — именно P-256
+    /// (secp256k1 и brainpoolP256r1 тоже дают 32-байтовые координаты, но не подходят для ES256); открытый ключ
+    /// («PUBLIC KEY») отклоняется сразу, а не при первой подписи.
+    /// </summary>
     public static ECDsa Load(string pem)
     {
         var ecdsa = ECDsa.Create();
-        ecdsa.ImportFromPem(pem);
-        var p = ecdsa.ExportParameters(false);
-        if (p.Q.X is not { Length: 32 } || p.Q.Y is not { Length: 32 })
-            throw new InvalidOperationException("TSL Auth: ключ клиента должен быть EC P-256 (ES256).");
-        return ecdsa;
+        try
+        {
+            ecdsa.ImportFromPem(pem);
+            ECParameters p;
+            try
+            {
+                p = ecdsa.ExportParameters(true);
+            }
+            catch (CryptographicException ex)
+            {
+                throw new InvalidOperationException("TSL Auth: в PEM нет закрытого ключа клиента (нужен PRIVATE KEY, а не PUBLIC KEY).", ex);
+            }
+            if (p.D is null)
+                throw new InvalidOperationException("TSL Auth: в PEM нет закрытого ключа клиента (нужен PRIVATE KEY, а не PUBLIC KEY).");
+            if (!IsP256(p.Curve))
+                throw new InvalidOperationException("TSL Auth: ключ клиента должен быть EC P-256 (ES256).");
+            return ecdsa;
+        }
+        catch (Exception ex) when (ex is ArgumentException or CryptographicException)
+        {
+            ecdsa.Dispose();
+            throw new InvalidOperationException("TSL Auth: не удалось разобрать PEM ключа клиента (ожидается EC P-256).", ex);
+        }
+        catch
+        {
+            ecdsa.Dispose();
+            throw;
+        }
+    }
+
+    private static bool IsP256(ECCurve curve)
+    {
+        var p256 = ECCurve.NamedCurves.nistP256.Oid;
+        return curve.Oid is { } oid && (oid.Value == p256.Value ||
+            oid.FriendlyName is "nistP256" or "ECDSA_P256" or "secp256r1" or "prime256v1");
     }
 
     /// <summary>Открытая часть ключа как JWK (<c>{"kty":"EC","crv":"P-256","x":…,"y":…,"kid":…}</c>).</summary>

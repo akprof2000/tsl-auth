@@ -67,7 +67,11 @@ public static class ManagedClientsApi
     /// </summary>
     public static string? OwnerOf(ClaimsPrincipal me)
     {
-        if (me.GetClaim(CustomClaims.SubjectType) == "client") return me.GetClaim(Claims.Subject);
+        // Токен клиента — только собственный токен владельца (client_credentials). Клиентский токен, полученный
+        // обменом (есть act), выпущен для другого приложения-актора и владельцем не является: иначе приложение B,
+        // обменяв сервисный токен A, действовало бы от имени A.
+        if (me.GetClaim(CustomClaims.SubjectType) == "client")
+            return me.GetClaim(CustomClaims.Actor) is { Length: > 0 } ? null : me.GetClaim(Claims.Subject);
         if (me.GetClaim(CustomClaims.Actor) is not { Length: > 0 } actor) return null;
         try
         {
@@ -94,7 +98,8 @@ public sealed class ManagedClientsRequirement : IAuthorizationRequirement;
 /// сервисный токен владельца — чтение (изменения — только при requireDelegation=false); делегированный токен
 /// пользователя — активный пользователь с разрешением managePermission в матрице владельца.
 /// </summary>
-public sealed class ManagedClientsHandler(ManagedClientService managed, AccessService access) : AuthorizationHandler<ManagedClientsRequirement>
+public sealed class ManagedClientsHandler(ManagedClientService managed, AccessService access, ApplicationService apps)
+    : AuthorizationHandler<ManagedClientsRequirement>
 {
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, ManagedClientsRequirement requirement)
     {
@@ -103,7 +108,9 @@ public sealed class ManagedClientsHandler(ManagedClientService managed, AccessSe
         var owner = ManagedClientsApi.OwnerOf(user);
         if (owner is null || owner == SystemApp.ClientId) return;
         var policy = await managed.GetPolicyAsync(owner);
-        if (policy is null) return;
+        // Как и остальной App API: без включённого самоуправления владельца доступа нет (флаг читается из БД —
+        // его снятие действует сразу, а не по истечении выданных токенов).
+        if (policy is null || !await apps.IsSelfManagementEnabledAsync(owner)) return;
 
         var http = context.Resource as HttpContext;
         var read = http is null || HttpMethods.IsGet(http.Request.Method);

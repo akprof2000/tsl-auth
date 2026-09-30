@@ -65,14 +65,13 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
     /// <summary>Загружает приложение для редактирования или заполняет значения по умолчанию для нового.</summary>
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
+        ApplicationDto? app = null;
         if (!IsNew)
         {
-            var app = await apps.GetAsync(ClientId!, ct);
+            app = await apps.GetAsync(ClientId!, ct);
             if (app is null) return NotFound();
-            Fill(app);
-            ServiceRoles = (await access.GetAssignmentsAsync(SubjectType.Client, ClientId!, ct)).Select(RoleKey).ToList();
-            var lt = await lifetimes.GetForAppAsync(ClientId!);
-            (AccessTokenMinutes, RefreshTokenDays, ExchangeTokenMinutes) = (lt.AccessTokenMinutes, lt.RefreshTokenDays, lt.ExchangeTokenMinutes);
+            await FillFormAsync(app, ct);
+            FillPolicy(app.ManagedClients);
         }
         else
         {
@@ -81,7 +80,7 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
             Scopes = [.. ApplicationService.StandardScopes.Take(2)];
         }
 
-        await LoadListsAsync(ct);
+        await LoadListsAsync(app, ct);
         return Page();
     }
 
@@ -107,7 +106,11 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
 
         if (!ok)
         {
-            await LoadListsAsync(ct);
+            // Форма политики — отдельная и в этом запросе не пришла: показываем сохранённую политику,
+            // иначе блок отобразился бы пустым и следующее «Сохранить политику» сняло бы её.
+            var current = IsNew ? null : await apps.GetAsync(ClientId!, ct);
+            FillPolicy(current?.ManagedClients);
+            await LoadListsAsync(current, ct);
             return Page();
         }
 
@@ -125,7 +128,14 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
                 PolicyMaxClients, PolicyAccessTokenLifetime, PolicyRequireDelegation, PolicyManagePermission, PolicyInactiveDays)
             : null;
         if (!await TryAsync(() => managed.SetPolicyAsync(ClientId!, policy, ct)))
-            return await OnGetAsync(ct);
+        {
+            // Введённые значения политики остаются в форме (с ошибкой), остальная карточка — из БД.
+            var current = await apps.GetAsync(ClientId!, ct);
+            if (current is null) return NotFound();
+            await FillFormAsync(current, ct);
+            await LoadListsAsync(current, ct);
+            return Page();
+        }
         Flash(PolicyEnabled ? "Политика подчинённых клиентов сохранена." : "Подчинённые клиенты выключены.");
         return RedirectToPage(new { clientId = ClientId });
     }
@@ -170,6 +180,15 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
         return RedirectToPage("Index");
     }
 
+    /// <summary>Основная форма карточки: данные приложения, сервисные роли и сроки токенов.</summary>
+    private async Task FillFormAsync(ApplicationDto app, CancellationToken ct)
+    {
+        Fill(app);
+        ServiceRoles = (await access.GetAssignmentsAsync(SubjectType.Client, ClientId!, ct)).Select(RoleKey).ToList();
+        var lt = await lifetimes.GetForAppAsync(ClientId!);
+        (AccessTokenMinutes, RefreshTokenDays, ExchangeTokenMinutes) = (lt.AccessTokenMinutes, lt.RefreshTokenDays, lt.ExchangeTokenMinutes);
+    }
+
     /// <summary>Переносит данные приложения в свойства формы (URI — по одному на строку).</summary>
     private void Fill(ApplicationDto app)
     {
@@ -182,41 +201,42 @@ public sealed class EditModel(ApplicationService apps, ManagedClientService mana
         IsSystem = app.IsSystem;
         SelfManagement = app.SelfManagement;
         SelfRegistration = app.SelfRegistration;
-        Owner = app.Owner;
-        Disabled = app.Disabled;
-        Policy = app.ManagedClients;
-        if (Policy is not null)
-        {
-            PolicyEnabled = true;
-            PolicyPrefix = Policy.Prefix;
-            PolicyRoles = Policy.Roles ?? [];
-            PolicyAuthMethods = Policy.AuthMethods ?? [ManagedClientsPolicy.PrivateKeyJwt];
-            PolicyMaxClients = Policy.MaxClients;
-            PolicyAccessTokenLifetime = Policy.AccessTokenLifetime;
-            PolicyRequireDelegation = Policy.RequireDelegation;
-            PolicyManagePermission = Policy.ManagePermission;
-            PolicyInactiveDays = Policy.InactiveDays;
-        }
+    }
+
+    /// <summary>Поля формы политики подчинённых из сохранённой политики (null — политика не задана, значения по умолчанию).</summary>
+    private void FillPolicy(ManagedClientsPolicy? policy)
+    {
+        PolicyEnabled = policy is not null;
+        if (policy is null) return;
+        PolicyPrefix = policy.Prefix;
+        PolicyRoles = policy.Roles ?? [];
+        PolicyAuthMethods = policy.AuthMethods ?? [ManagedClientsPolicy.PrivateKeyJwt];
+        PolicyMaxClients = policy.MaxClients;
+        PolicyAccessTokenLifetime = policy.AccessTokenLifetime;
+        PolicyRequireDelegation = policy.RequireDelegation;
+        PolicyManagePermission = policy.ManagePermission;
+        PolicyInactiveDays = policy.InactiveDays;
     }
 
     /// <summary>
     /// Справочники для формы (доступные scopes, все роли, глобальные сроки токенов). Вызывается и при
     /// повторном показе формы с ошибкой, поэтому не перезаписывает введённые пользователем значения.
+    /// <paramref name="current"/> — уже загруженное приложение (чтобы не читать его повторно); null — загрузить здесь.
     /// </summary>
-    private async Task LoadListsAsync(CancellationToken ct)
+    private async Task LoadListsAsync(ApplicationDto? current, CancellationToken ct)
     {
         GlobalTokens = (await settings.GetAsync(ct)).Tokens;
         // Scope App API управляется флагом «Самоуправление», а не вручную.
         AvailableScopes = (await apps.ListAvailableScopesAsync(ct)).Where(s => s != SystemApp.AppApiScope).ToList();
         AllRoles = db.AccessRoles.OrderBy(r => r.ClientId).ThenBy(r => r.Name)
             .Select(r => new RoleOption(r.ClientId, r.Name, r.DisplayName)).ToList();
-        if (!IsNew && await apps.GetAsync(ClientId!, ct) is { } current)
+        if (!IsNew && (current ?? await apps.GetAsync(ClientId!, ct)) is { } app)
         {
-            IsSystem = current.IsSystem;
-            Owner = current.Owner;
-            Disabled = current.Disabled;
-            Policy = current.ManagedClients;
-            if (Owner is null) ManagedClients = await managed.ListAsync(ClientId!, ct);
+            IsSystem = app.IsSystem;
+            Owner = app.Owner;
+            Disabled = app.Disabled;
+            Policy = app.ManagedClients;
+            if (Owner is null && Policy is not null) ManagedClients = await managed.ListAsync(ClientId!, ct);
         }
     }
 

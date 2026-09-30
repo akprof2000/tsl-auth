@@ -188,7 +188,7 @@ sequenceDiagram
 по ключу (`private_key_jwt`), а не по общему секрету. Проверки, которых нет в OpenIddict «из коробки», добавлены
 обработчиками его конвейера.
 
-![Подчинённые клиенты и вход по ключу](diagrams/a4557af41539.png)
+![Подчинённые клиенты и вход по ключу](diagrams/3a914b698516.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -196,28 +196,33 @@ sequenceDiagram
 flowchart LR
     subgraph Владелец
         POL["Политика tsl_managed_clients<br/>(задаёт администратор)"]
-        MC["/api/app/clients<br/>ManagedClientsHandler: сервисный токен — чтение,<br/>делегированный (act.sub = владелец) — изменения"]
+        MC["/api/app/clients<br/>ManagedClientsHandler: свой сервисный токен — чтение,<br/>делегированный (act.sub = владелец) — изменения,<br/>самоуправление владельца — по БД"]
     end
     subgraph Подчинённый клиент OpenIddict
         DESC["confidential, client_credentials,<br/>scope владельца, JsonWebKeySet,<br/>tsl_owner / tsl_disabled"]
     end
-    subgraph "Токен-эндпоинт (конвейер OpenIddict)"
-        FL["ClientFailureLimitHandler<br/>блок client_id после N отказов"]
+    subgraph "token / introspect / revoke (конвейер OpenIddict)"
+        PC["ClientAssertionPrecheckHandler<br/>iat/nbf/exp — секунды в диапазоне"]
         VA["OpenIddict: подпись по JWKS,<br/>iss/sub/aud/exp"]
-        CP["ClientAssertionPolicyHandler<br/>alg=ES256, exp−iat ≤ 5 мин,<br/>jti → ClientAssertionJtis (БД)"]
+        CP["ClientAssertionPolicyHandler<br/>alg=ES256, exp−iat ≤ 5 мин,<br/>jti → INSERT … ON CONFLICT"]
+        FL["ClientFailureLimitHandler<br/>блок «client_id + IP»"]
         DC["DisabledClientHandler<br/>tsl_disabled → invalid_client"]
-        EN["ClientAssertionErrorNormalizer<br/>наружу только invalid_client,<br/>причина — в аудит и метрику"]
+        EN["ClientAuthErrorHandler (ProcessError)<br/>наружу только invalid_client,<br/>причина — в аудит и метрику, счёт отказов"]
     end
     POL --> MC --> DESC
     DESC --> VA
-    FL --> VA --> CP --> DC --> EN
+    PC --> VA --> CP --> FL --> DC --> EN
     CP --> DB[(ClientAssertionJtis —<br/>общая для узлов)]
+    TOK["AuthorizationController<br/>client_credentials"] --> ACT[(ClientActivities —<br/>последний токен)]
 ```
 
 </details>
 
-Одноразовость `jti` обеспечивает первичный ключ таблицы `ClientAssertionJtis` («client_id:jti»): вставка на любом узле
-кластера конфликтует с уже использованным значением; просроченные записи удаляет обслуживание БД. Срок access-токена
+Одноразовость `jti` обеспечивает первичный ключ таблицы `ClientAssertionJtis` («client_id:jti»): вставка
+`INSERT … ON CONFLICT DO NOTHING` на любом узле кластера вставляет 0 строк для уже использованного значения — это повтор;
+прочие ошибки БД остаются ошибками. Просроченные записи удаляет обслуживание БД. Время последнего выданного токена
+подчинённого хранится в `ClientActivities` (таблицу токенов OpenIddict обслуживание чистит через сутки) — по нему
+считается предел неактивности. Срок access-токена
 подчинённого берётся из политики владельца (`TokenLifetimeService`), роли — только роли владельца из белого списка.
 
 ## Хранение секретов

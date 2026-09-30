@@ -157,7 +157,8 @@ func main() {
 	st, _ = call("POST", "/api/app/clients", service.AccessToken, map[string]any{"roles": []string{"uploader"}, "requestSecret": true})
 	check("сервисный токен на изменение подчинённых — 403 (нужен оператор)", st == 403, fmt.Sprintf("HTTP %d", st))
 	st, list := call("GET", "/api/app/clients", service.AccessToken, nil)
-	check("сервисный токен на чтение списка — 200", st == 200, fmt.Sprint(len(list["items"].([]any))))
+	items, _ := list["items"].([]any)
+	check("сервисный токен на чтение списка — 200", st == 200 && items != nil, fmt.Sprint(len(items)))
 
 	// ---------- 3. Агент: ключ и регистрация через владельца ----------
 	fmt.Println("3. Агент генерирует ключ, сервис регистрирует подчинённого делегированным токеном")
@@ -171,7 +172,8 @@ func main() {
 	keys, _ := client["keys"].([]any)
 	kid := ""
 	if len(keys) > 0 {
-		kid = str(keys[0].(map[string]any), "kid")
+		first, _ := keys[0].(map[string]any)
+		kid = str(first, "kid")
 	}
 	check("kid = отпечаток RFC 7638 ключа агента", kid == tslauth.KeyID(agentKey), kid)
 	st, _ = call("POST", "/api/app/clients", delegated.AccessToken, map[string]any{"roles": []string{"viewer"}, "jwks": tslauth.PublicJWKS(agentKey)})
@@ -244,7 +246,8 @@ func main() {
 	found := false
 	if evs, ok := ev["events"].([]any); ok {
 		for _, e := range evs {
-			data, _ := e.(map[string]any)["data"].(map[string]any)
+			item, _ := e.(map[string]any)
+			data, _ := item["data"].(map[string]any)
 			if str(data, "clientId") == agentID && str(data, "owner") == owner {
 				found = true
 			}
@@ -260,7 +263,7 @@ func main() {
 	actorOK := false
 	if items, ok := audit["items"].([]any); ok {
 		for _, it := range items {
-			m := it.(map[string]any)
+			m, _ := it.(map[string]any)
 			det, _ := m["details"].(map[string]any)
 			actions[str(det, "action")] = true
 			if str(det, "action") == "created" && strings.HasPrefix(str(m, "actor"), "user:") && str(det, "via") == owner {
@@ -280,7 +283,8 @@ func main() {
 	// ---------- 7. Уборка ----------
 	st, _ = call("DELETE", "/api/admin/applications/"+owner, admin, nil)
 	call("DELETE", "/api/admin/applications/"+web, admin, nil)
-	if id := str(user["user"].(map[string]any), "id"); id != "" {
+	createdUser, _ := user["user"].(map[string]any)
+	if id := str(createdUser, "id"); id != "" {
 		call("DELETE", "/api/admin/users/"+id, admin, nil)
 	}
 	check("уборка: сервис, интерфейс и оператор удалены", st == 204, "")

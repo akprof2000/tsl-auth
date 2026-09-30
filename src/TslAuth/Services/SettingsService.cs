@@ -51,6 +51,7 @@ public sealed record RuntimeSettings(
         ["user."] = 1825,
         [AuditTypes.AdminChange] = 1825,
         [AuditTypes.AppApiChange] = 1825,
+        ["managed_client."] = 1825,
         [AuditTypes.AccessDenied] = 1825
     };
 

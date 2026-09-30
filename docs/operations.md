@@ -72,6 +72,8 @@ flowchart LR
 | `tsl_auth_users` | gauge | `status` = `active` / `inactive` | учётные записи |
 | `tsl_auth_applications` | gauge | — | зарегистрированные приложения |
 | `tsl_auth_database_up` | gauge | — | доступность БД при последнем опросе (1/0) |
+| `tsl_auth_client_assertion_rejected_total` | counter | `reason` = `alg` / `lifetime` / `jti_replay` / `jti_too_long` / `iat_invalid` / `time_claim_invalid` / `server_validation` / `client_blocked` … | отказы входа клиента по ключу (`private_key_jwt`) и блокировки `client_id` после серии отказов |
+| `tsl_auth_managed_clients` | gauge | `owner` | подчинённые клиенты по приложениям-владельцам (обновляется раз в минуту) |
 | `http_server_request_duration_seconds` | histogram | `http_route`, `http_response_status_code`, `http_request_method` | латентность и коды ответов — RPS, p95, доля 5xx |
 | `http_server_active_requests`, `kestrel_*` | gauge | — | активные запросы, соединения, очередь Kestrel |
 | `aspnetcore_rate_limiting_requests_total` | counter | `aspnetcore_rate_limiting_result` | сработавшие лимиты частоты (429) |
@@ -80,7 +82,8 @@ flowchart LR
 | `db_client_*` (Npgsql), `microsoft_entityframeworkcore_*` | histogram / gauge | — | запросы к PostgreSQL, пул соединений, активные контексты EF Core |
 
 Ориентиры для алертов: `tsl_auth_database_up == 0`; рост `tsl_auth_tokens_rejected_total{error="invalid_client"}`
-или `tsl_auth_audit_events_total{type="auth.locked_out"}` (подбор); `tsl_auth_audit_dropped_total > 0`;
+или `tsl_auth_audit_events_total{type="auth.locked_out"}` (подбор); рост `tsl_auth_client_assertion_rejected_total`
+(`jti_replay` — повтор перехваченного assertion, `client_blocked` — подбор ключа или секрета); `tsl_auth_audit_dropped_total > 0`;
 `tsl_auth_webhooks_deliveries_total{result="failed"}`; доля 5xx и p95 `http_server_request_duration_seconds`.
 
 ### Трассировки и логи (OpenTelemetry)
@@ -88,7 +91,8 @@ flowchart LR
 `Observability__OpenTelemetry__Endpoint=http://otel-collector:4317` — отправка по OTLP; сигналы отключаются по
 отдельности (`Traces`, `Metrics`, `Logs`). В трассировки попадает span на каждый HTTP-запрос (кроме `/health/*` и
 `/metrics`) с методом, маршрутом, кодом, длительностью и исключением; вложенные span'ы SQL (Npgsql) и исходящих HTTP
-(вебхуки); на запросах выдачи токенов — теги `tsl_auth.grant_type`, `tsl_auth.client_id`, `tsl_auth.error`; каждое
+(вебхуки); на запросах выдачи токенов — теги `tsl_auth.grant_type`, `tsl_auth.client_id`, `tsl_auth.error` и при отказе
+входа по ключу `tsl_auth.client_assertion.reason`; каждое
 событие аудита — событием в span'е (`tsl_auth.audit.type`, `severity`, `success`). Входящий `traceparent` от приложений
 принимается — трассировка приложения продолжается в сервисе. Ресурс: `service.name`, `service.version`,
 `service.instance.id` (узел), `Observability__ResourceAttributes`.

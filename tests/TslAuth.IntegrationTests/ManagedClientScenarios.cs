@@ -529,6 +529,164 @@ public abstract class ManagedClientScenarios<TFixture>(TFixture fx) where TFixtu
         // Другой клиент не затронут.
         await strict.AdminAsync();
     }
+
+    // ---------- Регрессии ревизии кода ----------
+
+    /// <summary>Приложение B, обменявшее сервисный токен владельца A, не получает App API и подчинённых A (токен с act — не токен A).</summary>
+    [Fact]
+    public async Task ExchangedClientToken_DoesNotActAsOwner()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var a = await CreateOwnerAsync(admin);
+        var b = TestApi.Unique("relay");
+        var bSecret = (await admin.PostJsonAsync("/api/admin/applications", new
+        {
+            clientId = b, clientType = "confidential", grantTypes = new[] { "client_credentials", "token_exchange" }, selfManagement = true
+        })).GetProperty("clientSecret").GetString()!;
+        // A вызывает B: токен A с audience B.
+        await admin.PutJsonAsync($"/api/admin/applications/{a.ClientId}", new
+        {
+            clientId = a.ClientId, clientType = "confidential", grantTypes = new[] { "client_credentials", "token_exchange" },
+            selfManagement = true, scopes = new[] { b }
+        });
+        var http = fx.Factory.CreateClient();
+        var aToken = await http.TokenAsync(new()
+        {
+            ["grant_type"] = "client_credentials", ["client_id"] = a.ClientId, ["client_secret"] = a.Secret, ["scope"] = b
+        });
+        var exchanged = await http.TokenAsync(new()
+        {
+            ["grant_type"] = "urn:ietf:params:oauth:grant-type:token-exchange", ["client_id"] = b, ["client_secret"] = bSecret,
+            ["subject_token"] = aToken.GetProperty("access_token").GetString()!,
+            ["subject_token_type"] = "urn:ietf:params:oauth:token-type:access_token", ["scope"] = SystemApp.AppApiScope
+        });
+        var relay = fx.Factory.CreateClient().WithBearer(exchanged.GetProperty("access_token").GetString()!);
+        Assert.Equal(HttpStatusCode.Forbidden, (await relay.GetAsync("/api/app/clients")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await relay.GetAsync("/api/app/matrix")).StatusCode);
+        // Собственный сервисный токен A по-прежнему работает.
+        Assert.Equal(HttpStatusCode.OK, (await (await ServiceAsync(a)).GetAsync("/api/app/clients")).StatusCode);
+    }
+
+    /// <summary>Снятие «Самоуправления» у владельца закрывает /api/app/clients сразу, в том числе для уже выданных токенов.</summary>
+    [Fact]
+    public async Task SelfManagementOff_ClosesManagedClientsApi()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var o = await CreateOwnerAsync(admin);
+        var service = await ServiceAsync(o);
+        Assert.Equal(HttpStatusCode.OK, (await service.GetAsync("/api/app/clients")).StatusCode);
+        await admin.PutJsonAsync($"/api/admin/applications/{o.ClientId}", new
+        {
+            clientId = o.ClientId, clientType = "confidential", grantTypes = new[] { "client_credentials", "token_exchange" }, selfManagement = false
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, (await service.GetAsync("/api/app/clients")).StatusCode);
+    }
+
+    /// <summary>Активный агент не отключается по неактивности, даже когда его старые токены уже удалены обслуживанием.</summary>
+    [Fact]
+    public async Task ActiveAgent_NotDisabled_AfterTokensPruned()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var o = await CreateOwnerAsync(admin, inactiveDays: 7);
+        var delegated = await DelegatedAsync(o);
+        var key = NewKey();
+        var clientId = (await CreateManagedAsync(delegated, key)).GetProperty("clientId").GetString()!;
+        await KeyTokenAsync(fx.Factory.CreateClient(), clientId, Assertion(clientId, key), o.ClientId);
+
+        await using (var db = fx.CreateDbContext())
+        {
+            // Клиент «создан» 30 дней назад, строки токенов удалены (как после обслуживания через сутки).
+            var app = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().SingleAsync(x => x.ClientId == clientId);
+            using var json = JsonDocument.Parse(app.Properties!);
+            var props = json.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone() as object);
+            props[ApplicationService.CreatedAtProperty] = DateTime.UtcNow.AddDays(-30);
+            app.Properties = JsonSerializer.Serialize(props);
+            await db.SaveChangesAsync();
+            await db.Set<OpenIddictEntityFrameworkCoreToken<Guid>>().Where(t => t.Application!.ClientId == clientId).ExecuteDeleteAsync();
+        }
+
+        await admin.PostJsonAsync("/api/admin/maintenance/run", new { });
+        var card = await delegated.GetJsonAsync($"/api/app/clients/{clientId}");
+        Assert.False(card.GetProperty("disabled").GetBoolean());
+        Assert.NotEqual(JsonValueKind.Null, card.GetProperty("lastTokenIssuedAt").ValueKind);
+    }
+
+    /// <summary>Снять политику при живых подчинённых нельзя; срок токена подчинённого через Admin API не задаётся (400, а не молчаливое игнорирование).</summary>
+    [Fact]
+    public async Task PolicyRemoval_And_Lifetimes_ForManaged_AreRefused()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var o = await CreateOwnerAsync(admin);
+        var clientId = (await CreateManagedAsync(await DelegatedAsync(o), NewKey())).GetProperty("clientId").GetString()!;
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.DeleteAsync($"/api/admin/applications/{o.ClientId}/managed-clients-policy")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync($"/api/admin/applications/{clientId}/token-lifetimes",
+            new { accessTokenMinutes = 2 })).StatusCode);
+    }
+
+    /// <summary>
+    /// Ошибки встроенных проверок assertion наружу — только invalid_client без подробностей: чужой client_id (iss≠client_id),
+    /// iat в миллисекундах (раньше — 500), неверная aud на introspection.
+    /// </summary>
+    [Fact]
+    public async Task AssertionErrors_AreNormalized_OnAllEndpoints()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var o = await CreateOwnerAsync(admin);
+        var delegated = await DelegatedAsync(o);
+        var keyA = NewKey();
+        var a = (await CreateManagedAsync(delegated, keyA)).GetProperty("clientId").GetString()!;
+        var b = (await CreateManagedAsync(delegated, NewKey())).GetProperty("clientId").GetString()!;
+        var http = fx.Factory.CreateClient();
+
+        static void AssertOpaque(JsonElement r)
+        {
+            Assert.Equal("invalid_client", r.GetProperty("error").GetString());
+            Assert.Equal("The client assertion is invalid.", r.GetProperty("error_description").GetString());
+        }
+
+        // Assertion агента A, но client_id = B.
+        AssertOpaque(await KeyTokenAsync(http, b, Assertion(a, keyA), o.ClientId, false));
+
+        // iat в миллисекундах.
+        var now = DateTime.UtcNow;
+        var hugeIat = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }.CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = a, Audience = Issuer, TokenType = AssertionType, NotBefore = now, Expires = now.AddSeconds(60),
+            Claims = new Dictionary<string, object>
+            {
+                ["sub"] = a, ["jti"] = Guid.NewGuid().ToString("N"), ["iat"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            },
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(keyA.Key) { KeyId = keyA.Kid }, SecurityAlgorithms.EcdsaSha256)
+        });
+        AssertOpaque(await KeyTokenAsync(http, a, hugeIat, o.ClientId, false));
+
+        // Неверная aud на /connect/introspect.
+        var intro = await http.PostAsync("/connect/introspect", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["client_id"] = a, ["token"] = "x",
+            ["client_assertion_type"] = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+            ["client_assertion"] = Assertion(a, keyA, aud: "https://other.example/")
+        }));
+        AssertOpaque(await intro.Content.ReadFromJsonAsync<JsonElement>());
+    }
+
+    /// <summary>Отключение подчинённого администратором (Admin API) видно владельцу в его журнале; удаление владельца удаляет подчинённых с записью в журнал.</summary>
+    [Fact]
+    public async Task AdminActions_OnManaged_AreVisibleToOwner()
+    {
+        var admin = await fx.Factory.AdminAsync();
+        var o = await CreateOwnerAsync(admin);
+        var clientId = (await CreateManagedAsync(await DelegatedAsync(o), NewKey())).GetProperty("clientId").GetString()!;
+        await admin.PostJsonAsync($"/api/admin/applications/{clientId}/disable", new { });
+        await fx.Factory.Services.GetRequiredService<AuditService>().FlushAsync();
+        var audit = await (await ServiceAsync(o)).GetJsonAsync("/api/app/audit?type=managed_client.change");
+        Assert.Contains(audit.EnumerateArray(), e =>
+            e.GetProperty("details").GetProperty("action").GetString() == "disabled" &&
+            e.GetProperty("details").GetProperty("clientId").GetString() == clientId);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/admin/applications/{o.ClientId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await admin.GetAsync($"/api/admin/applications/{clientId}")).StatusCode);
+    }
 }
 
 [Collection("sqlite-managed")]

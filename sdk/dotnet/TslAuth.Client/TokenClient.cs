@@ -67,7 +67,7 @@ public sealed class TokenError : Exception
 /// (<c>client_secret</c>) или ключом (<c>private_key_jwt</c>: ES256-assertion с <c>jti</c>, сроком 60 с и
 /// <c>aud</c> = issuer из discovery, если задан <see cref="TslAuthOptions.ClientPrivateKeyPem"/> или файл ключа).
 /// </summary>
-public sealed class TokenClient
+public sealed class TokenClient : IDisposable
 {
     private static readonly TimeSpan CacheMargin = TimeSpan.FromSeconds(30);
     private readonly TslAuthOptions _options;
@@ -87,6 +87,9 @@ public sealed class TokenClient
         _http = new TslHttp(options);
         _signer = ClientAssertionSigner.FromOptions(options);
     }
+
+    /// <summary>Освобождает закрытый ключ клиента (если задан вход по ключу).</summary>
+    public void Dispose() => _signer?.Dispose();
 
     /// <summary>Клиент входит по ключу (assertion), а не секретом.</summary>
     public bool UsesPrivateKeyJwt => _signer is not null && string.IsNullOrEmpty(_options.ClientSecret);

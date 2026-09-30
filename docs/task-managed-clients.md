@@ -161,7 +161,7 @@
 | 3.3, ответ | `invalid_client` всегда со статусом HTTP 401 (так отвечает OpenIddict); описание одинаковое, причина — в журнале (`token.rejected`, warning, `details.reason`: `alg`, `lifetime`, `jti_replay`, `server_validation` …) и метрике `tsl_auth.client_assertion.rejected{reason}` |
 | 3.1, владелец | политика ставится только confidential-клиенту с включённым самоуправлением (App API); поток `token_exchange` нужен владельцу для делегированного токена |
 | 3.1, удаление владельца | удаляет и его подчинённых |
-| 3.5, предел на токен-эндпоинт | 20 отказов `invalid_client` за минуту по `client_id` → блокировка на минуту (`Security__ClientAuthFailuresPerMinute`), считается на узел |
+| 3.5, предел на токен-эндпоинт | 20 отказов `invalid_client` за минуту по паре «`client_id` + IP» → блокировка на минуту (`Security__ClientAuthFailuresPerMinute`), считается на узел; так же на introspection и revocation; отказы отключённого клиента не считаются |
 | 3.5, предел App API | 30 изменений в минуту на владельца (`Security__ManagedClientChangesPerMinute`), GET не считается |
 | 3.6, DPoP | отложен — в OpenIddict 7.7 нет поддержки; зафиксировано в ЧТЗ (В-11) |
 | 3.6, неактивность | `inactiveDays` в политике; отключение при обслуживании БД (раз в час) с событием `security.alert` и записью `managed_client.change` |

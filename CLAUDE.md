@@ -41,7 +41,7 @@
 | `samples/` | демо: dotnet-mvc 5101, node-spa 5102, go-api 5103, python-app 5104, java-api 5105, docflow-demo; `seed-demo.ps1` |
 | `docs/` | ЧТЗ (`tz.md` + Word), архитектура, развёртывание, конфигурация, интеграция, SDK, тестирование, релизная политика, GitFlic |
 | `deploy/` | nginx, примеры appsettings, стенд мониторинга (Victoria), OpenBao |
-| `scripts/` | экспорт/импорт образов, проверка документации, `build-tz-docx.py` (Word-версия ЧТЗ), утилиты GitFlic (см. ниже) |
+| `scripts/` | демо-стенд (`demo.cmd`/`demo.ps1` — Windows, `demo.sh` — Linux), экспорт/импорт образов, проверка документации, `build-tz-docx.py` (Word-версия ЧТЗ), утилиты GitFlic (см. ниже) |
 | `gitflic-ci.yaml` | единственный рабочий конвейер CI/CD |
 
 ## Команды
@@ -51,7 +51,9 @@ dotnet build TslAuth.sln -c Release -warnaserror
 dotnet test tests/TslAuth.UnitTests
 dotnet test tests/TslAuth.IntegrationTests          # нужен запущенный Docker (Docker Desktop сам не стартует после перезагрузки)
 docker compose up -d --build                         # стенд на http://localhost:8080
-./samples/seed-demo.ps1                              # демо-приложения, матрицы, alice/bob
+./samples/seed-demo.ps1                              # демо-приложения, матрицы, alice/bob (секреты confidential-клиентов перевыпускает)
+scripts\demo.cmd  |  ./scripts/demo.ps1  |  scripts/demo.sh   # демо-стенд целиком: образ GitFlic (или -Build/--build), seed, 4 приложения; stop / clean
+$env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с видимым браузером (скриншоты — tests/artifacts/ui)
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
 ./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
@@ -66,7 +68,11 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 - **Полная пирамида тестов** для любого изменения/проекта: unit → интеграционные (SQLite и PostgreSQL) → нагрузка →
   отказоустойчивость → наблюдаемость → UI-автотесты. В отчёте указывать, какие уровни прогнаны.
 - Документация и ЧТЗ меняются вместе с поведением; расхождение — дефект, блокирует релиз.
-- Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI).
+- Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/demo.* -Build`).
+- Демо-приложения проверяются по `127.0.0.1`, а не `localhost`: Python-демо слушает только IPv4, а HttpClient PowerShell
+  сначала пробует `::1` и ждёт таймаут.
+- Локально после работы оставлять в Docker только контейнер стенда `tsl-auth`; лишние образы и тома — удалять
+  (`docker image prune -a`, висячие тома); в реестре GitFlic — только текущий образ выпуска и пакеты SDK (≤ 3 версий).
 - Место ограничено: артефакты CI живут до суток, в реестрах и релизах — не больше трёх версий.
 - Релизная политика — `docs/release-policy.md` (semver, что блокирует релиз, откат).
 
@@ -151,10 +157,17 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 - `Api/ManagedClientsApi.cs` — группа `/api/app/clients` с политикой `app-managed-clients` (`ManagedClientsHandler`:
   сервисный токен — чтение, делегированный `act.sub` = владелец + `managePermission` по БД — изменения) и фильтром
   лимита 30 изменений/мин на владельца.
-- `Infrastructure/ClientAuthHandlers.cs` — обработчики OpenIddict: `ClientAssertionPolicyHandler` (перед `ValidateClientId`;
-  `jti` → таблица `ClientAssertionJtis`), `ClientAssertionErrorNormalizer` (`invalid_token` → `invalid_client`),
-  `ClientAssertionMetadataHandler` (discovery), `DisabledClientHandler` (token и authorize), `ClientFailureLimiter`
-  + `ClientFailureLimitHandler` (блок `client_id` после `Security__ClientAuthFailuresPerMinute` отказов).
+- `Infrastructure/ClientAuthHandlers.cs` — обработчики OpenIddict: `ClientAssertionPrecheckHandler` (до
+  `ValidateClientAssertion`: `iat/nbf/exp` в секундах — иначе сама OpenIddict падает 500), `ClientAssertionPolicyHandler`
+  (перед `ValidateClientId`; `jti` → `INSERT … ON CONFLICT DO NOTHING` в `ClientAssertionJtis`), `ClientAuthErrorHandler`
+  (событие `ProcessErrorContext` для token/introspection/revocation: `invalid_token`/ID2171–2173 → `invalid_client`,
+  счёт отказов), `ClientAssertionMetadataHandler` (discovery), `DisabledClientHandler` (token и authorize; отказ не
+  считается), `ClientFailureLimiter` + `ClientFailureLimitHandler` (после `ValidateAuthentication`, ключ «client_id + IP»).
+- Активность подчинённых — таблица `ClientActivities` (upsert в `AuthorizationController` при client_credentials через
+  `ManagedClientService.RecordTokenIssuedAsync`); списки подчинённых — `ApplicationService.ReadManagedClientsAsync`
+  (один запрос) + пакетные роли и активность. Отключение/удаление подчинённого пишет `managed_client.change` в журнал
+  владельца внутри `ApplicationService` (любой путь: App API, Admin API, админка, обслуживание).
+- `OwnerOf`/`AppSelfHandler`: клиентский токен с claim `act` (получен обменом) владельцем не считается.
 - Admin API: `…/managed-clients-policy` (GET/PUT/DELETE), `…/managed-clients`, `…/disable`, `…/enable`; `service-roles`
   проверяет белый список. Админка: `Pages/Admin/Apps/Edit` (политика, таблица подчинённых, отключение), `Index` (владелец/статус).
 - SDK: .NET `ClientKeys` + `Internal/ClientAssertionSigner`, Go `clientkeys.go`; настройки `TSL_AUTH_CLIENT_KEY_PEM|FILE|ID`.
@@ -176,6 +189,11 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   ссылаться) → `ValidateClientId` → `ValidateClientType` → `ValidateClientSecret`; свой — `ValidateClientId.Order − 500`.
   Класс обработчиков authorize-эндпоинта называется `OpenIddictServerHandlers.Authentication` (не `Authorization`).
 - `OpenIddictParameter` для массива строк — `new OpenIddictParameter(ImmutableArray.Create<string?>(…))`.
+- Встроенные проверки assertion отвечают `invalid_request` (ID2171/ID2172 — claim неверного формата / отсутствует) и
+  `invalid_grant` (ID2173 — iss/sub ≠ client_id), подпись/aud/срок — `invalid_token`; `iat` в миллисекундах валит
+  `MapInternalClaims` исключением (500). Assertion проверяется и на introspection/revocation; `client_id` OpenIddict
+  выводит из `iss` assertion, если он не передан (в `Validate*RequestContext` после `ValidateAuthentication`).
+- Ошибки конвейера правятся в `ProcessErrorContext` до `AttachErrorParameters` (порядок `int.MinValue + 100 000`).
 - Через Bash-инструмент heredoc с python-кодом иногда обрывается («unexpected EOF») — патчи класть в файл `*.py` и запускать.
 
 ## Открытые темы

@@ -60,6 +60,10 @@ public sealed record ApplicationInput(
     bool SelfManagement = false,
     bool SelfRegistration = false);
 
+/// <summary>Подчинённый клиент, прочитанный одним запросом из таблицы приложений (см. <see cref="ApplicationService.ReadManagedClientsAsync"/>).</summary>
+public sealed record ManagedClientRow(string Owner, string ClientId, string? DisplayName, bool Disabled, DateTime? CreatedAt,
+    bool HasSecret, string? JsonWebKeySet);
+
 /// <summary>Результат создания/изменения: <c>ClientSecret</c> заполнен только когда секрет сгенерирован сейчас (показывается один раз).</summary>
 public sealed record ApplicationSecretResult(ApplicationDto Application, string? ClientSecret);
 
@@ -76,6 +80,7 @@ public sealed class ApplicationService(
     AccessService access,
     SessionService sessions,
     WebhookService webhooks,
+    AuditService audit,
     AuthDbContext db)
 {
     private const string SystemProperty = "tsl_system";
@@ -213,8 +218,12 @@ public sealed class ApplicationService(
         return secret;
     }
 
-    /// <summary>Удаляет приложение вместе с его токенами/сессиями, scope-ресурсом и RBAC-конфигурацией.</summary>
-    public async Task DeleteAsync(string clientId, CancellationToken ct = default)
+    /// <summary>
+    /// Удаляет приложение вместе с его токенами/сессиями, scope-ресурсом и RBAC-конфигурацией; у владельца — вместе
+    /// со всеми подчинёнными клиентами, в одной транзакции. Удаление подчинённого пишется в журнал владельца.
+    /// </summary>
+    /// <param name="via">Через какое приложение действовал пользователь (делегированный токен App API) — для журнала.</param>
+    public async Task DeleteAsync(string clientId, CancellationToken ct = default, string? via = null)
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
         var properties = await applications.GetPropertiesAsync(app, ct);
@@ -222,36 +231,61 @@ public sealed class ApplicationService(
             throw new AdminException("Системное приложение нельзя удалить.");
         var owner = OwnerOf(properties);
 
-        // Подчинённые клиенты без владельца бессмысленны и стали бы «ничьими» — удаляются вместе с ним.
-        foreach (var managed in await ListManagedClientIdsAsync(clientId, ct))
-            await DeleteAsync(managed, ct);
+        // Подчинённые клиенты без владельца бессмысленны и стали бы «ничьими» — удаляются вместе с ним. Подчинённый
+        // своих подчинённых иметь не может (SetPolicyAsync это запрещает), поэтому поиск нужен только у владельца.
+        var victims = new List<(object App, string ClientId, string? Owner)>();
+        if (owner is null)
+            foreach (var row in await ReadManagedClientsAsync(db, clientId, ct))
+                if (await applications.FindByClientIdAsync(row.ClientId, ct) is { } child)
+                    victims.Add((child, row.ClientId, clientId));
+        victims.Add((app, clientId, owner));
 
-        // Одна транзакция: сбой на середине не должен оставлять «полуудалённое» приложение (например, клиента
-        // без scope или матрицу без клиента). Менеджеры OpenIddict работают через тот же DbContext и попадают в неё.
+        // Одна транзакция на владельца и всех подчинённых: сбой на середине не должен оставлять «полуудалённое»
+        // приложение (клиента без scope, матрицу без клиента, владельца без части агентов). Менеджеры OpenIddict
+        // работают через тот же DbContext и попадают в неё.
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
-            // Сначала отзываем выданные токены, пока приложение ещё существует и связи с ним можно найти.
-            await sessions.RevokeByClientAsync(clientId, ct);
-            await applications.DeleteAsync(app, ct);
-            if (await scopes.FindByNameAsync(clientId, ct) is { } scope)
-                await scopes.DeleteAsync(scope, ct);
-            await access.RemoveApplicationAsync(clientId, ct);
-            // Владение пользователями и привязки мессенджеров, сделанные ботом этого приложения, снимаются:
-            // иначе новое приложение с тем же client_id унаследовало бы управление чужими учётными записями.
-            await db.Users.Where(u => u.CreatedByClientId == clientId)
-                .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, (string?)null), ct);
-            await db.ExternalIdentities.Where(e => e.LinkedByClientId == clientId).ExecuteDeleteAsync(ct);
+            foreach (var victim in victims)
+                await DeleteOneAsync(victim.App, victim.ClientId, ct);
             await tx.CommitAsync(ct);
         }
-        await webhooks.PublishAsync(WebhookEvents.ApplicationDeleted, $"🗑 Удалено приложение {clientId}.", new { clientId, owner }, ct);
+
+        foreach (var victim in victims)
+        {
+            if (victim.Owner is { } childOwner)
+                await audit.WriteAsync(AuditTypes.ManagedClientChange, true, AuditSeverity.Info, childOwner,
+                    details: new { action = "deleted", clientId = victim.ClientId, via, cascade = victim.ClientId != clientId });
+            await webhooks.PublishAsync(WebhookEvents.ApplicationDeleted, $"🗑 Удалено приложение {victim.ClientId}.",
+                new { clientId = victim.ClientId, owner = victim.Owner }, ct);
+        }
+    }
+
+    /// <summary>Удаление одного приложения внутри транзакции вызывающего кода.</summary>
+    private async Task DeleteOneAsync(object app, string clientId, CancellationToken ct)
+    {
+        // Сначала отзываем выданные токены, пока приложение ещё существует и связи с ним можно найти.
+        await sessions.RevokeByClientAsync(clientId, ct);
+        await applications.DeleteAsync(app, ct);
+        if (await scopes.FindByNameAsync(clientId, ct) is { } scope)
+            await scopes.DeleteAsync(scope, ct);
+        await access.RemoveApplicationAsync(clientId, ct);
+        // Владение пользователями и привязки мессенджеров, сделанные ботом этого приложения, снимаются:
+        // иначе новое приложение с тем же client_id унаследовало бы управление чужими учётными записями.
+        await db.Users.Where(u => u.CreatedByClientId == clientId)
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, (string?)null), ct);
+        await db.ExternalIdentities.Where(e => e.LinkedByClientId == clientId).ExecuteDeleteAsync(ct);
+        await db.ClientActivities.Where(a => a.ClientId == clientId).ExecuteDeleteAsync(ct);
     }
 
     /// <summary>
     /// Отключает или включает клиента (свойство <c>tsl_disabled</c>). Отключённый не получает токены; при отключении
     /// его сессии и токены отзываются (introspection → active=false). Публикует application.disabled / .enabled.
     /// </summary>
+    /// <param name="via">Через какое приложение действовал пользователь (делегированный токен App API) — для журнала.</param>
+    /// <param name="reason">Причина (например, автоотключение по неактивности) — для журнала.</param>
     /// <returns>false, если состояние уже было таким.</returns>
-    public async Task<bool> SetDisabledAsync(string clientId, bool disabled, CancellationToken ct = default)
+    public async Task<bool> SetDisabledAsync(string clientId, bool disabled, CancellationToken ct = default, string? via = null,
+        string? reason = null)
     {
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
         var properties = await applications.GetPropertiesAsync(app, ct);
@@ -266,6 +300,11 @@ public sealed class ApplicationService(
         if (disabled) await sessions.RevokeByClientAsync(clientId, ct);
 
         var owner = OwnerOf(properties);
+        // Отключение подчинённого — кем бы оно ни было сделано (администратор, владелец, обслуживание) — видно
+        // владельцу в его журнале (/api/app/audit): ClientId записи — владелец.
+        if (owner is not null)
+            await audit.WriteAsync(AuditTypes.ManagedClientChange, true, disabled ? AuditSeverity.Warning : AuditSeverity.Info, owner,
+                details: new { action = disabled ? "disabled" : "enabled", clientId, via, reason });
         await webhooks.PublishAsync(disabled ? WebhookEvents.ApplicationDisabled : WebhookEvents.ApplicationEnabled,
             disabled ? $"⛔ Клиент {clientId} отключён, его токены отозваны." : $"✅ Клиент {clientId} включён.",
             new { clientId, owner }, ct);
@@ -278,21 +317,39 @@ public sealed class ApplicationService(
 
     /// <summary>client_id подчинённых клиентов владельца.</summary>
     public async Task<List<string>> ListManagedClientIdsAsync(string owner, CancellationToken ct = default) =>
-        (await ListManagedClientsAsync(ct)).Where(m => m.Owner == owner).Select(m => m.ClientId).ToList();
+        (await ReadManagedClientsAsync(db, owner, ct)).Select(m => m.ClientId).ToList();
 
-    /// <summary>Все подчинённые клиенты (владелец, client_id) — по свойству tsl_owner в колонке Properties.</summary>
-    public async Task<List<(string Owner, string ClientId)>> ListManagedClientsAsync(CancellationToken ct = default)
+    /// <summary>Все подчинённые клиенты (владелец, client_id).</summary>
+    public async Task<List<(string Owner, string ClientId)>> ListManagedClientsAsync(CancellationToken ct = default) =>
+        (await ReadManagedClientsAsync(db, null, ct)).Select(m => (m.Owner, m.ClientId)).ToList();
+
+    /// <summary>
+    /// Подчинённые клиенты одним запросом (владельца или все, <paramref name="owner"/> = null): client_id, название,
+    /// состояние, дата создания, наличие секрета и JWKS. Свойства хранятся JSON-строкой в колонке Properties:
+    /// предварительный фильтр по подстроке отсекает прочие приложения в БД, точное совпадение владельца — после разбора.
+    /// Используется списками и проверками ManagedClientService, удалением владельца и метриками.
+    /// </summary>
+    public static async Task<List<ManagedClientRow>> ReadManagedClientsAsync(AuthDbContext db, string? owner, CancellationToken ct)
     {
-        // Properties — JSON-строка; предварительный фильтр по подстроке отсекает обычные приложения без разбора JSON.
-        var rows = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
-            .Where(a => a.Properties != null && a.Properties.Contains(OwnerProperty) && a.ClientId != null)
-            .Select(a => new { a.ClientId, a.Properties }).ToListAsync(ct);
-        var result = new List<(string, string)>();
+        var query = db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
+            .Where(a => a.Properties != null && a.Properties.Contains(OwnerProperty) && a.ClientId != null);
+        if (owner is not null) query = query.Where(a => a.Properties!.Contains(owner));
+        var rows = await query
+            .Select(a => new { a.ClientId, a.DisplayName, a.Properties, a.JsonWebKeySet, HasSecret = a.ClientSecret != null })
+            .ToListAsync(ct);
+
+        var result = new List<ManagedClientRow>();
         foreach (var row in rows)
         {
             using var json = JsonDocument.Parse(row.Properties!);
-            if (json.RootElement.TryGetProperty(OwnerProperty, out var owner) && owner.ValueKind == JsonValueKind.String)
-                result.Add((owner.GetString()!, row.ClientId!));
+            var root = json.RootElement;
+            if (!root.TryGetProperty(OwnerProperty, out var o) || o.ValueKind != JsonValueKind.String) continue;
+            var rowOwner = o.GetString()!;
+            if (owner is not null && rowOwner != owner) continue;
+            DateTime? created = root.TryGetProperty(CreatedAtProperty, out var c) && c.ValueKind == JsonValueKind.String &&
+                                c.TryGetDateTime(out var d) ? DateTime.SpecifyKind(d.ToUniversalTime(), DateTimeKind.Utc) : null;
+            var disabled = root.TryGetProperty(DisabledProperty, out var dis) && dis.ValueKind == JsonValueKind.True;
+            result.Add(new ManagedClientRow(rowOwner, row.ClientId!, row.DisplayName, disabled, created, row.HasSecret, row.JsonWebKeySet));
         }
         return result;
     }
@@ -437,5 +494,5 @@ public sealed class ApplicationService(
         properties.TryGetValue(name, out var value) && value.ValueKind == JsonValueKind.True;
 
     // 256 бит криптостойкой случайности в URL-safe Base64.
-    private static string GenerateSecret() => Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
+    internal static string GenerateSecret() => Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
 }

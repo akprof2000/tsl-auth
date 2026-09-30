@@ -183,3 +183,59 @@ public sealed class ClientFailureLimiterTests
         Assert.False(limiter.IsBlocked("a"));
     }
 }
+
+public sealed class ReviewFixTests
+{
+    private sealed class Clock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    /// <summary>Порог 1 срабатывает на первом же отказе (раньше — только на втором).</summary>
+    [Fact]
+    public void Limiter_ThresholdOne_BlocksOnFirstFailure()
+    {
+        var limiter = new ClientFailureLimiter(1, new Clock(DateTimeOffset.UtcNow));
+        Assert.True(limiter.RecordFailure("a|1.1.1.1"));
+        Assert.True(limiter.IsBlocked("a|1.1.1.1"));
+        Assert.False(limiter.RecordFailure("a|1.1.1.1")); // уже заблокирован — повторного «наступила блокировка» нет
+    }
+
+    /// <summary>Отказы с одного адреса не блокируют тот же client_id с другого адреса.</summary>
+    [Fact]
+    public void Limiter_KeyIncludesIp()
+    {
+        var limiter = new ClientFailureLimiter(2, new Clock(DateTimeOffset.UtcNow));
+        limiter.RecordFailure(ClientFailureLimiter.Key("agent", "10.0.0.1"));
+        limiter.RecordFailure(ClientFailureLimiter.Key("agent", "10.0.0.1"));
+        Assert.True(limiter.IsBlocked(ClientFailureLimiter.Key("agent", "10.0.0.1")));
+        Assert.False(limiter.IsBlocked(ClientFailureLimiter.Key("agent", "10.0.0.2")));
+    }
+
+    /// <summary>iat вне диапазона (миллисекунды вместо секунд) — отказ с причиной, а не исключение.</summary>
+    [Fact]
+    public void Assertion_IatOutOfRange_IsRejected()
+    {
+        var now = DateTime.UtcNow;
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = "agent-1", Audience = "http://localhost/", Expires = now.AddSeconds(60), NotBefore = now,
+            Claims = new Dictionary<string, object> { ["sub"] = "agent-1", ["jti"] = "x", ["iat"] = 1790745826000L },
+            SigningCredentials = new SigningCredentials(new ECDsaSecurityKey(ECDsa.Create(ECCurve.NamedCurves.nistP256)), "ES256")
+        };
+        var token = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false }.CreateToken(descriptor);
+        Assert.Equal("iat_invalid", ClientAssertionRules.Check(token, out _));
+    }
+
+    /// <summary>kid по IdentityModel совпадает с явной формулой RFC 7638.</summary>
+    [Fact]
+    public void Thumbprint_MatchesIdentityModel()
+    {
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var p = ecdsa.ExportParameters(false);
+        var x = Base64UrlEncoder.Encode(p.Q.X!);
+        var y = Base64UrlEncoder.Encode(p.Q.Y!);
+        var set = ManagedClientKeys.Parse(JsonSerializer.SerializeToElement(new { kty = "EC", crv = "P-256", x, y }));
+        Assert.Equal(ManagedClientKeys.Thumbprint(x, y), set.Keys.Single().KeyId);
+    }
+}

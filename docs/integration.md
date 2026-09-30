@@ -358,7 +358,9 @@ sequenceDiagram
 
 Владелец — confidential-клиент с включённым самоуправлением (App API) и потоком `token_exchange`; `roles` — только его
 роли; `authMethods` — `private_key_jwt` и/или `client_secret`; `inactiveDays` > 0 отключает подчинённого, не получавшего
-токены дольше N дней (обслуживание БД, событие `security.alert`). Снять политику — `DELETE …/managed-clients-policy`.
+токены дольше N дней (по отметке последнего выданного токена; обслуживание БД, событие `security.alert`). Снять
+политику — `DELETE …/managed-clients-policy`, только когда подчинённых не осталось. Срок токена подчинённого задаёт
+только политика (`PUT …/token-lifetimes` для подчинённого — 400).
 
 ### Маршруты `/api/app/clients`
 
@@ -379,6 +381,8 @@ sequenceDiagram
   token exchange на scope `tsl-auth-app` (`sub` = пользователь, `act.sub` = владелец). Пользователь должен быть активен и
   иметь разрешение `managePermission` в матрице владельца, иначе 403. `requireDelegation: false` (тестовые стенды)
   разрешает изменения и сервисным токеном;
+- клиентский токен, полученный обменом другим приложением (есть `act`), владельцем не считается — **403**; без
+  включённого самоуправления владельца — **403**;
 - чужой или не подчинённый клиент — всегда **404**; роль вне белого списка, чужой scope, `tsl-auth-admin` — **400**
   (в том числе через Admin API: подчинённого нельзя «расширить», только отключить или удалить);
 - не больше 30 изменений в минуту на владельца (`429`); `client_id` — префикс политики, `[a-z0-9-]`, до 64 символов;
@@ -407,8 +411,9 @@ curl -X POST https://auth.corp/connect/token \
 | `jti` | уникальный: повтор отклоняется на любом узле кластера |
 
 Discovery объявляет `token_endpoint_auth_methods_supported: [... "private_key_jwt"]` и
-`token_endpoint_auth_signing_alg_values_supported: ["ES256"]`. После 20 отказов `invalid_client` за минуту `client_id`
-блокируется на минуту (`Security__ClientAuthFailuresPerMinute`).
+`token_endpoint_auth_signing_alg_values_supported: ["ES256"]`. Те же правила действуют на `/connect/introspect` и
+`/connect/revoke`. После 20 отказов `invalid_client` за минуту пара «`client_id` + IP» блокируется на минуту
+(`Security__ClientAuthFailuresPerMinute`); отказы отключённого клиента не считаются.
 
 SDK .NET и Go входят по ключу сами: задайте `TSL_AUTH_CLIENT_KEY_PEM` (или `_FILE`) вместо секрета; генерация ключа и
 открытый JWK для регистрации — `ClientKeys.GeneratePrivateKeyPem()` / `ClientKeys.PublicJwks(pem)` (.NET),

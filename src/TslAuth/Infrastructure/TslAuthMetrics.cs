@@ -126,16 +126,9 @@ public sealed class TslAuthMetrics : IDisposable
             var active = await db.Users.CountAsync(u => u.IsActive, ct);
             var inactive = await db.Users.CountAsync(u => !u.IsActive, ct);
             var apps = await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().CountAsync(ct);
-            // Подчинённые клиенты по владельцам: свойство tsl_owner в JSON-колонке Properties.
-            var managed = new Dictionary<string, long>(StringComparer.Ordinal);
-            foreach (var properties in await db.Set<OpenIddictEntityFrameworkCoreApplication<Guid>>().AsNoTracking()
-                         .Where(a => a.Properties != null && a.Properties.Contains(ApplicationService.OwnerProperty))
-                         .Select(a => a.Properties!).ToListAsync(ct))
-            {
-                using var json = System.Text.Json.JsonDocument.Parse(properties);
-                if (json.RootElement.TryGetProperty(ApplicationService.OwnerProperty, out var owner) && owner.GetString() is { } key)
-                    managed[key] = managed.GetValueOrDefault(key) + 1;
-            }
+            // Подчинённые клиенты по владельцам — тем же чтением, что и App API.
+            var managed = (await ApplicationService.ReadManagedClientsAsync(db, null, ct))
+                .GroupBy(m => m.Owner).ToDictionary(g => g.Key, g => (long)g.Count(), StringComparer.Ordinal);
             _snapshot = new Snapshot(sessions, active, inactive, apps, true, managed);
         }
         catch (Exception) when (!ct.IsCancellationRequested)

@@ -134,6 +134,23 @@ docker compose -f docker-compose.ha.yml up -d --build
 Точка входа кластера — только nginx; секреты можно передать файлами через docker secrets
 (`docker-compose.ha-secrets.yml`, см. [развёртывание](docs/deployment.md#секреты-файлами-docker-secrets)).
 
+## Демо-стенд: четыре приложения на разных стеках
+
+TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go API (:5103), Python (:5104) с матрицами доступа и
+пользователями `alice` / `bob` — одной командой. Нужны Docker, .NET 10 SDK, Node.js ≥ 20, Go ≥ 1.22, Python ≥ 3.10
+(на Linux ещё PowerShell 7 — им заполняются демо-данные).
+
+| Действие | Windows | Linux |
+|---|---|---|
+| Запустить (образ из реестра GitFlic) | `scripts\demo.cmd` (двойной щелчок) или `./scripts/demo.ps1` | `scripts/demo.sh` |
+| Собрать образ из исходников и запустить | `scripts\demo.cmd -Build` | `scripts/demo.sh --build` |
+| Другой образ, например выпуск | `scripts\demo.cmd -Image registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:1.5.1` | `scripts/demo.sh --image …` |
+| Остановить (данные сохраняются) | `scripts\demo.cmd stop` | `scripts/demo.sh stop` |
+| Остановить и удалить данные | `scripts\demo.cmd clean` | `scripts/demo.sh clean` |
+
+Секреты стенда генерируются в `.env` при первом запуске (пароль `admin` — `BOOTSTRAP_ADMIN_PASSWORD`), секреты
+демо-клиентов — в `samples/.env.demo`; журналы приложений — `tests/artifacts/demo`.
+
 ## Демо: документооборот
 
 Готовое приложение поверх TSL Auth: PWA на React, API на C# и бот безопасности.

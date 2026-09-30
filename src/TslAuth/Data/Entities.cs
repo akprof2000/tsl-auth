@@ -368,3 +368,13 @@ public sealed class ClientAssertionJti
     public required string ClientId { get; set; }
     public DateTime ExpiresAt { get; set; }
 }
+
+/// <summary>
+/// Когда подчинённому клиенту последний раз выдан токен — для предела неактивности (<c>inactiveDays</c> политики).
+/// Отдельная таблица, а не таблица токенов OpenIddict: её обслуживание удаляет истёкшие токены через сутки.
+/// </summary>
+public sealed class ClientActivity
+{
+    public required string ClientId { get; set; }
+    public DateTime LastTokenIssuedAt { get; set; }
+}

@@ -24,7 +24,13 @@ function Api($method, $path, $body) {
 function Upsert-App($app) {
     $exists = $true
     try { Api GET "/applications/$($app.clientId)" | Out-Null } catch { $exists = $false }
-    if ($exists) { Api PUT "/applications/$($app.clientId)" $app | Out-Null; return $null }
+    # Существующему confidential-клиенту секрет перевыпускается: открытое значение хранится только в .env.demo,
+    # и после пересоздания БД (или потери файла) демо-приложения иначе шли бы со старым секретом (invalid_client).
+    if ($exists) {
+        Api PUT "/applications/$($app.clientId)" $app | Out-Null
+        if ($app.clientType -eq "confidential") { return (Api POST "/applications/$($app.clientId)/secret" $null).clientSecret }
+        return $null
+    }
     (Api POST "/applications" $app).clientSecret
 }
 function Matrix($clientId, $perms, $roles) {

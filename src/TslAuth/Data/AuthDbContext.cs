@@ -58,6 +58,7 @@ public abstract class AuthDbContext(DbContextOptions options)
     public DbSet<WebhookSubscription> WebhookSubscriptions { get; set; } = null!;
     public DbSet<WebhookDelivery> WebhookDeliveries { get; set; } = null!;
     public DbSet<ClientAssertionJti> ClientAssertionJtis { get; set; } = null!;
+    public DbSet<ClientActivity> ClientActivities { get; set; } = null!;
     public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     /// <summary>Настройка модели: сущности Identity и OpenIddict с ключами Guid, собственные таблицы, индексы и ограничения длин.</summary>
@@ -250,6 +251,13 @@ public abstract class AuthDbContext(DbContextOptions options)
             e.Property(x => x.Jti).HasMaxLength(400);
             e.Property(x => x.ClientId).HasMaxLength(100);
             e.HasIndex(x => x.ExpiresAt);
+        });
+
+        builder.Entity<ClientActivity>(e =>
+        {
+            e.ToTable("ClientActivities");
+            e.HasKey(x => x.ClientId);
+            e.Property(x => x.ClientId).HasMaxLength(100);
         });
 
         builder.Entity<KeyMaterial>(e =>

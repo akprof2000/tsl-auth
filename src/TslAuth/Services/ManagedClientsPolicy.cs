@@ -154,7 +154,7 @@ public static class ManagedClientKeys
             }
 
             var jwk = new JsonWebKey { Kty = "EC", Crv = "P-256", X = x, Y = y, Alg = SecurityAlgorithms.EcdsaSha256, Use = "sig" };
-            jwk.KeyId = Thumbprint(x, y);
+            jwk.KeyId = Base64UrlEncoder.Encode(jwk.ComputeJwkThumbprint());
             if (result.Keys.Any(k => k.KeyId == jwk.KeyId)) throw new AdminException("jwks: ключи повторяются.");
             result.Keys.Add(jwk);
         }
@@ -200,6 +200,8 @@ public static class ClientAssertionRules
         if (!string.Equals(token.Alg, SecurityAlgorithms.EcdsaSha256, StringComparison.Ordinal)) return "alg";
         if (string.IsNullOrEmpty(token.Id)) return "jti_missing";
         if (!token.TryGetPayloadValue<long>("iat", out var iat)) return "iat_missing";
+        // Значения вне диапазона DateTimeOffset (например, миллисекунды вместо секунд) — отказ, а не исключение.
+        if (iat < 0 || iat > DateTimeOffset.MaxValue.ToUnixTimeSeconds()) return "iat_invalid";
         var issuedAt = DateTimeOffset.FromUnixTimeSeconds(iat);
         if (token.ValidTo == DateTime.MinValue) return "exp_missing";
         if (token.ValidTo - issuedAt.UtcDateTime > MaxLifetime) return "lifetime";

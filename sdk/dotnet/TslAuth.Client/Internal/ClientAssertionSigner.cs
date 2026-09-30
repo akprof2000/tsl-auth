@@ -27,7 +27,16 @@ internal sealed class ClientAssertionSigner : IDisposable
     {
         var pem = options.ClientPrivateKeyPem;
         if (string.IsNullOrWhiteSpace(pem) && !string.IsNullOrWhiteSpace(options.ClientPrivateKeyFile))
-            pem = File.ReadAllText(options.ClientPrivateKeyFile);
+        {
+            try
+            {
+                pem = File.ReadAllText(options.ClientPrivateKeyFile);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new InvalidOperationException($"TSL Auth: не удалось прочитать файл ключа клиента (TSL_AUTH_CLIENT_KEY_FILE): {ex.Message}", ex);
+            }
+        }
         if (string.IsNullOrWhiteSpace(pem)) return null;
         var key = ClientKeys.Load(pem);
         var (x, y) = ClientKeys.Coordinates(key);

@@ -67,6 +67,12 @@ public sealed class TokenLifetimeService(SettingsService settings, IOpenIddictAp
             throw new AdminException("Срок для приложения не может превышать глобальную настройку сервера.");
 
         var app = await applications.FindByClientIdAsync(clientId, ct) ?? throw AdminException.NotFound($"Приложение '{clientId}'");
+        // Срок токена подчинённого задаёт политика владельца: своё значение у него ничего бы не меняло.
+        if (ApplicationService.OwnerOf(await applications.GetPropertiesAsync(app, ct)) is { } owner)
+        {
+            if (lifetimes == new AppTokenLifetimes()) return;
+            throw new AdminException($"Срок токена подчинённого клиента задаёт политика владельца {owner} (accessTokenLifetime).");
+        }
         var descriptor = new OpenIddictApplicationDescriptor();
         await applications.PopulateAsync(descriptor, app, ct);
         if (lifetimes == new AppTokenLifetimes()) descriptor.Properties.Remove(AppProperty);

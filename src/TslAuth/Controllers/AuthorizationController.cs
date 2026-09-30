@@ -36,6 +36,7 @@ public sealed class AuthorizationController(
     TokenLifetimeService lifetimes,
     PatService pats,
     TokenPrincipalFactory principals,
+    ManagedClientService managedClients,
     Microsoft.AspNetCore.Antiforgery.IAntiforgery antiforgery,
     Infrastructure.TslAuthMetrics metrics) : Controller
 {
@@ -224,6 +225,8 @@ public sealed class AuthorizationController(
                               ?? throw new InvalidOperationException("Приложение не найдено.");
             var identity = await principals.CreateForClientAsync(request.ClientId!,
                 await applications.GetDisplayNameAsync(application), request.GetScopes());
+            // Подчинённому клиенту отмечается время выдачи — по нему считается предел неактивности политики.
+            await managedClients.RecordTokenIssuedAsync(request.ClientId!);
             return await IssueAsync(identity, GrantTypes.ClientCredentials, request.ClientId!, null, request.ClientId);
         }
 

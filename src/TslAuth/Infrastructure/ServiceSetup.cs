@@ -188,12 +188,15 @@ public static class ServiceSetup
                 o.AddEventHandler(TokenErrorAuditHandler.Descriptor);
                 // Вход клиента по ключу (private_key_jwt): ES256, срок ≤ 5 мин, одноразовый jti; метаданные discovery;
                 // отключённые клиенты; блокировка client_id после серии отказов.
+                o.AddEventHandler(ClientAssertionPrecheckHandler.Descriptor);
                 o.AddEventHandler(ClientAssertionPolicyHandler.Descriptor);
-                o.AddEventHandler(ClientAssertionErrorNormalizer.Descriptor);
+                o.AddEventHandler(ClientAuthErrorHandler.Descriptor);
                 o.AddEventHandler(ClientAssertionMetadataHandler.Descriptor);
                 o.AddEventHandler(DisabledClientHandler.TokenDescriptor);
                 o.AddEventHandler(DisabledClientHandler.AuthorizationDescriptor);
-                o.AddEventHandler(ClientFailureLimitHandler.Descriptor);
+                o.AddEventHandler(ClientFailureLimitHandler.TokenDescriptor);
+                o.AddEventHandler(ClientFailureLimitHandler.IntrospectionDescriptor);
+                o.AddEventHandler(ClientFailureLimitHandler.RevocationDescriptor);
                 o.AddEventHandler(IntrospectionErrorAuditHandler.Descriptor);
                 o.AddEventHandler(RevocationErrorAuditHandler.Descriptor);
             })

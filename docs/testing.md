@@ -1,6 +1,6 @@
 # Тестирование
 
-![Тестирование](diagrams/c730d538ebbc.png)
+![Тестирование](diagrams/4cd8821adf79.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -9,8 +9,8 @@ flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
     L["Нагрузка — k6<br/>tests/load"]
     UI["UI-автотесты — Playwright, 13 сценариев<br/>tests/TslAuth.UiTests"]
-    I["Интеграционные — 175: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, двухфакторный вход, подчинённые клиенты и private_key_jwt, регрессии ревизии, мониторинг<br/>tests/TslAuth.IntegrationTests"]
-    U["Unit — 131<br/>tests/TslAuth.UnitTests"]
+    I["Интеграционные — 187: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, двухфакторный вход, подчинённые клиенты и private_key_jwt, регрессии ревизии, мониторинг<br/>tests/TslAuth.IntegrationTests"]
+    U["Unit — 135<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
 ```
 
@@ -21,7 +21,7 @@ flowchart TB
 | Unit | шифрование и слепые индексы, валидация имён и политик, генератор паролей, сроки хранения, подпись вебхуков (точное значение HMAC), CSV-экранирование, согласованность языковых пакетов, политика адресов вебхуков (SSRF), доверенные прокси, канонизация кодов языков, **политика подчинённых клиентов, разбор JWKS (P-256, отпечаток RFC 7638, без закрытой части), правила assertion (`alg`, срок, `jti`), блокировка `client_id`** | нет | `dotnet test tests/TslAuth.UnitTests` |
 | Интеграционные | сервис целиком в памяти на **SQLite и реальном PostgreSQL** (Testcontainers): OIDC, подпись JWT, RBAC-claims, ротация refresh, отзыв, блокировка, временный пароль, token exchange, сроки жизни, App API (изоляция), политика паролей, PAT, бот, события, заявки, шифрование в БД, перезапуск, **обновление схемы на живых данных**, перенос SQLite → PostgreSQL (`admin migrate-to-postgres`), **authorization code + PKCE через страницу входа** (отказы, introspection, revocation, выход, form_post), лимиты частоты, CORS, заголовки безопасности, права ролей администрирования, подпись вебхуков, приглашения, **двухфакторный вход по ролям** (код с почты и из мессенджера, `amr`, закрытый password grant), **отключение неактивных учётных записей**, **подчинённые клиенты и вход по ключу** (`ManagedClientScenarios`: делегированный токен оператора, `private_key_jwt`, повтор `jti` на двух узлах, смена ключей, отказы по `alg`/`aud`/сроку, отключение с отзывом и событием, 404 на чужих, 400 на обход через Admin API, предел числа, неактивность, блокировка `client_id`), регрессии ревизии кода | Docker | `dotnet test tests/TslAuth.IntegrationTests` |
 | UI (E2E) | реальный браузер против стенда: вход, «глазок», языки, вся админка, регистрация приложения и матрица, временный пароль, **SPA (Node) с брендингом, PKCE, token exchange Go→Node**, .NET MVC (OIDC), Python (password grant, App API), регистрация + одобрение, PAT, **подчинённые клиенты в карточке владельца и отключение из админки** | стенд | см. ниже |
-| E2E «внешний сервис» | `tests/e2e/external-service` (Go, на SDK): регистрация сервиса-владельца, оператор и делегированный токен, подчинённый агент с ключом ES256, вход по `private_key_jwt`, проверка токена сервисом (Verifier), ротация ключа, отключение (introspection, событие), журнал владельца, удаление, отказы (чужой ключ, повтор `jti`, сервисный токен на изменение, роль вне списка, обход через Admin API) — 43 проверки | стенд | `cd tests/e2e/external-service && go run .` |
+| E2E «внешний сервис» | `tests/e2e/external-service` (Go, на SDK): регистрация сервиса-владельца, оператор и делегированный токен, подчинённый агент с ключом ES256, вход по `private_key_jwt`, проверка токена сервисом (Verifier), ротация ключа, отключение (introspection, событие), журнал владельца, удаление, отказы (чужой ключ, повтор `jti`, сервисный токен на изменение, роль вне списка, обход через Admin API) — 40 проверок | стенд | `cd tests/e2e/external-service && go run .` |
 | Контрактные (SDK) | пять клиентских библиотек против живого контейнера: 17 векторов (испорченные подписи, `alg=none`/`HS256`, неизвестный `kid`, чужая аудитория, просрочка по переведённым часам) + живые сценарии (ротация refresh, introspection после отзыва, кэш client_credentials, ротация JWKS, ответы middleware 401/403; .NET и Go — регистрация подчинённого со своим ключом и вход по `private_key_jwt`) — одинаковый результат у всех SDK | Docker | `tests/sdk-contract/run.ps1` |
 | Нагрузка | выдача токенов по всем потокам, JWKS, Admin API под параллельной нагрузкой; входы по паролю — от пула пользователей `load-01…` (создаётся скриптом), а не от одного; отдельно — 200 подчинённых клиентов с ключами ES256 по `private_key_jwt` («токен каждому раз в 5 минут» сжато до 20 с) | стенд | `tests/load/run-load.ps1`, `tests/load/run-managed-load.ps1` |
 | Отказоустойчивость | рестарты, `kill -9`, отказы узлов, БД и балансировщика под непрерывным трафиком (кластер — с `docker-compose.ha-nodes.yml`: сценарии обращаются к отдельным узлам) | Docker | `tests/resilience/run-resilience.ps1` |
@@ -32,6 +32,16 @@ Unit, интеграционные, контрактные тесты SDK и E2E
 `e2e-artifacts` (`tests/artifacts/demo`, `container-*.log`).
 
 ## Запуск стенда для UI-тестов
+
+Проще всего — скриптом демо-стенда: `scripts\demo.cmd -Build` (Windows) или `scripts/demo.sh --build` (Linux) собирает
+образ из исходников, поднимает стенд, заполняет демо-данные и запускает четыре приложения. Затем:
+
+```powershell
+dotnet test tests/TslAuth.UiTests                                  # в фоне (headless)
+$env:UI_HEADED = "1"; dotnet test tests/TslAuth.UiTests            # с видимым браузером — видно каждое действие
+```
+
+Вручную — по шагам:
 
 ```powershell
 $env:BOOTSTRAP_API_CLIENT_ID='admin-cli'; $env:BOOTSTRAP_API_CLIENT_SECRET='demo-admin-cli-secret-2026'

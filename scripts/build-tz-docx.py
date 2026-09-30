@@ -1,6 +1,7 @@
-"""Сборка Word-версии ЧТЗ (docs/TZ-tsl-auth.docx) из docs/tz.md.
+"""Сборка Word-версии ЧТЗ из Markdown: по умолчанию docs/TZ-tsl-auth.docx из docs/tz.md.
 
 Запуск из корня репозитория: python scripts/build-tz-docx.py [--version 2.2] [--date 30.09.2026]
+Другое ЧТЗ: python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx     --version 1.0 --status "постановка, реализация не начата"
 Нужен python-docx (pip install python-docx). Переводит заголовки, абзацы, списки, таблицы GFM, блоки кода и картинки
 (схемы Mermaid уже отрисованы в docs/diagrams — см. scripts/render-diagrams.ps1; исходники схем в <details> опускаются).
 Титульный блок (название, версия, статус) добавляется здесь; ссылки превращаются в текст.
@@ -17,6 +18,7 @@ from docx.shared import Cm, Pt
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "docs", "tz.md")
 OUT = os.path.join(ROOT, "docs", "TZ-tsl-auth.docx")
+TASK = re.compile(r"^\[( |x|X)\]\s+")
 
 LINK = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$")
@@ -49,7 +51,7 @@ def table_rows(lines):
     return rows
 
 
-def build(version, date):
+def build(version, date, src=SRC, out=OUT, status="проект для согласования"):
     doc = Document()
     section = doc.sections[0]
     section.left_margin = section.right_margin = Cm(2)
@@ -57,7 +59,7 @@ def build(version, date):
     style.font.name = "Calibri"
     style.font.size = Pt(10.5)
 
-    with open(SRC, encoding="utf-8") as f:
+    with open(src, encoding="utf-8") as f:
         lines = f.read().split("\n")
 
     title = lines[0].lstrip("# ").strip()
@@ -67,7 +69,7 @@ def build(version, date):
     doc.add_paragraph(title).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("ERP «Уклад»: компонент «Управление идентификацией»").alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Версия {version} от {date}").alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph("Статус: проект для согласования").alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Статус: {status}").alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("Составлено по шаблону ЧТЗ базы знаний UKA (07.01).").alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph()
 
@@ -101,7 +103,7 @@ def build(version, date):
         m = IMAGE.match(stripped)
         if m:
             alt, path = m.groups()
-            full = os.path.join(os.path.dirname(SRC), path)
+            full = os.path.join(os.path.dirname(src), path)
             if os.path.exists(full):
                 figure += 1
                 doc.add_picture(full, width=Cm(16.5))
@@ -144,6 +146,8 @@ def build(version, date):
             if indent:
                 style_name += " 2"
             p = doc.add_paragraph(style=style_name)
+            # Пункт-галочка «- [ ]» / «- [x]» — знаком флажка.
+            text = TASK.sub(lambda t: "☑ " if t.group(1) != " " else "☐ ", text)
             inline(p, text)
             i += 1
             continue
@@ -161,13 +165,16 @@ def build(version, date):
         p = doc.add_paragraph()
         inline(p, " ".join(para))
 
-    doc.save(OUT)
-    print(f"{OUT}: {figure} рисунков, версия {version} от {date}")
+    doc.save(out)
+    print(f"{out}: {figure} рисунков, версия {version} от {date}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", default="2.2")
     parser.add_argument("--date", default="30.09.2026")
+    parser.add_argument("--src", default=SRC, help="исходный Markdown")
+    parser.add_argument("--out", default=OUT, help="файл .docx")
+    parser.add_argument("--status", default="проект для согласования")
     args = parser.parse_args()
-    sys.exit(build(args.version, args.date))
+    sys.exit(build(args.version, args.date, os.path.abspath(args.src), os.path.abspath(args.out), args.status))

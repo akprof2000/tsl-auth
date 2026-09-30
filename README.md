@@ -169,6 +169,7 @@ TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go
 | [Клиентские библиотеки (SDK)](docs/sdk.md) | Пакеты для .NET, Node.js/браузера, Go, Python, Java: защита маршрутов одной строкой, клиент токенов, установка в закрытом контуре |
 | [Контракт SDK](docs/client-contract.md) | Что и в каком порядке проверяет клиент, коды ошибок, чтение `permissions`, кэш JWKS, ротация refresh, контрактные тесты |
 | [Релизная политика](docs/release-policy.md) | Версии (semver), что блокирует релиз, обновление и откат, кто и как выпускает |
+| [ЧТЗ: интеграция с Active Directory](docs/task-active-directory.md) | Постановка ([Word](docs/TZ-active-directory.docx), не реализовано): вход по паролю AD, роли из групп AD, синхронизация, Kerberos; требования, проверки, этапы 1.6–1.8 |
 
 Схемы Mermaid в документации дублируются картинками `docs/diagrams/*.png`: GitHub рисует Mermaid сам, GitFlic — нет.
 Схему правят в блоке «Исходник схемы (Mermaid)», затем запускают `scripts/render-diagrams.ps1` — он обновит картинку.

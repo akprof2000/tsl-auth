@@ -58,6 +58,7 @@ $env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с види
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
 ./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
 python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx)
+python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx --version 1.0 --status "постановка для согласования, реализация не начата"
 ```
 
 После изменения схем Mermaid в документации — `scripts/render-diagrams.ps1` (картинки в `docs/diagrams`).
@@ -79,6 +80,9 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   `KEEP=1 KEEP_PIPELINES=1 CI_REGISTRY_IMAGE=registry.gitflic.ru/project/uklad/tsl-auth CI_PROJECT_PATH=uklad/tsl-auth sh scripts/gitflic-prune.sh`
   (с `GITFLIC_API_TOKEN` в окружении; сначала `DRY_RUN=1`).
 - Место ограничено: артефакты CI живут до суток, в реестрах и релизах — не больше трёх версий.
+- `*.docx` хранятся в **Git LFS** (`.gitattributes`): после клона — `git lfs install --local` и `git lfs pull`.
+  `git push origin` отправляет LFS-объекты только на GitFlic (адрес LFS берётся из URL `origin`); на GitHub их
+  переносит задание `mirror-github` (`git lfs push`). Другие большие двоичные файлы — тоже через LFS, добавив шаблон.
 - Релизная политика — `docs/release-policy.md` (semver, что блокирует релиз, откат).
 
 ## Репозитории и CI
@@ -218,7 +222,10 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
 
 ## Открытые темы
 
-- Интеграция с Active Directory (LDAP-вход и синхронизация, затем Kerberos/SPNEGO) — обсуждалась как вопрос, не начата;
-  отладка на Samba AD DC в Docker, прозрачный вход проверять на машине Windows в домене.
+- Интеграция с Active Directory — постановка [`docs/task-active-directory.md`](docs/task-active-directory.md) (Ф-AD-1…16,
+  этапы 1.6 вход и группы → 1.7 синхронизация → 1.8 Kerberos/SPNEGO), реализация не начата; открытые вопросы — раздел 12
+  (ручные роли для записей AD, заранее создаваемые записи, число доменов). Отладка на Samba AD DC в Docker, прозрачный
+  вход проверять на машине Windows в домене. Word — `docs/TZ-active-directory.docx`. Рабочая копия постановки — Claude Doc
+  https://claude.ai/code/artifact/d57b291b-8a8d-4801-8c23-f95e1a87f1c1; изменения переносить в репозиторий.
 - Кластер, стенд мониторинга, OpenBao и секреты из файла настроек в конвейер не входят — проверяются вручную
   `tests/resilience/run-*.ps1` перед релизом.

@@ -11,17 +11,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 HOST="${PKG_BASE#https://}"
 
 echo "== NuGet → GitFlic"
-# Индекс реестра требует basic-аутентификации: источник с логином и токеном в отдельном nuget.config, push по имени.
-NUGET_CFG="$(mktemp -d)/nuget.config"
-cat > "$NUGET_CFG" <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources><clear /><add key="gitflic" value="$PKG_BASE/nuget/index.json" /></packageSources>
-  <packageSourceCredentials><gitflic><add key="Username" value="$GITFLIC_PKG_USER" /><add key="ClearTextPassword" value="$GITFLIC_PKG_TOKEN" /></gitflic></packageSourceCredentials>
-</configuration>
-EOF
-dotnet nuget push "$DIST"/nuget/*.nupkg --source gitflic --api-key "$GITFLIC_PKG_TOKEN" --skip-duplicate --configfile "$NUGET_CFG"
-rm -rf "$(dirname "$NUGET_CFG")"
+export PKG_BASE GITFLIC_PKG_USER GITFLIC_PKG_TOKEN
+sh scripts/gitflic-nuget-push.sh "$DIST"/nuget/*.nupkg
 
 echo "== npm → GitFlic"
 tmp_npmrc="$(mktemp)"; printf '//%s/npm/:_authToken=%s\n' "$HOST" "$GITFLIC_PKG_TOKEN" > "$tmp_npmrc"
@@ -30,7 +21,8 @@ rm -f "$tmp_npmrc"
 
 echo "== PyPI → GitFlic"
 python -m pip install --quiet twine
-TWINE_USERNAME="$GITFLIC_PKG_USER" TWINE_PASSWORD="$GITFLIC_PKG_TOKEN" python -m twine upload --repository-url "$PKG_BASE/pypi" --skip-existing "$DIST"/pypi/*
+sh scripts/gitflic-pypirc.sh
+python -m twine upload --repository gitflic "$DIST"/pypi/*
 
 echo "== Maven → GitFlic"
 settings="$(mktemp)"

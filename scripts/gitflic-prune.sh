@@ -39,7 +39,7 @@ get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; d
   fi
   while read -r v; do
     ver=$(printf '%s' "$v" | jq -r '.version // .name // .packageVersion // empty'); st=$(printf '%s' "$v" | stamp)
-    [ -n "$ver" ] && printf '%s\t%s\n' "$st" "$ver"
+    [ -n "$ver" ] && printf '%s|%s\n' "$st" "$ver"
   done < "/tmp/raw.$id" | sort -r > "/tmp/versions.$id"
   total=$(wc -l < "/tmp/versions.$id"); echo "    версий: $total"
   # latest — плавающий тег образа, его не трогаем; остальные — по дате, новейшие KEEP остаются.
@@ -52,7 +52,7 @@ done
 echo "== Релизы $PROJECT: оставляем $KEEP"
 get "/project/$PROJECT/release?size=100" | items | while read -r r; do
   id=$(printf '%s' "$r" | uuid); st=$(printf '%s' "$r" | stamp); tag=$(printf '%s' "$r" | jq -r '.tagName // .tag // .name // "?"')
-  [ -n "$id" ] && printf '%s\t%s\t%s\n' "$st" "$id" "$tag"
+  [ -n "$id" ] && printf '%s|%s|%s\n' "$st" "$id" "$tag"
 done | sort -r > /tmp/releases
 echo "  релизов: $(wc -l < /tmp/releases)"
 tail -n +$((KEEP + 1)) /tmp/releases | while IFS='|' read -r st id tag; do

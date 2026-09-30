@@ -58,13 +58,13 @@ switch ($Command) {
     }
     "jobs" {
         Get-Items (Invoke-Api GET "/project/$Project/cicd/pipeline/$Arg1/jobs?size=100") | ForEach-Object {
-            "{0,-6} {1,-22} {2,-12} {3,-10} {4}" -f $_.localId, $_.name, $_.status, $_.stageName, $_.runnerName
+            "{0,-6} {1,-22} {2,-10} {3,-9} {4}" -f $_.localId, $_.name, $_.status, $_.stageName, $_.finishedAt
         }
     }
     "artifacts" { Get-Items (Invoke-Api GET "/project/$Project/cicd/pipeline/$Arg1/artifacts?size=100") | ConvertTo-Json -Depth 6 }
     "runners" {
         Get-Items (Invoke-Api GET "/project/$Project/runners?size=100") | ForEach-Object {
-            "{0,-20} {1,-10} {2,-26} {3}" -f $_.name, $_.status, (@($_.tags) -join ","), ($_.uuid ?? $_.id)
+            "{0,-20} {1,-10} {2,-26} {3}" -f $_.name, $(if ($_.active) { "активен" } else { "неактивен" }), (@($_.tags) -join ","), $_.id
         }
     }
     "runner-tags" { Invoke-Api POST "/project/$Project/runners/$Arg1/edit" @{ tags = @($Arg2 -split ",") } | ConvertTo-Json -Depth 4 }

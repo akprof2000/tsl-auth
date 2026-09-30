@@ -131,8 +131,18 @@ python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-вер�
   Когда `net-check-hel` снова зелёный — публикация возвращается на агент (ничего менять не нужно).
   Так же опубликован 1.5.1 (30.09.2026): образ `1.5.1`/`latest` (digest `sha256:97640efb…`), пакеты SDK `1.5.1790790170`.
 - GitFlic **не создаёт конвейер на push тега** (`git push origin vX.Y.Z` — в списке конвейеров ничего), а
-  `POST …/cicd/pipeline/start` с `{"ref":"vX.Y.Z"}` запускает обычный прогон `main`. Релиз GitFlic через
-  `POST /project/uklad/tsl-auth/release` тоже не создаётся (500 на любые поля) — страницу релиза заводить в веб-интерфейсе.
+  `POST …/cicd/pipeline/start` с `{"ref":"vX.Y.Z"}` запускает обычный прогон `main`.
+- **Релиз GitFlic вручную (как 1.5.1, образец — релиз openbao-config 1.0.0):** `POST /project/uklad/tsl-auth/release`
+  с JSON `{title, tagName, description, isDraft, isPreRelease}` (другие имена полей — 500); файлы —
+  `POST …/release/<id>/file`, multipart-поле `files` (текстовые файлы — 415, поэтому SHA-256 — в описании);
+  удалить — `DELETE …/release/<id>`. Состав: `tsl-auth-image-X.Y.Z-linux-amd64.tar.gz` (`docker save | gzip`),
+  `tsl-auth-sdk-X.Y.Z.tar.gz` (`scripts/build-sdk-packages.sh X.Y.Z`), `tsl-auth-deploy-X.Y.Z.tar.gz` (compose,
+  `.env.example`, `deploy/`, демо- и импорт-скрипты), `tsl-auth-docs-X.Y.Z.zip`; образ с тегами `X.Y.Z`, `X.Y`, `X`,
+  `latest`; пакеты SDK — версией `X.Y.Z` (временные `X.Y.<время>` удалить; npm не публикует «меньшую» версию, пока
+  есть большая — сначала удалить её). `gitflic-prune.sh` с `KEEP=1` для образа не запускать: он считает теги
+  (`1`, `1.5`, `1.5.1`, `latest`) отдельными версиями и удалил бы нужные.
+- На сервере агентов кончалось место (30.09.2026, `No space left on device` в integration/e2e): тома docker:dind —
+  проверка `ssh.exe -p 443 alexey_kozlov@77.42.83.24 'df -h /; docker system df'`.
 
 ### Особенности GitFlic (проверено)
 

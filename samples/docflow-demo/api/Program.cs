@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Docflow.Api;
+using Docflow.Shared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,54 @@ builder.Services.AddDbContext<DocflowDb>(o => o.UseSqlite(builder.Configuration.
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddScoped(sp => CurrentUser.From(sp.GetRequiredService<IHttpContextAccessor>().HttpContext!.User, auth.ClientId));
 builder.Services.AddHttpContextAccessor();
+// Справочник API: /docs (Scalar) и /openapi/v1.json — какие методы есть, какие разрешения нужны, как вызывать.
+builder.Services.AddDemoApiDocs("Docflow API", """
+    REST API демо «Документооборот» поверх TSL Auth. Им пользуется PWA; его же можно вызывать из своих сервисов.
+
+    * Токен — access-токен TSL Auth с `aud = docflow-api` (вход в PWA: authorization code + PKCE, клиент `docflow-web`).
+    * Права — разрешения матрицы приложения `docflow-api` (claim `permissions`); у каждого метода указано нужное.
+    * Ошибки — JSON `{ status, detail }`.
+    """, auth.ClientId, new Dictionary<string, string>
+{
+    ["GET /health"] = "Проверка работоспособности",
+    ["GET /config.js"] = "Конфигурация PWA: адрес TSL Auth и client_id",
+    ["GET /api/me"] = "Текущий пользователь, его роли и разрешения",
+    ["GET /api/me/requests"] = "Мои заявки на роли (саморегистрация)",
+    ["GET /api/documents/types"] = "Типы документов",
+    ["GET /api/documents"] = "Список документов (фильтры status, search, scope)",
+    ["GET /api/documents/{id}"] = "Документ с маршрутом, комментариями и вложениями",
+    ["POST /api/documents"] = "Создать черновик",
+    ["PUT /api/documents/{id}"] = "Изменить черновик",
+    ["DELETE /api/documents/{id}"] = "Удалить черновик",
+    ["POST /api/documents/{id}/submit"] = "Отправить на согласование",
+    ["POST /api/documents/{id}/decide"] = "Решение по этапу маршрута (согласовать, утвердить, вернуть)",
+    ["POST /api/documents/{id}/archive"] = "Отправить в архив",
+    ["POST /api/documents/{id}/comments"] = "Добавить комментарий",
+    ["POST /api/documents/{id}/attachments"] = "Загрузить вложение (multipart/form-data)",
+    ["GET /api/documents/{id}/attachments/{fileId}"] = "Скачать вложение",
+    ["DELETE /api/documents/{id}/attachments/{fileId}"] = "Удалить вложение",
+    ["GET /api/dashboard"] = "Сводка для панели руководителя",
+    ["GET /api/notifications"] = "Мои уведомления",
+    ["POST /api/notifications/read"] = "Отметить уведомления прочитанными",
+    ["GET /api/directory"] = "Справочник сотрудников (для выбора согласующих)",
+    ["GET /api/roles"] = "Роли приложения из матрицы TSL Auth",
+    ["GET /api/users"] = "Пользователи приложения (App API TSL Auth)",
+    ["GET /api/users/matrix"] = "Матрица доступа приложения",
+    ["POST /api/users"] = "Создать пользователя в TSL Auth",
+    ["POST /api/users/link"] = "Подключить существующего пользователя TSL Auth",
+    ["PUT /api/users/{id}"] = "Изменить профиль пользователя",
+    ["PUT /api/users/{id}/roles"] = "Назначить роли пользователю",
+    ["DELETE /api/users/{id}"] = "Отключить пользователя от приложения",
+    ["POST /api/users/{id}/temporary-password"] = "Выдать временный пароль",
+    ["POST /api/users/{id}/invite"] = "Отправить приглашение",
+    ["GET /api/users/requests"] = "Заявки на роли (фильтр status)",
+    ["POST /api/users/requests/{id}/approve"] = "Одобрить заявку",
+    ["POST /api/users/requests/{id}/reject"] = "Отклонить заявку",
+    ["GET /api/users/audit"] = "Журнал действий по приложению",
+    ["GET /api/chat/{path}"] = "Чат с ботом безопасности (прокси в Docflow.Bot, см. его /docs/api)",
+    ["POST /api/chat/{path}"] = "Чат с ботом безопасности: отправить сообщение (прокси в Docflow.Bot)",
+    ["DELETE /api/chat/{path}"] = "Чат с ботом безопасности: очистить историю (прокси в Docflow.Bot)",
+});
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
@@ -83,6 +132,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/health", () => "ok");
+app.MapDemoApiDocs("Docflow API");
 
 // Конфигурация PWA: адрес TSL Auth и client_id задаются в окружении контейнера, а не при сборке фронта.
 app.MapGet("/config.js", () => Results.Text(

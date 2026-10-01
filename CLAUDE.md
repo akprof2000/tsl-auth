@@ -53,11 +53,13 @@ dotnet test tests/TslAuth.IntegrationTests          # нужен запущен�
 docker compose up -d --build                         # стенд на http://localhost:8080
 ./samples/seed-demo.ps1                              # демо-приложения, матрицы, alice/bob (секреты confidential-клиентов перевыпускает)
 scripts\demo.cmd  |  ./scripts/demo.ps1  |  scripts/demo.sh   # демо-стенд целиком: образ GitFlic (или -Build/--build), seed, 4 приложения; stop / clean
+# demo.ps1: каждое демо-приложение — в своём окне «demo <имя>» с живым stdout (журналы только в stdout); в CI/тестах
+# (tests/e2e/start-demos.ps1 без -Console) stdout сохраняется в tests/artifacts/demo, окна скрыты
 $env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с видимым браузером (скриншоты — tests/artifacts/ui)
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
 ./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
-python scripts/build-tz-docx.py --version 2.2 --date 30.09.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx)
+python scripts/build-tz-docx.py --version 2.4 --date 01.10.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx); версию поднимать при каждом изменении tz.md
 python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx --version 1.0 --status "постановка для согласования, реализация не начата"
 ```
 
@@ -69,6 +71,11 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - **Полная пирамида тестов** для любого изменения/проекта: unit → интеграционные (SQLite и PostgreSQL) → нагрузка →
   отказоустойчивость → наблюдаемость → UI-автотесты. В отчёте указывать, какие уровни прогнаны.
 - Документация и ЧТЗ меняются вместе с поведением; расхождение — дефект, блокирует релиз.
+- **Каждый модуль с REST API** публикует документацию как TSL Auth: `/docs` — руководство, `/docs/api` — справочник Scalar,
+  `/openapi/v1.json`; у каждого метода — подпись и нужное разрешение матрицы ([`docs/integration.md` §12](docs/integration.md#12-документация-rest-api-модуля-docs-и-docsapi)).
+  .NET — `Scalar.AspNetCore` (образец `samples/docflow-demo/shared/ApiDocs.cs`); остальные — общие `guide.html`/`reference.html`
+  из `samples/go-api/docs` (копии в node-spa и java-api должны совпадать — проверяет `validate-docs.ps1`), скрипт Scalar —
+  с TSL Auth (`<issuer>docs/api/scalar.js`), не CDN.
 - Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/demo.* -Build`).
 - Демо-приложения проверяются по `127.0.0.1`, а не `localhost`: Python-демо слушает только IPv4, а HttpClient PowerShell
   сначала пробует `::1` и ждёт таймаут.

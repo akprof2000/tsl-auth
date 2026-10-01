@@ -1,0 +1,70 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Demo Java API",
+    "version": "v1",
+    "description": "REST API демо-склада на Java (только JDK и SDK `ru.tsl.auth:tsl-auth-client`) поверх TSL Auth.\n\n* Токен — access-токен TSL Auth с `aud = demo-java-api` (вход пользователя в приложение или `client_credentials`).\n* Права — разрешения матрицы приложения `demo-java-api` (claim `permissions` = `demo-java-api:<разрешение>`); у каждого метода указано нужное.\n* Проверку токена и прав делает SDK: `TslAuthHandler.protect(handler, Require.permission(\"inventory.read\"))`.\n* Ошибки — JSON `{ \"error\": \"…\", \"error_description\": \"…\" }`: 401 — нет или неверный токен, 403 — нет разрешения, 400 — неверные параметры."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Проверка работоспособности",
+        "description": "Без токена.",
+        "security": [],
+        "responses": { "200": { "description": "`{ \"status\": \"ok\", \"audience\": \"demo-java-api\" }`" } }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Кто я и какие у меня права в этом API",
+        "description": "Нужен access-токен (любой вошедший пользователь или сервис).",
+        "responses": {
+          "200": { "description": "`{ subject, subjectType, username, roles, permissions, mfa }`" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/inventory": {
+      "get": {
+        "summary": "Остатки на складе",
+        "description": "Нужен access-токен с разрешением `demo-java-api:inventory.read` (матрица TSL Auth).",
+        "responses": {
+          "200": { "description": "`{ items: { \"<артикул>\": количество } }`" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/inventory/adjust": {
+      "post": {
+        "summary": "Изменить остаток",
+        "description": "Нужен access-токен с разрешением `demo-java-api:inventory.write` (матрица TSL Auth).",
+        "parameters": [
+          { "name": "sku", "in": "query", "required": true, "description": "Артикул", "schema": { "type": "string", "example": "bolt-m6" } },
+          { "name": "delta", "in": "query", "required": true, "description": "Изменение количества (может быть отрицательным)", "schema": { "type": "integer", "example": 10 } }
+        ],
+        "responses": {
+          "200": { "description": "`{ sku, quantity, by }` — новый остаток и кто изменил" },
+          "400": { "description": "Нет `sku` или `delta`, либо `delta` не целое число" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    }
+  },
+  "security": [ { "bearer": [] } ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access-токен TSL Auth с aud = demo-java-api."
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Нет токена, подпись, issuer, audience или срок не прошли проверку" },
+      "Forbidden": { "description": "В токене нет нужного разрешения матрицы" }
+    }
+  }
+}

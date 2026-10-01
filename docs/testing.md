@@ -1,6 +1,6 @@
 # Тестирование
 
-![Тестирование](diagrams/4cd8821adf79.png)
+![Тестирование](diagrams/6452dfa03827.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
@@ -8,7 +8,7 @@
 flowchart TB
     R["Отказоустойчивость — 12 сценариев<br/>tests/resilience"]
     L["Нагрузка — k6<br/>tests/load"]
-    UI["UI-автотесты — Playwright, 13 сценариев<br/>tests/TslAuth.UiTests"]
+    UI["UI-автотесты — Playwright, 14 сценариев<br/>tests/TslAuth.UiTests"]
     I["Интеграционные — 187: сценарии × SQLite и PostgreSQL, поток authorization code + PKCE, двухфакторный вход, подчинённые клиенты и private_key_jwt, регрессии ревизии, мониторинг<br/>tests/TslAuth.IntegrationTests"]
     U["Unit — 135<br/>tests/TslAuth.UnitTests"]
     R --- L --- UI --- I --- U
@@ -54,7 +54,7 @@ dotnet build tests/TslAuth.UiTests
 dotnet test tests/TslAuth.UiTests                        # скриншоты шагов: tests/artifacts/ui
 ```
 
-`UI_HEADED=1` — показать браузер. Адреса переопределяются `UI_AUTH_URL`, `UI_SPA_URL` и т.д.
+`UI_HEADED=1` — показать браузер. Адреса переопределяются `UI_AUTH_URL`, `UI_SPA_URL`, `UI_GO_URL` и т.д.
 
 ## Результаты
 
@@ -62,9 +62,9 @@ dotnet test tests/TslAuth.UiTests                        # скриншоты ш
 
 | Набор | Результат |
 |---|---|
-| Unit | 105 / 105 |
-| Интеграционные (SQLite + PostgreSQL) | 155 / 155 |
-| UI (Playwright) | 11 / 11 |
+| Unit | 135 / 135 |
+| Интеграционные (SQLite + PostgreSQL) | 187 / 187 |
+| UI (Playwright) | 14 / 14 (в том числе `ApiDocs_GuideAndScalarReference_InEveryModule` — `/docs` и `/docs/api` TSL Auth, Node API и Go API) |
 | Контрактные SDK (.NET, Node, Go, Python, Java) | все зелёные, см. workflow `SDK` |
 
 ### Нагрузка

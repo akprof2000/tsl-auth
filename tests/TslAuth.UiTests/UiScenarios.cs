@@ -431,4 +431,42 @@ public sealed class UiScenarios(UiFixture fx)
         await page.Locator("tr", new() { HasText = name }).Locator("form[action*=Revoke] button").ClickAsync();
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("tokens.revoked"));
     }
+
+    // ---------- Документация REST API модулей ----------
+
+    /// <summary>
+    /// У каждого модуля с REST API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar по /openapi/v1.json.
+    /// Демо-API берут скрипт Scalar с TSL Auth (не CDN), поэтому справочник проверяется в браузере, а не только по статусу.
+    /// </summary>
+    [Fact]
+    public async Task ApiDocs_GuideAndScalarReference_InEveryModule()
+    {
+        var page = await fx.NewPageAsync();
+
+        await page.GotoAsync($"{UiFixture.Auth}/docs");
+        await Expect(page.Locator($"a[href='/docs/api']").First).ToBeVisibleAsync();
+        await page.GotoAsync($"{UiFixture.Auth}/docs/api");
+        await Expect(page.GetByText("TSL Auth API").First).ToBeVisibleAsync();
+        await UiFixture.ShotAsync(page, "90-auth-api-reference");
+
+        foreach (var (name, url, operation) in new[]
+        {
+            ("node", UiFixture.Spa, "Список заказов"),
+            ("go", UiFixture.GoApi, "Список отчётов"),
+        })
+        {
+            await page.GotoAsync($"{url}/docs");
+            await Expect(page.Locator("#ops tr", new() { HasText = operation })).ToBeVisibleAsync();
+            await Expect(page.Locator("#ops pre").First).ToContainTextAsync("curl");
+            await UiFixture.ShotAsync(page, $"91-{name}-api-guide");
+
+            await page.GotoAsync($"{url}/docs/api");
+            await Expect(page.GetByText(operation).First).ToBeVisibleAsync(); // Scalar загрузился с TSL Auth и прочитал OpenAPI
+            await UiFixture.ShotAsync(page, $"92-{name}-api-reference");
+
+            using var http = new HttpClient();
+            var spec = await http.GetFromJsonAsync<JsonElement>($"{url}/openapi/v1.json");
+            Assert.True(spec.GetProperty("paths").EnumerateObject().Any());
+        }
+    }
 }

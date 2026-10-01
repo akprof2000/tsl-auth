@@ -12,6 +12,9 @@
 
 Переменные: `AUTH_ISSUER` (по умолчанию `http://localhost:8080/`), `API_AUDIENCE` (`demo-java-api`), `PORT` (`5105`).
 
+Документация API — как у TSL Auth: руководство http://localhost:5105/docs, справочник Scalar http://localhost:5105/docs/api,
+OpenAPI — `/openapi/v1.json` (файлы в `src/main/resources/docs`, см. [integration.md §12](../../docs/integration.md#12-документация-rest-api-модуля-docs-и-docsapi)).
+
 ## 1. Регистрация в TSL Auth
 
 `samples/seed-demo.ps1` уже создаёт приложение-API `demo-java-api` с разрешениями `inventory.read`, `inventory.write`

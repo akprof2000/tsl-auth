@@ -10,6 +10,7 @@
 //     (это решает TSL Auth по своей матрице, бот права не проверяет и не хранит).
 using System.Collections.Concurrent;
 using Docflow.Bot;
+using Docflow.Shared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 // Проверка здоровья для Docker HEALTHCHECK: в distroless-образе нет curl, поэтому проверяет сам процесс.
@@ -42,12 +43,26 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     o.TokenValidationParameters.ValidAlgorithms = ["RS256"];
 });
 builder.Services.AddAuthorization();
+// Справочник API: /docs (Scalar) и /openapi/v1.json.
+builder.Services.AddDemoApiDocs("Docflow Bot API", """
+    Чат с ботом безопасности TSL Auth («мессенджер» docflow-chat). PWA вызывает его через прокси API документооборота
+    (`/api/chat/...`), напрямую — `/chat/...` с тем же access-токеном пользователя (`aud = docflow-api`).
+
+    Команды бота: `/link КОД` (привязать чат к учётной записи), `/whoami`, `/reset`, `/forcepwd`, `/lock`, `/help` — полный список бот присылает на `/help`.
+    """, options.Audience, new Dictionary<string, string>
+{
+    ["GET /health"] = "Проверка работоспособности",
+    ["GET /chat/history"] = "История чата текущего пользователя (при первом открытии бот здоровается)",
+    ["POST /chat/messages"] = "Отправить сообщение или команду боту; в ответе — сообщение и ответы бота",
+    ["DELETE /chat/history"] = "Очистить историю чата",
+});
 
 var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/health", () => "ok");
+app.MapDemoApiDocs("Docflow Bot API");
 
 var chat = app.MapGroup("/chat").RequireAuthorization();
 

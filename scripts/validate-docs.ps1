@@ -101,6 +101,25 @@ if (-not $SkipMermaid -and $mermaid.Count -gt 0) {
     Remove-Item $tmp -Recurse -Force
 }
 
+# Документация REST API демо (/docs, /docs/api): общие шаблоны лежат в трёх модулях — копии должны совпадать,
+# OpenAPI — разбираться как JSON, у каждого метода — подпись (summary) и требования к доступу (description).
+$docDirs = "samples/go-api/docs", "samples/node-spa/docs", "samples/java-api/src/main/resources/docs"
+foreach ($name in "guide.html", "reference.html") {
+    $hashes = $docDirs | ForEach-Object { (Get-FileHash (Join-Path $_ $name)).Hash } | Select-Object -Unique
+    if (@($hashes).Count -ne 1) { $problems.Add("копии $name в $($docDirs -join ', ') различаются — скопируйте из samples/go-api/docs") }
+}
+foreach ($dir in $docDirs) {
+    $specFile = Join-Path $dir "openapi.json"
+    try {
+        $spec = Get-Content $specFile -Raw | ConvertFrom-Json
+        foreach ($path in $spec.paths.PSObject.Properties) {
+            foreach ($op in $path.Value.PSObject.Properties) {
+                if (-not $op.Value.summary -or -not $op.Value.description) { $problems.Add("${specFile}: у $($op.Name.ToUpper()) $($path.Name) нет summary или description") }
+            }
+        }
+    } catch { $problems.Add("${specFile}: не разбирается как JSON: $_") }
+}
+
 Write-Host "Файлов: $($files.Count), диаграмм Mermaid: $($mermaid.Count), проблем: $($problems.Count)"
 $problems | ForEach-Object { Write-Host "  ✗ $_" -ForegroundColor Red }
 exit $problems.Count

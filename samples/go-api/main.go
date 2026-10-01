@@ -6,12 +6,16 @@
 //
 // Переменные: AUTH_ISSUER, API_AUDIENCE (demo-go-api), CLIENT_SECRET (для token exchange),
 // NODE_API_URL, NODE_API_SCOPE (demo-node-api), PORT, CORS_ORIGIN.
+//
+// Документация API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar, /openapi/v1.json — OpenAPI
+// (файлы в каталоге docs, встраиваются в бинарник).
 package main
 
 import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -29,15 +33,36 @@ import (
 )
 
 var (
-	issuer      = env("AUTH_ISSUER", "http://localhost:8080/")
-	audience    = env("API_AUDIENCE", "demo-go-api")
-	secret      = env("CLIENT_SECRET", "")
-	nodeAPI     = env("NODE_API_URL", "http://localhost:5102")
-	nodeScope   = env("NODE_API_SCOPE", "demo-node-api")
-	corsOrigin  = env("CORS_ORIGIN", "http://localhost:5102")
-	keys        = &jwks{}
-	httpClient  = &http.Client{Timeout: 10 * time.Second}
+	issuer     = env("AUTH_ISSUER", "http://localhost:8080/")
+	audience   = env("API_AUDIENCE", "demo-go-api")
+	secret     = env("CLIENT_SECRET", "")
+	nodeAPI    = env("NODE_API_URL", "http://localhost:5102")
+	nodeScope  = env("NODE_API_SCOPE", "demo-node-api")
+	corsOrigin = env("CORS_ORIGIN", "http://localhost:5102")
+	keys       = &jwks{}
+	httpClient = &http.Client{Timeout: 10 * time.Second}
 )
+
+//go:embed docs/guide.html docs/reference.html docs/openapi.json
+var docsFS embed.FS
+
+// mapDocs публикует документацию API: руководство, справочник Scalar (скрипт — с TSL Auth, без CDN) и OpenAPI.
+func mapDocs(mux *http.ServeMux) {
+	file := func(name, contentType string, edit func(string) string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			b, _ := docsFS.ReadFile("docs/" + name)
+			w.Header().Set("Content-Type", contentType)
+			_, _ = io.WriteString(w, edit(string(b)))
+		}
+	}
+	same := func(s string) string { return s }
+	authBase := strings.TrimSuffix(issuer, "/") + "/"
+	mux.HandleFunc("GET /docs", file("guide.html", "text/html; charset=utf-8", same))
+	mux.HandleFunc("GET /docs/api", file("reference.html", "text/html; charset=utf-8", func(s string) string {
+		return strings.ReplaceAll(s, "__ISSUER__", authBase)
+	}))
+	mux.HandleFunc("GET /openapi/v1.json", file("openapi.json", "application/json; charset=utf-8", same))
+}
 
 func env(k, d string) string {
 	if v := os.Getenv(k); v != "" {
@@ -210,6 +235,7 @@ func require(permission string, next handler) http.HandlerFunc {
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"ok": true}) })
+	mapDocs(mux)
 
 	// Любой валидный токен для этого API: кто я и какие у меня права здесь.
 	mux.HandleFunc("GET /api/me", require("", func(w http.ResponseWriter, r *http.Request, c claims, _ string) {

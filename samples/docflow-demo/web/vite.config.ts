@@ -30,7 +30,7 @@ export default defineConfig({
       },
       workbox: {
         // API и вход не кэшируются: данные всегда свежие, а токены не должны попадать в кэш.
-        navigateFallbackDenylist: [/^\/api\//, /^\/config\.js/, /^\/callback/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/config\.js/, /^\/callback/, /^\/docs/, /^\/openapi\//],
         runtimeCaching: [
           { urlPattern: ({ url }) => url.pathname === "/config.js", handler: "NetworkFirst" }
         ]

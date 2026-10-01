@@ -9,7 +9,7 @@
 #
 # Нужны Docker Desktop, а для демо-приложений — .NET 10 SDK, Node.js ≥ 20, Go ≥ 1.22, Python ≥ 3.10.
 # Секреты стенда (пароль admin, секрет клиента admin-cli) генерируются в .env при первом запуске, секреты
-# демо-клиентов — в samples/.env.demo; оба файла вне git. Журналы приложений — tests/artifacts/demo.
+# демо-клиентов — в samples/.env.demo; оба файла вне git. Журналы приложений — stdout в их окнах «demo <имя>».
 param(
     [ValidateSet("start", "stop", "clean")] [string]$Action = "start",
     [switch]$Build,
@@ -93,7 +93,8 @@ Write-Host "3. Демо-данные (приложения, матрицы, по
 
 Write-Host "4. Демо-приложения"
 Stop-Demos
-& "$root/tests/e2e/start-demos.ps1" -Issuer "$issuer/"
+# Каждое приложение — в своём окне с живым stdout (журналы только в stdout, как у сервиса).
+& "$root/tests/e2e/start-demos.ps1" -Issuer "$issuer/" -Console
 
 Write-Host ""
 Write-Host "Готово." -ForegroundColor Green

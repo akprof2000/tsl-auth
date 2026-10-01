@@ -35,6 +35,13 @@ flowchart LR
 | Бот безопасности | Чат: привязка, сброс пароля, блокировка, принудительная смена пароля |
 | Профиль | Роли, матрица прав, claims токена, установка PWA |
 
+## Документация API
+
+API и бот публикуют документацию так же, как TSL Auth: руководство `/docs`, справочник Scalar `/docs/api`, OpenAPI
+`/openapi/v1.json` — http://localhost:5200/docs (API документооборота) и http://localhost:5201/docs (бот). Подписи методов —
+в `api/Program.cs` и `bot/Program.cs`, общая настройка — [`shared/ApiDocs.cs`](shared/ApiDocs.cs)
+([integration.md §12](../../docs/integration.md#12-документация-rest-api-модуля-docs-и-docsapi)).
+
 ## Роли (матрица `docflow-api` в TSL Auth)
 
 | Роль | Название | Разрешения |

@@ -2,6 +2,8 @@
 // Без npm-зависимостей: JWT (RS256) проверяется встроенным crypto по JWKS сервиса авторизации.
 //
 // Переменные: AUTH_ISSUER, API_AUDIENCE (demo-node-api), SPA_CLIENT_ID (demo-node-spa), GO_API_URL, PORT.
+// Документация API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar, /openapi/v1.json — OpenAPI
+// (файлы в каталоге docs).
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { createPublicKey, verify } from "node:crypto";
@@ -86,7 +88,14 @@ const routes = {
   // Конфигурация SPA отдаётся скриптом, чтобы не пересобирать фронтенд под каждое окружение.
   "GET /config.js": (req, res) => send(res, 200, `window.APP_CONFIG = ${JSON.stringify(spaConfig)};`, "text/javascript"),
   "GET /health": (req, res) => send(res, 200, { ok: true }),
+  // Документация API. Скрипт справочника Scalar раздаёт TSL Auth (не CDN): адрес подставляется в страницу.
+  "GET /docs": async (req, res) => send(res, 200, await doc("guide.html"), "text/html; charset=utf-8"),
+  "GET /docs/api": async (req, res) =>
+    send(res, 200, (await doc("reference.html")).replaceAll("__ISSUER__", issuer.replace(/\/?$/, "/")), "text/html; charset=utf-8"),
+  "GET /openapi/v1.json": async (req, res) => send(res, 200, JSON.parse(await doc("openapi.json"))),
 };
+
+const doc = async (name) => (await readFile(join(import.meta.dirname, "docs", name))).toString("utf8");
 
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 

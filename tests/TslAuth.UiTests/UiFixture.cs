@@ -20,6 +20,7 @@ public sealed class UiFixture : IAsyncLifetime
     public static string Auth => Env("UI_AUTH_URL", "http://localhost:8080");
     public static string Dotnet => Env("UI_DOTNET_URL", "http://localhost:5101");
     public static string Spa => Env("UI_SPA_URL", "http://localhost:5102");
+    public static string GoApi => Env("UI_GO_URL", "http://localhost:5103");
     public static string Go => Env("UI_GO_URL", "http://localhost:5103");
     public static string Python => Env("UI_PYTHON_URL", "http://localhost:5104");
     public const string DemoPassword = "Demo-Passw0rd!";

@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Маршруты: /health; /api/me — аутентификация; /api/inventory — permission inventory.read;
  * /api/inventory/adjust (POST ?sku=..&delta=..) — permission inventory.write.
  * Переменные: AUTH_ISSUER (http://localhost:8080/), API_AUDIENCE (demo-java-api), PORT (5105).
+ * Документация API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar, /openapi/v1.json — OpenAPI
+ * (ресурсы docs/ в jar).
  */
 public final class App {
     private static final Map<String, Integer> STOCK = new ConcurrentHashMap<>(Map.of("bolt-m6", 120, "nut-m6", 80, "washer-6", 300));
@@ -37,6 +39,15 @@ public final class App {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/health", ex -> json(ex, 200, Map.of("status", "ok", "audience", audience)));
         server.createContext("/api/me", auth.protect(App::me));
+        // Документация API. Скрипт справочника Scalar раздаёт TSL Auth (не CDN): адрес подставляется в страницу.
+        String authBase = issuer.endsWith("/") ? issuer : issuer + "/";
+        server.createContext("/docs", ex -> {
+            String path = ex.getRequestURI().getPath();
+            if (path.equals("/docs") || path.equals("/docs/")) resource(ex, "guide.html", "text/html; charset=utf-8", null);
+            else if (path.equals("/docs/api") || path.equals("/docs/api/")) resource(ex, "reference.html", "text/html; charset=utf-8", authBase);
+            else json(ex, 404, Map.of("error", "not_found"));
+        });
+        server.createContext("/openapi/v1.json", ex -> resource(ex, "openapi.json", "application/json; charset=utf-8", null));
         server.createContext("/api/inventory/adjust", auth.protect(App::adjust, Require.permission("inventory.write")));
         server.createContext("/api/inventory", auth.protect(App::inventory, Require.permission("inventory.read")));
         server.start();
@@ -83,6 +94,25 @@ public final class App {
     }
 
     // ---------- вспомогательное ----------
+
+    /** Отдаёт файл документации из ресурсов docs/; в справочнике __ISSUER__ заменяется адресом TSL Auth. */
+    private static void resource(HttpExchange ex, String name, String contentType, String issuer) throws IOException {
+        if (!"GET".equals(ex.getRequestMethod())) {
+            json(ex, 405, Map.of("error", "method_not_allowed"));
+            return;
+        }
+        String text;
+        try (var in = App.class.getResourceAsStream("/docs/" + name)) {
+            text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        if (issuer != null) text = text.replace("__ISSUER__", issuer);
+        byte[] body = text.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().set("Content-Type", contentType);
+        ex.sendResponseHeaders(200, body.length);
+        try (OutputStream out = ex.getResponseBody()) {
+            out.write(body);
+        }
+    }
 
     private static Map<String, String> query(HttpExchange ex) {
         Map<String, String> m = new LinkedHashMap<>();

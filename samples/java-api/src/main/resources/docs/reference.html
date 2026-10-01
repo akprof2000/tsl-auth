@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- Интерактивный справочник REST API модуля (/docs/api): Scalar по /openapi/v1.json — методы, параметры, примеры на
+     curl, Python, Java, C#, Node.js и Go, вызов с access-токеном. Скрипт Scalar берётся с TSL Auth (он раздаёт его для
+     своего /docs/api), а не из CDN — работает в закрытом контуре. __ISSUER__ сервер заменяет адресом TSL Auth.
+     Один и тот же файл в samples/go-api/docs, samples/node-spa/docs и samples/java-api/src/main/resources/docs. -->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Справочник API</title>
+</head>
+<body>
+  <div id="app"></div>
+  <noscript>Справочнику нужен JavaScript. Описание API — <a href="/openapi/v1.json">/openapi/v1.json</a>.</noscript>
+  <script src="__ISSUER__docs/api/scalar.js"
+          onerror="document.getElementById('app').innerHTML = 'Не удалось загрузить справочник с TSL Auth (__ISSUER__docs/api/scalar.js): сервис недоступен или его документация закрыта (Docs__Public=false). Описание API — <a href=&quot;/openapi/v1.json&quot;>/openapi/v1.json</a>, руководство — <a href=&quot;/docs&quot;>/docs</a>.'"></script>
+  <script>
+    if (window.Scalar) {
+      Scalar.createApiReference("#app", {
+        url: "/openapi/v1.json",
+        baseServerURL: location.origin, // примеры curl — с адресом этого сервиса
+        withDefaultFonts: false,
+        telemetry: false,
+        showDeveloperTools: "never",
+        agent: { disabled: true },
+        mcp: { disabled: true },
+        defaultHttpClient: { targetKey: "shell", clientKey: "curl" },
+        // Примеры кода — только для языков TSL: curl, Python, Java, C#, Node.js, Go (как в /docs/api TSL Auth).
+        hiddenClients: { c: true, clojure: true, dart: true, fsharp: true, http: true, js: true, julia: true, kotlin: true,
+          objc: true, ocaml: true, php: true, powershell: true, r: true, ruby: true, rust: true, swift: true },
+        authentication: { preferredSecurityScheme: "bearer" },
+      });
+    }
+  </script>
+</body>
+</html>

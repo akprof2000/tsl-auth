@@ -1,0 +1,62 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Demo Node API",
+    "version": "v1",
+    "description": "REST API демо-сервиса на Node.js (без npm-зависимостей) поверх TSL Auth. Тот же процесс раздаёт SPA `demo-node-spa`.\n\n* Токен — access-токен TSL Auth с `aud = demo-node-api` (вход в SPA: authorization code + PKCE, либо `client_credentials`).\n* Права — разрешения матрицы приложения `demo-node-api` (claim `permissions` = `demo-node-api:<разрешение>`); у каждого метода указано нужное.\n* Если запрос пришёл через Go API (token exchange, RFC 8693), в токене есть claim `act` — сервис-посредник; `/api/orders` возвращает его в `calledVia`.\n* Ошибки — JSON `{ \"error\": \"…\" }`: 401 — нет или неверный токен, 403 — нет разрешения."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Проверка работоспособности",
+        "description": "Без токена.",
+        "security": [],
+        "responses": { "200": { "description": "`{ \"ok\": true }`" } }
+      }
+    },
+    "/config.js": {
+      "get": {
+        "summary": "Конфигурация SPA: адрес TSL Auth, client_id, scope",
+        "description": "Без токена. Скрипт `window.APP_CONFIG = {…}` — фронтенд не пересобирается под окружение.",
+        "security": [],
+        "responses": { "200": { "description": "JavaScript" } }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Кто я и какие у меня права в этом API",
+        "description": "Нужен access-токен (любой вошедший пользователь или сервис).",
+        "responses": {
+          "200": { "description": "`{ service, user, permissions, act }` — `act` есть, если токен получен обменом" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "summary": "Список заказов",
+        "description": "Нужен access-токен с разрешением `demo-node-api:orders.read` (матрица TSL Auth).",
+        "responses": {
+          "200": { "description": "`{ service, user, calledVia, orders: [{ id, total }] }`; `calledVia` — сервис из `act.sub` или «напрямую»" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    }
+  },
+  "security": [ { "bearer": [] } ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access-токен TSL Auth с aud = demo-node-api."
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Нет токена, подпись, issuer, audience или срок не прошли проверку" },
+      "Forbidden": { "description": "В токене нет нужного разрешения матрицы" }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- Руководство по REST API модуля (/docs). Строится в браузере из его OpenAPI (/openapi/v1.json): назначение, как получить
+     токен, все методы с нужными разрешениями и примерами curl. Интерактивный справочник — /docs/api (Scalar).
+     Один и тот же файл в samples/go-api/docs, samples/node-spa/docs и samples/java-api/src/main/resources/docs —
+     менять во всех трёх (scripts/validate-docs.ps1 проверяет, что копии совпадают). Без внешних ресурсов. -->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Документация API</title>
+  <style>
+    :root { --fg: #1f2328; --muted: #59636e; --bg: #fff; --code: #f3f4f6; --line: #d1d9e0; --link: #0969da; }
+    @media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #9198a1; --bg: #0d1117; --code: #161b22; --line: #30363d; --link: #4493f8; } }
+    body { font: 15px/1.55 system-ui, sans-serif; max-width: 920px; margin: 32px auto; padding: 0 16px; color: var(--fg); background: var(--bg); }
+    a { color: var(--link); }
+    code, pre { background: var(--code); border-radius: 4px; font-size: 13px; }
+    code { padding: 1px 4px; }
+    pre { padding: 10px 12px; overflow-x: auto; margin: 6px 0 0; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 6px; text-align: left; vertical-align: top; }
+    .m { font: 600 12px ui-monospace, monospace; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1 id="title">Документация API</h1>
+  <p class="muted">Интерактивный справочник с вызовом методов — <a href="/docs/api">/docs/api</a> ·
+    OpenAPI — <a href="/openapi/v1.json">/openapi/v1.json</a></p>
+  <div id="description"></div>
+  <h2>Как вызвать</h2>
+  <p>Каждый запрос к защищённому методу несёт access-токен TSL Auth в заголовке
+    <code>Authorization: Bearer &lt;токен&gt;</code>. Токен пользователя приложение получает при входе
+    (authorization code + PKCE), сервис — сам: <code>POST &lt;TSL Auth&gt;/connect/token</code> с
+    <code>grant_type=client_credentials</code>. Права — разрешения матрицы доступа (claim <code>permissions</code>):
+    без нужного разрешения метод отвечает 403, без токена или с чужим — 401.</p>
+  <h2>Методы</h2>
+  <table>
+    <thead><tr><th>Метод</th><th>Что делает и что нужно</th></tr></thead>
+    <tbody id="ops"><tr><td colspan="2" class="muted">Загрузка…</td></tr></tbody>
+  </table>
+  <script>
+    const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    // Простая разметка описания: абзацы, списки «* », `код`, **жирный**.
+    const markdown = (text) => (text ?? "").trim().split(/\n\s*\n/).map((block) => {
+      const lines = block.split("\n").map((l) => l.trim());
+      return lines.every((l) => l.startsWith("* ") || l.startsWith("- "))
+        ? "<ul>" + lines.map((l) => `<li>${inline(l.slice(2))}</li>`).join("") + "</ul>"
+        : `<p>${inline(lines.join(" "))}</p>`;
+    }).join("");
+    fetch("/openapi/v1.json").then((r) => r.json()).then((spec) => {
+      document.title = `${spec.info.title} · Документация`;
+      document.getElementById("title").textContent = spec.info.title;
+      document.getElementById("description").innerHTML = markdown(spec.info.description);
+      const rows = [];
+      for (const [path, ops] of Object.entries(spec.paths ?? {}))
+        for (const [method, op] of Object.entries(ops)) {
+          const secured = (op.security ?? spec.security ?? []).some((s) => Object.keys(s).length > 0);
+          const query = (op.parameters ?? []).filter((p) => p.in === "query" && p.required).map((p) => `${p.name}=${encodeURIComponent(p.example ?? p.schema?.example ?? "…")}`).join("&");
+          const url = location.origin + path + (query ? "?" + query : "");
+          const curl = `curl${method === "get" ? "" : " -X " + method.toUpperCase()}${secured ? ' -H "Authorization: Bearer $TOKEN"' : ""} "${url}"`;
+          rows.push(`<tr><td><span class="m">${method.toUpperCase()}</span><br><code>${esc(path)}</code></td>
+            <td><strong>${inline(op.summary)}</strong>${op.description ? markdown(op.description) : ""}<pre>${esc(curl)}</pre></td></tr>`);
+        }
+      document.getElementById("ops").innerHTML = rows.join("");
+    }).catch((e) => {
+      document.getElementById("ops").innerHTML = `<tr><td colspan="2">Не удалось загрузить /openapi/v1.json: ${esc(e.message)}</td></tr>`;
+    });
+  </script>
+</body>
+</html>

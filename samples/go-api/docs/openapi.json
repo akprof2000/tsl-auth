@@ -1,0 +1,81 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Demo Go API",
+    "version": "v1",
+    "description": "REST API демо-сервиса на Go (только стандартная библиотека) поверх TSL Auth.\n\n* Токен — access-токен TSL Auth с `aud = demo-go-api` (вход в SPA `demo-node-spa` или MVC `demo-dotnet`, либо `client_credentials`).\n* Права — разрешения матрицы приложения `demo-go-api` (claim `permissions` = `demo-go-api:<разрешение>`); у каждого метода указано нужное.\n* `/api/chain` показывает token exchange (RFC 8693): сервис обменивает токен пользователя на токен для Node API и вызывает его от имени пользователя.\n* Ошибки — JSON `{ \"error\": \"…\" }`: 401 — нет или неверный токен, 403 — нет разрешения, 502 — не удался вызов Node API."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Проверка работоспособности",
+        "description": "Без токена.",
+        "security": [],
+        "responses": { "200": { "description": "`{ \"ok\": true }`" } }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Кто я и какие у меня права в этом API",
+        "description": "Нужен access-токен (любой вошедший пользователь или сервис).",
+        "responses": {
+          "200": {
+            "description": "Пользователь, тип субъекта (`user`/`client`), разрешения и роли из токена",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Me" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "summary": "Список отчётов",
+        "description": "Нужен access-токен с разрешением `demo-go-api:reports.view` (матрица TSL Auth).",
+        "responses": {
+          "200": { "description": "`{ service, reports: [строки], user }`" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/chain": {
+      "get": {
+        "summary": "Вызов Node API от имени пользователя (token exchange)",
+        "description": "Нужен access-токен с разрешением `demo-go-api:reports.view`. Сервис обменивает его на токен с `aud = demo-node-api` (RFC 8693, claim `act` = demo-go-api) и вызывает `GET /api/orders` Node API; для этого у пользователя должно быть и разрешение `demo-node-api:orders.read`.",
+        "responses": {
+          "200": { "description": "`{ service, via: \"token-exchange\", nodeStatus, node }` — ответ Node API" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "502": { "description": "Не удался обмен токена или вызов Node API" }
+        }
+      }
+    }
+  },
+  "security": [ { "bearer": [] } ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access-токен TSL Auth с aud = demo-go-api."
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Нет токена, подпись, issuer, audience или срок не прошли проверку" },
+      "Forbidden": { "description": "В токене нет нужного разрешения матрицы" }
+    },
+    "schemas": {
+      "Me": {
+        "type": "object",
+        "properties": {
+          "service": { "type": "string", "example": "go-api" },
+          "user": { "type": "string", "example": "alice" },
+          "subjectType": { "type": "string", "example": "user" },
+          "permissions": { "type": "array", "items": { "type": "string" }, "example": [ "demo-go-api:reports.view" ] },
+          "roles": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

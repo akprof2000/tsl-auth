@@ -96,7 +96,10 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   git config remote.origin.lfspushurl https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs
   git config lfs.https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs.locksverify false
   ```
-  На GitHub объекты переносит задание `mirror-github` (`git lfs push`), вручную — `git lfs push https://github.com/akprof2000/tsl-auth.git main`.
+  На GitHub объекты переносит задание `mirror-github` (`git lfs push`), но `git push origin main` с рабочей станции
+  GitHub **отклоняет** («pre-receive hook declined», объектов LFS нет), если коммит меняет `*.docx` — GitFlic при этом
+  принимает. Поэтому при изменении `*.docx` перед push: `git lfs push https://github.com/akprof2000/tsl-auth.git main`
+  (после push — то же и `git push github main`).
   Проверка — чистый клон GitFlic и `git lfs pull`: файлы полного размера, а не указатели по 130 байт.
 - Релизная политика — `docs/release-policy.md` (semver, что блокирует релиз, откат).
 

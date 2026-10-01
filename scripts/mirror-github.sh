@@ -15,8 +15,8 @@ url="https://x-access-token:${GITHUB_MIRROR_TOKEN}@github.com/${REPO}.git"
 # Файлы Git LFS (*.docx, см. .gitattributes): объекты с GitFlic — на GitHub до push веток, иначе там останутся
 # указатели без содержимого.
 git lfs install --local >/dev/null
-git lfs fetch --quiet origin "$sha"
-git lfs push --quiet "$url" "$sha" 2>&1 | sed "s/${GITHUB_MIRROR_TOKEN}/***/g" || { echo "push LFS на GitHub не удался"; exit 1; }
+git lfs fetch origin "$sha" >/dev/null
+git lfs push "$url" "$sha" 2>&1 | sed "s/${GITHUB_MIRROR_TOKEN}/***/g" || { echo "push LFS на GitHub не удался"; exit 1; }
 # Ветка — только main (и только вперёд или с той же историей); теги — все v* и sdk/go/*.
 if [ "${CI_COMMIT_REF_NAME:-main}" = "main" ] || [ -n "${CI_COMMIT_TAG:-}" ]; then
   git push --quiet "$url" "$sha:refs/heads/main" 2>&1 | sed "s/${GITHUB_MIRROR_TOKEN}/***/g" || { echo "push main не удался (GitHub ушёл вперёд?)"; exit 1; }

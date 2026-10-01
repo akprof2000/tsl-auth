@@ -79,10 +79,13 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/demo.* -Build`).
 - Демо-приложения проверяются по `127.0.0.1`, а не `localhost`: Python-демо слушает только IPv4, а HttpClient PowerShell
   сначала пробует `::1` и ждёт таймаут.
-- Локально после работы оставлять в Docker только контейнер стенда `tsl-auth` **этого проекта**: удалять свои лишние
-  образы (k6, trivy, mermaid, postgres тестов, промежуточные tsl-auth) и свои тома, `docker builder prune`. На машине
-  идут и другие проекты (1c-import, tsl-dev, tslmesh) — их контейнеры и тома не трогать: никаких `docker rm` по всем
-  контейнерам и `docker volume prune -a` (30.09.2026 так были потеряны стенды 1c-import и tsl-dev). В реестре GitFlic —
+- Локально после работы в Docker не оставлять ничего своего (решение пользователя 01.10.2026): стенд —
+  `docker compose down -v` из корня репозитория, демо-приложения — остановить (порты 5101–5105, окна «demo …»), свои
+  лишние образы (k6, trivy, mermaid, postgres тестов, промежуточные tsl-auth) и тома удалить. Образ выпуска
+  `tsl-auth:latest` можно оставить — по нему стенд поднимается снова. На машине
+  идут и другие проекты (1c-import, tsl-dev, tslmesh, openbao-config) — их контейнеры, тома и сборщики buildx не трогать:
+  никаких `docker rm` по всем контейнерам, `docker volume prune -a` и `docker builder prune` по общему кэшу (30.09.2026 так
+  были потеряны стенды 1c-import и tsl-dev). В реестре GitFlic —
   только текущий образ выпуска (`X.Y.Z` + `latest`) и последняя версия пакетов SDK:
   `KEEP=1 KEEP_PIPELINES=1 CI_REGISTRY_IMAGE=registry.gitflic.ru/project/uklad/tsl-auth CI_PROJECT_PATH=uklad/tsl-auth sh scripts/gitflic-prune.sh`
   (с `GITFLIC_API_TOKEN` в окружении; сначала `DRY_RUN=1`).

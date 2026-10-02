@@ -241,12 +241,30 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - Ошибки конвейера правятся в `ProcessErrorContext` до `AttachErrorParameters` (порядок `int.MinValue + 100 000`).
 - Через Bash-инструмент heredoc с python-кодом иногда обрывается («unexpected EOF») — патчи класть в файл `*.py` и запускать.
 
+## Документация в YouTrack (база знаний UKA)
+
+- ЧТЗ TSL Auth опубликованы в базе знаний проекта **UKA** («Уклад - ERP Лавра», id проекта `0-1`), раздел
+  04.09 «Информационная безопасность» (UKA-A-128):
+  - **UKA-A-315** «04.09.01. ЧТЗ. Сервис идентификации и доступа TSL Auth» — основное ЧТЗ; вложения `TZ-tsl-auth.docx`,
+    `auth-architecture.drawio`, картинки `auth-NN.png` (в тексте `![…](auth-02.png){width=100%}`), редакция 2.0;
+  - **UKA-A-316** «04.09.01.01. Реестр уточнений и открытых вопросов» (В-1…);
+  - **UKA-A-326** «04.09.01.02. ЧТЗ. Интеграция TSL Auth с Active Directory» (02.10.2026, из `docs/task-active-directory.md`:
+    схема — вложение `ad-states.png`, Word — `TZ-active-directory.docx`, ссылки на репозиторий — адреса GitFlic).
+- Доступ (YouTrack на сервере сборки, `youtrack-server` на `127.0.0.1:8082`): туннель
+  `ssh.exe -p 443 -N -L 127.0.0.1:18082:127.0.0.1:8082 alexey_kozlov@77.42.83.24`, затем REST API
+  `http://127.0.0.1:18082/api/...` с заголовком `Authorization: Bearer <YOU_TRACK_TOCKEN>` из
+  `C:\Projects\TSL\Key\gitflic-tokens.env` (учётная запись Kozlov_Alex). Статьи: `GET /api/articles?query=project:UKA`,
+  изменить — `POST /api/articles/<id>` с `{content}`, создать дочернюю — `POST /api/articles` с
+  `{summary, content, project:{id:"0-1"}, parentArticle:{id}}`, вложение — `POST /api/articles/<id>/attachments` (multipart `file`).
+- При изменении ЧТЗ в репозитории — обновить статью и её Word-вложение в YouTrack. Офлайн-экспорт базы знаний —
+  `C:\Projects\TSL\UKA_KNOWLEDGE_BASE.md` (может отставать от YouTrack).
+
 ## Открытые темы
 
 - Интеграция с Active Directory — постановка [`docs/task-active-directory.md`](docs/task-active-directory.md) (Ф-AD-1…16,
   этапы 1.6 вход и группы → 1.7 синхронизация → 1.8 Kerberos/SPNEGO), реализация не начата; открытые вопросы — раздел 12
   (ручные роли для записей AD, заранее создаваемые записи, число доменов). Отладка на Samba AD DC в Docker, прозрачный
-  вход проверять на машине Windows в домене. Word — `docs/TZ-active-directory.docx`. Рабочая копия постановки — Claude Doc
+  вход проверять на машине Windows в домене. Word — `docs/TZ-active-directory.docx`; в YouTrack — UKA-A-326. Рабочая копия — Claude Doc
   https://claude.ai/code/artifact/d57b291b-8a8d-4801-8c23-f95e1a87f1c1; изменения переносить в репозиторий.
 - Кластер, стенд мониторинга, OpenBao и секреты из файла настроек в конвейер не входят — проверяются вручную
   `tests/resilience/run-*.ps1` перед релизом.

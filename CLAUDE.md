@@ -277,7 +277,12 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   `C:\Projects\TSL\Key\gitflic-tokens.env` (учётная запись Kozlov_Alex). Статьи: `GET /api/articles?query=project:UKA`,
   изменить — `POST /api/articles/<id>` с `{content}`, создать дочернюю — `POST /api/articles` с
   `{summary, content, project:{id:"0-1"}, parentArticle:{id}}`, вложение — `POST /api/articles/<id>/attachments` (multipart `file`).
-- При изменении ЧТЗ в репозитории — обновить статью и её Word-вложение в YouTrack. Офлайн-экспорт базы знаний —
+- **Статьи YouTrack обновлять всегда, без напоминания** (Алексей, 03.10.2026): любое изменение ЧТЗ или постановки в
+  репозитории (`docs/tz.md`, `docs/task-*.md`, их Word-версии) в той же работе переносится в YouTrack — UKA-A-315
+  (основное ЧТЗ и `TZ-tsl-auth.docx`), UKA-A-316 (реестр вопросов), UKA-A-326 (ЧТЗ по AD и `TZ-active-directory.docx`);
+  новый документ-постановка — новой дочерней статьёй UKA-A-315. Курируемый текст статьи сохранять: менять только
+  затронутые места, Word-вложение заменять (`DELETE …/attachments/<id>`, затем загрузить заново), об изменении —
+  пометка под строкой редакции. В отчёте указывать, какие статьи обновлены. Офлайн-экспорт базы знаний —
   `C:\Projects\TSL\UKA_KNOWLEDGE_BASE.md` (может отставать от YouTrack).
 
 ## Открытые темы

@@ -78,6 +78,37 @@ public class LiveScenarioTests
     }
 
     /// <summary>
+    /// §6 токен подключения: робот своим секретом обменивает токен, который ему выписал пользователь, на JWT с правами
+    /// пользователя и claim act = робот; JWT кэшируется; клиент без потока connection_token — unauthorized_client.
+    /// </summary>
+    [Fact]
+    public async Task Connection_token_robot()
+    {
+        Assert.False(string.IsNullOrEmpty(V.Robot.Id), "в vectors.json нет robot — обновите make-vectors.py");
+        var expected = V.Expected.GetProperty("robot");
+        var options = V.Options();
+        options.ClientId = V.Robot.Id;
+        options.ClientSecret = V.Robot.Secret;
+        using var robot = new TokenClient(options);
+
+        var set = await robot.ConnectionTokenAsync(V.Robot.ConnectionToken);
+        Assert.Null(set.RefreshToken);
+        Assert.Same(set, await robot.ConnectionTokenAsync(V.Robot.ConnectionToken)); // кэш до expiresAt − 30 с
+
+        var p = await new TslAuthVerifier(V.Options()).VerifyAsync(set.AccessToken);
+        Assert.Equal(expected.GetProperty("subjectType").GetString(), p.SubjectType);
+        Assert.Equal(expected.GetProperty("username").GetString(), p.Username);
+        Assert.Equal(expected.GetProperty("actorSub").GetString(), p.Actor?.Subject);
+        foreach (var perm in expected.GetProperty("permissions").EnumerateArray())
+            Assert.True(p.HasPermission(perm.GetString()!), perm.GetString());
+
+        // Обычному клиенту (без разрешения администратора на токены подключения) обмен недоступен.
+        using var stranger = new TokenClient(V.Options());
+        var err = await Assert.ThrowsAsync<TokenError>(() => stranger.ConnectionTokenAsync(V.Robot.ConnectionToken));
+        Assert.Equal("unauthorized_client", err.Error);
+    }
+
+    /// <summary>
     /// §6 private_key_jwt: владелец регистрирует подчинённого с открытым ключом SDK, подчинённый получает токен
     /// без секрета (ES256-assertion), в токене роль владельца; тот же клиент с секретом «wrong» — invalid_client.
     /// </summary>

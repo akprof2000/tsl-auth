@@ -59,8 +59,8 @@ $env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с види
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
 ./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
-python scripts/build-tz-docx.py --version 2.4 --date 01.10.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx); версию поднимать при каждом изменении tz.md
-python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx --version 1.0 --status "постановка для согласования, реализация не начата"
+python scripts/build-tz-docx.py --version 2.5 --date 03.10.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx); версию поднимать при каждом изменении tz.md
+python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx --version 1.1 --date 03.10.2026 --status "постановка для согласования, реализация не начата"
 ```
 
 После изменения схем Mermaid в документации — `scripts/render-diagrams.ps1` (картинки в `docs/diagrams`).
@@ -241,6 +241,27 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - Ошибки конвейера правятся в `ProcessErrorContext` до `AttachErrorParameters` (порядок `int.MinValue + 100 000`).
 - Через Bash-инструмент heredoc с python-кодом иногда обрывается («unexpected EOF») — патчи класть в файл `*.py` и запускать.
 
+## Сервис-робот вместо пользователя (токен подключения, версия 1.6)
+
+Задача пользователя 03.10.2026: сервис работает с правами пользователя по токену, который пользователь выписал ему сам.
+Описание — `docs/integration.md` §6 «Сервис-робот вместо пользователя», ЧТЗ — Ф-5, контракт SDK — `client-contract.md` §6.
+
+- Это PAT с привязкой к сервису: `PersonalAccessToken.ClientId` (робот) и `AllApplications` (права во всех приложениях
+  пользователя по ролям на момент обмена); миграция `PatServiceTokens` (SQLite и PostgreSQL).
+- Разрешение администратора — поток `connection_token` у confidential-приложения (`AppGrantTypes.ConnectionToken` =
+  `urn:tsl:grant-type:pat`, тот же grant, что у `tsl-pat`; `AppGrantTypes.ShortName` — короткие имена для UI/API).
+- Обмен — `AuthorizationController` (ветка `PatGrantType`): токен робота принимается только от его `client_id`
+  (секрет проверяет OpenIddict), PAT для скриптов — только от `tsl-pat`; иначе `invalid_grant`. Клиент без потока
+  `connection_token` получает от OpenIddict `unauthorized_client` раньше этой проверки. В JWT — `act.sub` = робот,
+  `client_id` = робот, без refresh. При удалении приложения его токены отзываются (`ApplicationService.DeleteOneAsync`).
+- Выпуск — `PatService.CreateAsync` (`ServiceClientsAsync` — роботы, которым можно выписать токен), страница
+  `Pages/Account/Tokens` («Кто будет пользоваться токеном», «Все мои приложения»), `_PatTable` (пометки робота).
+- SDK (все пять): `ConnectionTokenAsync` / `ConnectionToken` / `connection_token` / `connectionToken`, кэш по значению
+  токена до `expiresAt − 30 с` общим механизмом с `client_credentials`.
+- Тесты: интеграционные `RobotTokenScenarios.cs` (SQLite + PostgreSQL), UI `ConnectionToken_IssuedInUi_RobotActsAsUser`
+  (Node API отвечает `calledVia` = робот), контрактные тесты SDK `connection_token_robot` (вектор `robot` в
+  `make-vectors.py`: `sdk-operator` выписывает токен через вход и форму «Мои токены», как в браузере).
+
 ## Документация в YouTrack (база знаний UKA)
 
 - ЧТЗ TSL Auth опубликованы в базе знаний проекта **UKA** («Уклад - ERP Лавра», id проекта `0-1`), раздел
@@ -262,7 +283,7 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 ## Открытые темы
 
 - Интеграция с Active Directory — постановка [`docs/task-active-directory.md`](docs/task-active-directory.md) (Ф-AD-1…16,
-  этапы 1.6 вход и группы → 1.7 синхронизация → 1.8 Kerberos/SPNEGO), реализация не начата; открытые вопросы — раздел 12
+  этапы 1.7 вход и группы → 1.8 синхронизация → 1.9 Kerberos/SPNEGO; 1.6 — сервис-робот), реализация не начата; открытые вопросы — раздел 12
   (ручные роли для записей AD, заранее создаваемые записи, число доменов). Отладка на Samba AD DC в Docker, прозрачный
   вход проверять на машине Windows в домене. Word — `docs/TZ-active-directory.docx`; в YouTrack — UKA-A-326. Рабочая копия — Claude Doc
   https://claude.ai/code/artifact/d57b291b-8a8d-4801-8c23-f95e1a87f1c1; изменения переносить в репозиторий.

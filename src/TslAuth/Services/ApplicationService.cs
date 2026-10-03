@@ -20,7 +20,21 @@ public static class AppGrantTypes
     /// <summary>RFC 8693 — обмен токена пользователя на токен для другого приложения.</summary>
     public const string TokenExchange = GrantTypes.TokenExchange;
 
-    public static readonly string[] All = [AuthorizationCode, ClientCredentials, Password, RefreshToken, TokenExchange];
+    /// <summary>
+    /// Сервис-робот: обменять токен подключения, который выписал ему пользователь (PAT с привязкой к сервису), на JWT
+    /// с правами этого пользователя. Короткий алиас в Admin API — <c>connection_token</c>.
+    /// </summary>
+    public const string ConnectionToken = PatService.GrantType;
+
+    public static readonly string[] All = [AuthorizationCode, ClientCredentials, Password, RefreshToken, TokenExchange, ConnectionToken];
+
+    /// <summary>Короткое имя grant type для UI и Admin API (полные URN длинные).</summary>
+    public static string ShortName(string grant) => grant switch
+    {
+        TokenExchange => "token_exchange",
+        ConnectionToken => "connection_token",
+        _ => grant
+    };
 }
 
 /// <summary>Приложение (клиент OpenIddict) в удобном для UI/API виде: grant types и scopes извлечены из permissions.</summary>
@@ -275,6 +289,11 @@ public sealed class ApplicationService(
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.CreatedByClientId, (string?)null), ct);
         await db.ExternalIdentities.Where(e => e.LinkedByClientId == clientId).ExecuteDeleteAsync(ct);
         await db.ClientActivities.Where(a => a.ClientId == clientId).ExecuteDeleteAsync(ct);
+        // Токены подключения, выписанные пользователями этому сервису-роботу, отзываются: иначе новое приложение
+        // с тем же client_id получило бы права этих пользователей.
+        var now = DateTime.UtcNow;
+        await db.PersonalAccessTokens.Where(t => t.ClientId == clientId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(t => t.SetProperty(x => x.RevokedAt, (DateTime?)now), ct);
     }
 
     /// <summary>
@@ -371,10 +390,11 @@ public sealed class ApplicationService(
             _ => throw new AdminException("ClientType должен быть 'public' или 'confidential'.")
         };
 
-        // "token_exchange" — короткий алиас для полного URN RFC 8693.
+        // "token_exchange" и "connection_token" — короткие алиасы полных URN.
         // openid и offline_access не хранятся как permissions: OpenIddict обрабатывает их особым образом.
         var grants = (input.GrantTypes ?? []).Select(g => g.Trim()).Where(g => g.Length > 0)
-            .Select(g => g == "token_exchange" ? AppGrantTypes.TokenExchange : g).Distinct().ToList();
+            .Select(g => g switch { "token_exchange" => AppGrantTypes.TokenExchange, "connection_token" => AppGrantTypes.ConnectionToken, _ => g })
+            .Distinct().ToList();
         var scopes = (input.Scopes ?? []).Select(s => s.Trim())
             .Where(s => s.Length > 0 && s != Scopes.OpenId && s != Scopes.OfflineAccess).Distinct().ToList();
 
@@ -393,8 +413,10 @@ public sealed class ApplicationService(
         var unknown = grants.Except(AppGrantTypes.All).ToList();
         if (unknown.Count > 0) throw new AdminException($"Неизвестные grant types: {string.Join(", ", unknown)}.");
         // Public-клиент не может хранить секрет, поэтому не должен получать токены «от своего имени».
-        if (!confidential && (grants.Contains(AppGrantTypes.ClientCredentials) || grants.Contains(AppGrantTypes.TokenExchange)))
-            throw new AdminException("client_credentials и token exchange доступны только confidential-клиентам.");
+        // Робот тоже: токен подключения обменивает только сам сервис со своим секретом или ключом.
+        if (!confidential && (grants.Contains(AppGrantTypes.ClientCredentials) || grants.Contains(AppGrantTypes.TokenExchange) ||
+                              grants.Contains(AppGrantTypes.ConnectionToken)))
+            throw new AdminException("client_credentials, token exchange и токены подключения доступны только confidential-клиентам.");
 
         if (input.SelfManagement) d.Properties[SelfManagementProperty] = JsonSerializer.SerializeToElement(true);
         else d.Properties.Remove(SelfManagementProperty);

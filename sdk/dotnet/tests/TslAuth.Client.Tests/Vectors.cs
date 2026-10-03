@@ -32,6 +32,8 @@ public sealed class Vectors
     public required string ClientSecret { get; init; }
     /// <summary>Владелец подчинённых клиентов (id, секрет, префикс client_id, роль) для сценария private_key_jwt.</summary>
     public required (string Id, string Secret, string Prefix, string Role) ManagedOwner { get; init; }
+    /// <summary>Сервис-робот и токен подключения, который ему выписал sdk-operator (пусто — стенд без робота).</summary>
+    public required (string Id, string Secret, string ConnectionToken) Robot { get; init; }
     public required IReadOnlyDictionary<string, (string Username, string Password)> Users { get; init; }
     public required JsonElement Expected { get; init; }
     public required IReadOnlyList<VectorCase> Cases { get; init; }
@@ -86,6 +88,9 @@ public sealed class Vectors
             ManagedOwner = root.TryGetProperty("managedOwner", out var owner)
                 ? (owner.GetProperty("id").GetString()!, owner.GetProperty("secret").GetString()!, owner.GetProperty("prefix").GetString()!, owner.GetProperty("role").GetString()!)
                 : ("", "", "", ""),
+            Robot = root.TryGetProperty("robot", out var robot)
+                ? (robot.GetProperty("id").GetString()!, robot.GetProperty("secret").GetString()!, robot.GetProperty("connectionToken").GetString()!)
+                : ("", "", ""),
             Users = users,
             Expected = root.GetProperty("expected").Clone(),
             Cases = cases,

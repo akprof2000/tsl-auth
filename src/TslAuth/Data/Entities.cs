@@ -61,8 +61,20 @@ public sealed class PersonalAccessToken
     /// <summary>Первые символы токена — чтобы пользователь узнал его в списке.</summary>
     public required string Prefix { get; set; }
 
-    /// <summary>client_id приложений (через запятую), к которым токен даёт доступ.</summary>
+    /// <summary>client_id приложений (через запятую), к которым токен даёт доступ; пусто при <see cref="AllApplications"/>.</summary>
     public required string Audiences { get; set; }
+
+    /// <summary>
+    /// Токен даёт доступ ко всем приложениям, где у владельца есть роли на момент обмена (а не к списку,
+    /// выбранному при выпуске): робот работает со всеми API, доступными пользователю сейчас.
+    /// </summary>
+    public bool AllApplications { get; set; }
+
+    /// <summary>
+    /// Токен подключения сервиса-робота: обменять его может только этот клиент (со своим секретом или ключом),
+    /// в JWT он попадает в claim act. null — обычный PAT для скриптов (обмен через служебный клиент tsl-pat).
+    /// </summary>
+    public string? ClientId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }

@@ -178,10 +178,13 @@ public abstract class AuthDbContext(DbContextOptions options)
             e.Property(x => x.TokenHash).HasMaxLength(100);
             e.Property(x => x.Prefix).HasMaxLength(20);
             e.Property(x => x.Audiences).HasMaxLength(2000);
+            e.Property(x => x.ClientId).HasMaxLength(100);
             e.Property(x => x.LastUsedIp).HasMaxLength(64);
             // Поиск PAT при предъявлении — по SHA-256 хешу; сам токен нигде не хранится.
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => x.UserId);
+            // Токены подключения сервиса отзываются вместе с удалением этого сервиса.
+            e.HasIndex(x => x.ClientId);
             e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

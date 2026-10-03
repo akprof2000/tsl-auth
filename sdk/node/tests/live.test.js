@@ -29,6 +29,21 @@ describe("live", () => {
     await assert.rejects(tokens.refresh(third.refreshToken), (e) => e instanceof TokenError && e.error === "invalid_grant" && e.status === 400);
   });
 
+  it("connection_token: робот своим секретом получает JWT пользователя с act = робот; клиент без потока connection_token — unauthorized_client", async (t) => {
+    if (!v.robot) return t.skip("в vectors.json нет robot — обновите make-vectors.py");
+    const expected = v.expected.robot;
+    const robot = createTokenClient({ issuer: v.issuer, clientId: v.robot.id, clientSecret: v.robot.secret });
+    const set = await robot.connectionToken(v.robot.connectionToken);
+    assert.equal(await robot.connectionToken(v.robot.connectionToken), set, "повторный вызов — из кэша");
+    assert.equal(set.refreshToken, undefined);
+    const p = await createVerifier({ ...clientOpts, audience: v.audience }).verify(set.accessToken);
+    assert.equal(p.subjectType, expected.subjectType);
+    assert.equal(p.username, expected.username);
+    assert.equal(p.actor?.sub, expected.actorSub);
+    for (const perm of expected.permissions) assert.ok(p.hasPermission(perm), perm);
+    await assert.rejects(tokens.connectionToken(v.robot.connectionToken), (e) => e instanceof TokenError && e.error === "unauthorized_client");
+  });
+
   it("password с неверным паролем — TokenError invalid_grant", async () => {
     await assert.rejects(tokens.password(v.users.viewer.username, "definitely-wrong-" + Date.now(), userScope), (e) => e instanceof TokenError && e.error === "invalid_grant");
   });

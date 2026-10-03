@@ -3,6 +3,9 @@ import { fetchWithTimeout, resolveConfig } from "./config.js";
 import { createDiscovery } from "./discovery.js";
 import { TokenError } from "./errors.js";
 
+/** Обмен токена подключения (PAT, выписанного пользователем этому сервису) на JWT пользователя. */
+export const CONNECTION_TOKEN_GRANT = "urn:tsl:grant-type:pat";
+
 const scopeString = (scopes) => (Array.isArray(scopes) ? scopes.join(" ") : scopes ?? "");
 
 export function createTokenClient(options = {}) {
@@ -59,25 +62,39 @@ export function createTokenClient(options = {}) {
 
   const grant = async (params) => toTokenSet(await post("token_endpoint", params));
 
+  /** Кэш до `expiresAt − 30 с` по ключу; параллельные вызовы с одним ключом делают один запрос. */
+  function cached(key, params) {
+    const entry = ccCache.get(key) ?? {};
+    const fresh = entry.tokenSet && entry.tokenSet.expiresAt && entry.tokenSet.expiresAt.getTime() / 1000 - 30 > cfg.now();
+    if (fresh) return Promise.resolve(entry.tokenSet);
+    if (!entry.inflight) {
+      entry.inflight = grant(params)
+        .then((ts) => {
+          entry.tokenSet = ts;
+          return ts;
+        })
+        .finally(() => {
+          entry.inflight = null;
+        });
+      ccCache.set(key, entry);
+    }
+    return entry.inflight; // ошибка запроса кэш не портит: старый tokenSet остаётся в entry
+  }
+
   return {
     /** Сервисный токен; кэш по scope до `expiresAt − 30 с`, параллельные вызовы делают один запрос. */
-    async clientCredentials(scopes) {
+    clientCredentials(scopes) {
       const scope = scopeString(scopes);
-      const entry = ccCache.get(scope) ?? {};
-      const fresh = entry.tokenSet && entry.tokenSet.expiresAt && entry.tokenSet.expiresAt.getTime() / 1000 - 30 > cfg.now();
-      if (fresh) return entry.tokenSet;
-      if (!entry.inflight) {
-        entry.inflight = grant({ grant_type: "client_credentials", scope })
-          .then((ts) => {
-            entry.tokenSet = ts;
-            return ts;
-          })
-          .finally(() => {
-            entry.inflight = null;
-          });
-        ccCache.set(scope, entry);
-      }
-      return entry.inflight; // ошибка запроса кэш не портит: старый tokenSet остаётся в entry
+      return cached(scope ?? "", { grant_type: "client_credentials", scope });
+    },
+    /**
+     * Робот: JWT пользователя по его токену подключения (`tslpat_…`, выписан в «Мои токены» этому сервису).
+     * Сервис входит своим client_id и секретом; в JWT — права пользователя и claim `act` с этим сервисом.
+     * Кэшируется по токену до `expiresAt − 30 с`, как сервисный токен.
+     */
+    connectionToken(connectionToken) {
+      if (!connectionToken) return Promise.reject(new TypeError("пустой токен подключения"));
+      return cached(`pat:${connectionToken}`, { grant_type: CONNECTION_TOKEN_GRANT, token: connectionToken });
     },
     /** RFC 8693 token exchange; не кэшируется. */
     exchange: (subjectToken, scopes) =>

@@ -34,6 +34,10 @@ def _scope(scopes: Iterable[str] | str | None) -> str | None:
     return " ".join(scopes) or None
 
 
+# Обмен токена подключения (PAT, выписанного пользователем этому сервису) на JWT пользователя.
+CONNECTION_TOKEN_GRANT = "urn:tsl:grant-type:pat"
+
+
 class TokenClient:
     """Все методы — POST application/x-www-form-urlencoded; client_id всегда в теле, client_secret — если задан."""
 
@@ -49,6 +53,23 @@ class TokenClient:
     def client_credentials(self, scopes: Iterable[str] | str | None = None) -> TokenSet:
         """Сервисный токен: кэш по scope до expires_at − 30 с, single-flight при протухшем кэше."""
         key = _scope(scopes) or ""
+        form = {"grant_type": "client_credentials"}
+        if key:
+            form["scope"] = key
+        return self._cached(key, form)
+
+    def connection_token(self, connection_token: str) -> TokenSet:
+        """Робот: JWT пользователя по его токену подключения (tslpat_…, выписан в «Мои токены» этому сервису).
+
+        Сервис входит своим client_id и секретом; в JWT — права пользователя и claim act с этим сервисом.
+        Кэшируется по токену до expires_at − 30 с, как сервисный токен.
+        """
+        if not connection_token:
+            raise ValueError("пустой токен подключения")
+        return self._cached("pat:" + connection_token, {"grant_type": CONNECTION_TOKEN_GRANT, "token": connection_token})
+
+    def _cached(self, key: str, form: dict[str, str]) -> TokenSet:
+        """Кэш до expires_at − 30 с; при протухшем кэше один запрос (single-flight под блокировкой)."""
         now = self.options.now()
         cached = self._cache.get(key)
         if cached is not None and now < cached.expires_at - _CACHE_MARGIN:
@@ -58,9 +79,6 @@ class TokenClient:
             cached = self._cache.get(key)
             if cached is not None and now < cached.expires_at - _CACHE_MARGIN:
                 return cached
-            form = {"grant_type": "client_credentials"}
-            if key:
-                form["scope"] = key
             fresh = self._token(form)  # ошибка запроса кэш не портит: исключение уходит вызывающему
             self._cache[key] = fresh
             return fresh

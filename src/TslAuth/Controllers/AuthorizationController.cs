@@ -64,7 +64,7 @@ public sealed class AuthorizationController(
     }
 
     /// <summary>Нестандартный grant_type для обмена персонального токена (tslpat_…) на короткоживущий JWT.</summary>
-    public const string PatGrantType = "urn:tsl:grant-type:pat";
+    public const string PatGrantType = PatService.GrantType;
 
     /// <summary>
     /// Authorization endpoint (первый шаг authorization code flow): проверяет вход пользователя
@@ -328,19 +328,36 @@ public sealed class AuthorizationController(
                 return Error(Errors.InvalidGrant, "Персональный токен недействителен, истёк или отозван.");
             }
 
-            var audiences = pat.Token.Audiences.Split(",", StringSplitOptions.RemoveEmptyEntries);
-            var identity = await principals.CreateForUserAsync(pat.User, PatService.PatClientId, [.. audiences], audiences: audiences);
+            // Токен подключения сервиса-робота обменивает только этот сервис (OpenIddict уже проверил его секрет или ключ
+            // и разрешение на grant); токен для скриптов — только служебный клиент tsl-pat. Чужой клиент с украденным
+            // токеном подключения ничего не получит.
+            var client = request.ClientId!;
+            var expected = pat.Token.ClientId ?? PatService.PatClientId;
+            if (!string.Equals(client, expected, StringComparison.Ordinal))
+            {
+                await audit.WriteAsync("pat.rejected", false, AuditSeverity.Warning, client, pat.User.Id,
+                    new { tokenId = pat.Token.Id, reason = "client_mismatch", service = pat.Token.ClientId });
+                return Error(Errors.InvalidGrant, pat.Token.ClientId is null
+                    ? "Персональный токен обменивается через client_id=tsl-pat."
+                    : "Токен подключения выписан другому сервису.");
+            }
+
+            // «Все мои приложения» — по ролям владельца на момент обмена: новые роли подхватываются, снятые — пропадают.
+            var audiences = await pats.AudiencesAsync(pat.Token);
+            var identity = await principals.CreateForUserAsync(pat.User, client, [.. audiences], audiences: audiences);
             if (!identity.GetResources().Any())
             {
-                await audit.WriteAsync("pat.rejected", false, AuditSeverity.Info, PatService.PatClientId, pat.User.Id,
+                await audit.WriteAsync("pat.rejected", false, AuditSeverity.Info, client, pat.User.Id,
                     new { tokenId = pat.Token.Id, reason = "no_roles" });
                 return Error(Errors.InvalidGrant, "У владельца токена больше нет ролей ни в одном из его приложений.");
             }
             identity.SetClaim("pat_id", pat.Token.Id.ToString());
+            // Робот действует от имени пользователя: claim act (RFC 8693) называет сервис — так его видят API и журнал.
+            if (pat.Token.ClientId is not null) TokenPrincipalFactory.AddActor(identity, pat.Token.ClientId, null);
             // Только access token (без id/refresh-токена): PAT обменивается на короткоживущий JWT при каждом использовании.
             identity.SetDestinations(_ => [Destinations.AccessToken]);
-            return await IssueAsync(identity, PatGrantType, PatService.PatClientId, pat.User.Id, pat.User.UserName,
-                new { tokenId = pat.Token.Id, tokenName = pat.Token.Name });
+            return await IssueAsync(identity, PatGrantType, client, pat.User.Id, pat.User.UserName,
+                new { tokenId = pat.Token.Id, tokenName = pat.Token.Name, actor = pat.Token.ClientId });
         }
 
         return Error(Errors.UnsupportedGrantType, "Тип гранта не поддерживается.");

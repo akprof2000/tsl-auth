@@ -1,6 +1,7 @@
 @page
 @model TslAuth.Pages.Account.TokensModel
-@* Персональные токены: выпуск (секрет показывается один раз сразу после создания), список и отзыв. *@
+@* Персональные токены: выпуск (секрет показывается один раз сразу после создания), список и отзыв.
+   Токен для своих скриптов или токен подключения сервиса-робота (обменивает только этот сервис, работает с вашими правами). *@
 @{ ViewData["Title"] = L["tokens.title"]; }
 
 <div class="card">
@@ -26,8 +27,21 @@
         <form method="post" asp-page-handler="Create">
             <label for="Name">@L["tokens.name"]</label>
             <input asp-for="Name" placeholder="@L["tokens.namePlaceholder"]" required maxlength="100" />
+            @if (Model.Services.Count > 0)
+            {
+                <fieldset class="plain" id="token-user">
+                    <legend>@L["tokens.user"]</legend>
+                    <label class="inline"><input type="radio" name="ClientId" value="" checked="@string.IsNullOrEmpty(Model.ClientId)" /> @L["tokens.self"]</label>
+                    @foreach (var s in Model.Services)
+                    {
+                        <label class="inline"><input type="radio" name="ClientId" value="@s.ClientId" checked="@(Model.ClientId == s.ClientId)" /> @s.DisplayName <code class="small">@s.ClientId</code></label>
+                    }
+                    <p class="small muted">@L["tokens.serviceHint"]</p>
+                </fieldset>
+            }
             <fieldset class="plain">
                 <legend>@L["tokens.apps"]</legend>
+                <label class="inline"><input type="checkbox" name="AllApplications" value="true" checked="@Model.AllApplications" /> <strong>@L["tokens.allApps"]</strong></label>
                 @foreach (var app in Model.Available)
                 {
                     <label class="inline"><input type="checkbox" name="Audiences" value="@app" checked="@Model.Audiences.Contains(app)" /> @app</label>

@@ -48,7 +48,7 @@ type Introspection struct {
 // TokenClient получает токены у TSL Auth от имени приложения ClientID/ClientSecret (§6).
 // Без секрета, но с ключом (ClientKeyPEM/ClientKeyFile) входит по private_key_jwt: ES256-assertion
 // с одноразовым jti, сроком 60 с и aud = issuer сервиса (как в discovery).
-// clientCredentials кэшируется до ExpiresAt − 30 с с single-flight; exchange не кэшируется.
+// ClientCredentials и ConnectionToken кэшируются до ExpiresAt − 30 с с single-flight; Exchange не кэшируется.
 type TokenClient struct {
 	opts Options
 	ep   *endpoints
@@ -78,9 +78,33 @@ func NewTokenClient(opts Options) (*TokenClient, error) {
 // UsesPrivateKeyJWT — клиент входит по ключу (assertion), а не секретом.
 func (c *TokenClient) UsesPrivateKeyJWT() bool { return c.key != nil && c.opts.ClientSecret == "" }
 
+// ConnectionTokenGrantType — обмен токена подключения (PAT, выписанного пользователем этому сервису) на JWT пользователя.
+const ConnectionTokenGrantType = "urn:tsl:grant-type:pat"
+
 // ClientCredentials — токен самого сервиса (grant client_credentials) с кэшем по набору scope.
 func (c *TokenClient) ClientCredentials(ctx context.Context, scopes ...string) (*TokenSet, error) {
 	scope := strings.Join(scopes, " ")
+	form := url.Values{"grant_type": {"client_credentials"}}
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	return c.cached(ctx, scope, form)
+}
+
+// ConnectionToken — робот: JWT пользователя по его токену подключения (tslpat_…, выписан в «Мои токены» этому сервису).
+// Сервис входит своими учётными данными (секрет или ключ); в JWT — права пользователя и claim act с этим сервисом.
+// Кэшируется по токену до ExpiresAt − 30 с, как сервисный токен.
+func (c *TokenClient) ConnectionToken(ctx context.Context, connectionToken string) (*TokenSet, error) {
+	if connectionToken == "" {
+		return nil, errors.New("tslauth: пустой токен подключения")
+	}
+	form := url.Values{"grant_type": {ConnectionTokenGrantType}, "token": {connectionToken}}
+	return c.cached(ctx, "pat:"+connectionToken, form)
+}
+
+// cached выполняет grant с кэшем по ключу до ExpiresAt − 30 с; параллельные вызовы с одним ключом делают один запрос.
+func (c *TokenClient) cached(ctx context.Context, key string, form url.Values) (*TokenSet, error) {
+	scope := key
 	for {
 		c.mu.Lock()
 		if ts, ok := c.cache[scope]; ok && c.opts.now().Before(ts.ExpiresAt.Add(-30*time.Second)) {
@@ -101,10 +125,6 @@ func (c *TokenClient) ClientCredentials(ctx context.Context, scopes ...string) (
 		c.inflight[scope] = ch
 		c.mu.Unlock()
 
-		form := url.Values{"grant_type": {"client_credentials"}}
-		if scope != "" {
-			form.Set("scope", scope)
-		}
 		ts, err := c.grant(ctx, form)
 
 		c.mu.Lock()

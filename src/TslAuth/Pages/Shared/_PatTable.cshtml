@@ -12,8 +12,14 @@
     @foreach (var t in Model.Items)
     {
         <tr>
-            <td>@t.Name<div class="small muted"><code>@t.Prefix</code></div></td>
-            <td>@foreach (var a in t.Audiences) { <span class="badge">@a</span> }</td>
+            <td>@t.Name<div class="small muted"><code>@t.Prefix</code></div>
+                @if (t.ClientId is not null)
+                {
+                    <div class="small">@T("tokens.forService", "Сервис-робот"): <code>@t.ClientId</code></div>
+                }
+            </td>
+            <td>@if (t.AllApplications) { <span class="badge">@T("tokens.allAppsBadge", "все приложения")</span> }
+                @foreach (var a in t.Audiences) { <span class="badge">@a</span> }</td>
             <td class="small">@Ui.Date(t.ExpiresAt)</td>
             <td class="small">@Ui.Time(t.LastUsedAt) @t.LastUsedIp</td>
             <td>

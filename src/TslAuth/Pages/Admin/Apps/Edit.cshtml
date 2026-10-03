@@ -13,7 +13,8 @@
         [AppGrantTypes.RefreshToken] = "продление сессии refresh-токеном (scope offline_access)",
         [AppGrantTypes.Password] = "логин/пароль напрямую в /connect/token",
         [AppGrantTypes.ClientCredentials] = "сервис-сервис, токен от имени самого приложения",
-        [AppGrantTypes.TokenExchange] = "token exchange (RFC 8693): обменять токен пользователя на токен для другого приложения"
+        [AppGrantTypes.TokenExchange] = "token exchange (RFC 8693): обменять токен пользователя на токен для другого приложения",
+        [AppGrantTypes.ConnectionToken] = "сервис-робот: работать вместо пользователя с его правами по токену подключения, который пользователь выписал этому сервису в «Мои токены»"
     };
 }
 
@@ -81,7 +82,7 @@
                 {
                     <label class="inline flex">
                         <input type="checkbox" name="GrantTypes" value="@grant" checked="@Model.GrantTypes.Contains(grant)" disabled="@readOnly" />
-                        <span><code>@(grant == AppGrantTypes.TokenExchange ? "token_exchange" : grant)</code> <span class="muted small">— @info</span></span>
+                        <span><code>@AppGrantTypes.ShortName(grant)</code> <span class="muted small">— @info</span></span>
                     </label>
                 }
             </fieldset>

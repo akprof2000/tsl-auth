@@ -12,11 +12,13 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from http.cookiejar import CookieJar
 
 ISSUER = os.environ.get("TSL_AUTH_ISSUER", "http://localhost:8080/")
 BASE = ISSUER.rstrip("/")
@@ -29,6 +31,8 @@ CLIENT = "sdk-contract-client"
 # Владелец подчинённых клиентов: SDK регистрируют подчинённого со своим ключом и входят по private_key_jwt.
 OWNER = "sdk-contract-owner"
 OWNER_PREFIX = "sdk-agent-"
+# Сервис-робот: работает вместо пользователя по токену подключения, который пользователь выписал ему в «Мои токены».
+ROBOT = "sdk-contract-robot"
 # Пароли пользователей генерируются на каждый запуск: в репозитории литеральных паролей нет.
 PASSWORD = "Sdk-" + secrets.token_urlsafe(12) + "!1"
 
@@ -124,6 +128,10 @@ api("PUT", f"/applications/{OWNER}/managed-clients-policy", {
     "prefix": OWNER_PREFIX, "roles": ["uploader"], "authMethods": ["private_key_jwt", "client_secret"],
     "maxClients": 500, "accessTokenLifetime": 5, "requireDelegation": False})
 
+# --- Сервис-робот (токен подключения пользователя) ---
+robot_secret = upsert_app({
+    "clientId": ROBOT, "displayName": "SDK contract robot", "clientType": "confidential", "grantTypes": ["connection_token"]})
+
 # --- Пользователи ---
 for name, role in (("sdk-operator", "operator"), ("sdk-viewer", "viewer")):
     found = api("GET", f"/users?search={name}")
@@ -148,6 +156,40 @@ ok_client = token(grant_type="client_credentials", client_id=CLIENT, client_secr
 wrong_aud = token(grant_type="client_credentials", client_id=CLIENT, client_secret=client_secret)["access_token"]
 exchanged = token(grant_type="urn:ietf:params:oauth:grant-type:token-exchange", client_id=CLIENT, client_secret=client_secret,
                   subject_token=ok_user, subject_token_type="urn:ietf:params:oauth:token-type:access_token", scope=API)["access_token"]
+
+
+
+def connection_token(username, robot):
+    """Пользователь выписывает роботу токен подключения так же, как в браузере: вход и форма «Мои токены»."""
+    jar = CookieJar()
+    web = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+    def page(path, form=None):
+        data = urllib.parse.urlencode(form).encode() if form is not None else None
+        with web.open(urllib.request.Request(f"{BASE}{path}", data=data), timeout=20) as r:
+            return r.read().decode()
+
+    def antiforgery(html):
+        return re.search(r'name="__RequestVerificationToken" type="hidden" value="([^"]+)"', html).group(1)
+
+    login = page("/Account/Login")
+    page("/Account/Login", {"Login": username, "Password": PASSWORD, "__RequestVerificationToken": antiforgery(login)})
+    tokens = page("/Account/Tokens")
+    created = page("/Account/Tokens?handler=Create", {
+        "Name": "sdk-contract", "ClientId": robot, "AllApplications": "true", "ExpiresInDays": "1",
+        "__RequestVerificationToken": antiforgery(tokens)})
+    found = re.search(r'<code id="pat-secret">([^<]+)</code>', created)
+    if not found:
+        sys.exit(f"токен подключения для {username} не выпущен: {re.findall(r'class="alert[^"]*">([^<]+)', created)}")
+    return found.group(1)
+
+
+# Прежние токены sdk-operator отзываются: иначе прогоны упрутся в лимит активных токенов пользователя.
+operator_id = api("GET", "/users?search=sdk-operator")["items"][0]["id"]
+for t in api("GET", f"/users/{operator_id}/tokens"):
+    if t["isActive"]:
+        api("DELETE", f"/users/{operator_id}/tokens/{t['id']}")
+robot_token = connection_token("sdk-operator", ROBOT)
 
 # --- Испорченные варианты ---
 def b64d(s):
@@ -211,12 +253,15 @@ vectors = {
     "issuer": ISSUER, "audience": API, "jwksUri": disco["jwks_uri"],
     "client": {"id": CLIENT, "secret": client_secret},
     "managedOwner": {"id": OWNER, "secret": owner_secret, "prefix": OWNER_PREFIX, "role": "uploader"},
+    # Робот обменивает токен подключения sdk-operator (все приложения пользователя) своим секретом.
+    "robot": {"id": ROBOT, "secret": robot_secret, "connectionToken": robot_token},
     "users": {"operator": {"username": "sdk-operator", "password": PASSWORD}, "viewer": {"username": "sdk-viewer", "password": PASSWORD}},
     "expected": {
         "ok_user": {"subjectType": "user", "username": "sdk-operator", "permissions": ["orders.read", "orders.write"], "roles": ["operator"]},
         "ok_viewer": {"subjectType": "user", "username": "sdk-viewer", "permissions": ["orders.read"], "roles": ["viewer"]},
         "ok_client": {"subjectType": "client", "subject": CLIENT},
         "ok_exchanged": {"actorSub": CLIENT},
+        "robot": {"subjectType": "user", "username": "sdk-operator", "actorSub": ROBOT, "permissions": ["orders.read", "orders.write"]},
     },
     "cases": cases,
 }

@@ -7,7 +7,8 @@ using TslAuth.Services;
 namespace TslAuth.Pages.Account;
 
 /// <summary>
-/// Персональные токены доступа текущего пользователя (как в GitHub).
+/// Персональные токены доступа текущего пользователя (как в GitHub): для своих скриптов или токен подключения
+/// сервиса-робота, который будет работать с правами пользователя во всех или в выбранных его приложениях.
 /// Требует аутентификации (конвенция AuthorizePage); пользователь видит и отзывает только свои токены.
 /// Использует PatService, SettingsService (политика PAT: срок жизни) и UserManager.
 /// </summary>
@@ -17,9 +18,13 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public List<string> Audiences { get; set; } = [];
     [BindProperty] public int? ExpiresInDays { get; set; }
+    [BindProperty] public bool AllApplications { get; set; }
+    /// <summary>Сервис-робот, которому выписывается токен; пусто — токен для своих скриптов.</summary>
+    [BindProperty] public string? ClientId { get; set; }
 
     public List<PatDto> Items { get; private set; } = [];
     public List<string> Available { get; private set; } = [];
+    public List<PatServiceClient> Services { get; private set; } = [];
     public PatPolicy Policy { get; private set; } = new();
     public string? CreatedSecret { get; private set; }
 
@@ -32,7 +37,7 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     {
         try
         {
-            var (_, secret) = await pats.CreateAsync(UserId, new PatInput(Name ?? "", Audiences, ExpiresInDays), ct);
+            var (_, secret) = await pats.CreateAsync(UserId, new PatInput(Name ?? "", Audiences, ExpiresInDays, AllApplications, ClientId), ct);
             // Секрет показывается только один раз в ответе на этот POST (без редиректа): в БД хранится лишь хэш,
             // повторно получить значение невозможно.
             CreatedSecret = secret;
@@ -68,6 +73,7 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
         Policy = (await settings.GetAsync(ct)).Pats;
         Items = await pats.ListAsync(UserId, ct);
         Available = await pats.AvailableAudiencesAsync(UserId, ct);
+        Services = await pats.ServiceClientsAsync(ct);
         // Срок по умолчанию — 90 дней, но не больше максимума из политики.
         ExpiresInDays ??= Math.Min(90, Policy.MaxLifetimeDays);
     }

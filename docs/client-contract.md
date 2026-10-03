@@ -127,6 +127,7 @@ SDK есть способ подменить `now` (нужно тестам и �
 |---|---|---|
 | `clientCredentials(scopes)` | `client_credentials` | `scope` |
 | `exchange(subjectToken, scopes)` | `urn:ietf:params:oauth:grant-type:token-exchange` | `subject_token`, `subject_token_type=urn:ietf:params:oauth:token-type:access_token`, `scope` |
+| `connectionToken(token)` | `urn:tsl:grant-type:pat` | `token` — токен подключения (`tslpat_…`), который пользователь выписал этому сервису-роботу; в ответе JWT пользователя с `act.sub` = `client_id` робота, без refresh-токена ([integration.md](integration.md#сервис-робот-вместо-пользователя-токен-подключения)) |
 | `refresh(refreshToken, scopes?)` | `refresh_token` | `refresh_token` |
 | `password(username, password, scopes)` | `password` | только серверные приложения |
 | `authorizationCode(code, redirectUri, codeVerifier)` | `authorization_code` | PKCE обязателен |
@@ -155,6 +156,9 @@ payload `iss = sub = client_id`, `aud` = issuer из discovery (с заверш�
   использоваться как «запас».
 - **Кэш сервисного токена.** `clientCredentials` с одинаковым `scope` кэшируется до `expiresAt − 30 с`; параллельные
   вызовы при протухшем кэше делают один запрос (single-flight). Ошибка запроса кэш не портит.
+- **Токен подключения.** `connectionToken` кэшируется по значению токена до `expiresAt − 30 с` тем же механизмом
+  (single-flight, ошибка кэш не портит): робот вызывает его перед каждым запросом к API, не нагружая TSL Auth.
+  Константа grant — `ConnectionTokenGrantType` (.NET, Go), `CONNECTION_TOKEN_GRANT` (Python, Node.js, Java).
 - **Exchange** не кэшируется (токен привязан к пользователю); вызывающий отвечает за его срок.
 - Никакие секреты и токены не пишутся в журналы SDK.
 
@@ -179,13 +183,16 @@ payload `iss = sub = client_id`, `aud` = issuer из discovery (с заверш�
    `orders.write`; роли `viewer` → read, `operator` → read+write), клиент `sdk-contract-client` (confidential,
    `password`, `refresh_token`, `client_credentials`, `token_exchange`; scope `sdk-contract-api`), пользователей
    `sdk-operator` (operator) и `sdk-viewer` (viewer), владельца подчинённых клиентов `sdk-contract-owner` (самоуправление,
-   роль `uploader`, политика: префикс `sdk-agent-`, вход по ключу и секрету, `requireDelegation=false`), получает
-   токены и пишет `vectors.json`:
+   роль `uploader`, политика: префикс `sdk-agent-`, вход по ключу и секрету, `requireDelegation=false`), сервис-робот
+   `sdk-contract-robot` (confidential, поток `connection_token`) и токен подключения к нему: `sdk-operator` выписывает
+   его на все свои приложения через вход и форму «Мои токены» (как в браузере; прежние токены пользователя
+   отзываются), получает токены и пишет `vectors.json`:
 
    ```json
    { "issuer": "...", "audience": "sdk-contract-api", "jwksUri": "...",
      "client": { "id": "sdk-contract-client", "secret": "..." },
      "managedOwner": { "id": "sdk-contract-owner", "secret": "...", "prefix": "sdk-agent-", "role": "uploader" },
+     "robot": { "id": "sdk-contract-robot", "secret": "...", "connectionToken": "tslpat_..." },
      "users": { "operator": { "username": "sdk-operator", "password": "..." }, "viewer": { ... } },
      "cases": [ { "name": "ok_user", "token": "...", "expect": "ok" },
                 { "name": "alg_none", "token": "...", "expect": "unsupported_alg" }, ... ] }
@@ -222,6 +229,10 @@ payload `iss = sub = client_id`, `aud` = issuer из discovery (с заверш�
    - `private_key_jwt` (.NET, Go): SDK генерирует ключ P-256, сервисным токеном `managedOwner` регистрирует подчинённого
      (`POST /api/app/clients` с открытым JWK), получает токен без секрета — в нём роль `sdk-contract-owner:uploader`;
      клиент с тем же `client_id`, но другим ключом получает `invalid_client`; подчинённый удаляется.
+   - `connection_token_robot`: робот (`robot.id`/`secret`) вызывает `connectionToken(robot.connectionToken)` — повторный
+     вызов возвращает тот же `TokenSet` (кэш), refresh-токена нет; JWT проходит проверку: `subjectType=user`,
+     `username=sdk-operator`, `actor.sub=sdk-contract-robot`, разрешения `orders.read`, `orders.write`
+     (`expected.robot`); обычный клиент без потока `connection_token` получает `unauthorized_client`.
    - `middleware`: HTTP-сервер SDK: без токена `401`+`missing`; `ok_viewer` на маршрут с `orders.write` — `403`
      `insufficient_permissions`; `ok_user` — `200` и тело с `username`; заголовок `WWW-Authenticate` по §5.
 

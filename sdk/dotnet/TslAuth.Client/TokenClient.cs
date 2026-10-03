@@ -94,11 +94,31 @@ public sealed class TokenClient : IDisposable
     /// <summary>Клиент входит по ключу (assertion), а не секретом.</summary>
     public bool UsesPrivateKeyJwt => _signer is not null && string.IsNullOrEmpty(_options.ClientSecret);
 
+    /// <summary>Grant обмена токена подключения (PAT, выписанного пользователем этому сервису) на JWT пользователя.</summary>
+    public const string ConnectionTokenGrantType = "urn:tsl:grant-type:pat";
+
     /// <summary>Сервисный токен; кэшируется по <c>scope</c> до <c>expiresAt − 30 с</c>, параллельные вызовы делают один запрос.</summary>
-    public async Task<TokenSet> ClientCredentialsAsync(IEnumerable<string>? scopes = null, CancellationToken ct = default)
+    public Task<TokenSet> ClientCredentialsAsync(IEnumerable<string>? scopes = null, CancellationToken ct = default)
     {
         var scope = Join(scopes);
-        var key = scope ?? "";
+        return CachedAsync(scope ?? "", () => RequestTokenAsync("client_credentials", ct, ("scope", scope)), ct);
+    }
+
+    /// <summary>
+    /// Робот: JWT пользователя по его токену подключения (<c>tslpat_…</c>, выписан в «Мои токены» именно этому сервису).
+    /// Сервис входит своими учётными данными (секрет или ключ); в JWT — права пользователя и claim <c>act</c> с этим
+    /// сервисом. Кэшируется по токену до <c>expiresAt − 30 с</c>, как сервисный токен.
+    /// </summary>
+    public Task<TokenSet> ConnectionTokenAsync(string connectionToken, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(connectionToken);
+        return CachedAsync("pat:" + connectionToken,
+            () => RequestTokenAsync(ConnectionTokenGrantType, ct, ("token", connectionToken)), ct);
+    }
+
+    /// <summary>Кэш токенов до <c>expiresAt − 30 с</c>; параллельные вызовы с одним ключом делают один запрос.</summary>
+    private async Task<TokenSet> CachedAsync(string key, Func<Task<TokenSet>> request, CancellationToken ct)
+    {
         if (TryCached(key, out var cached)) return cached;
 
         var gate = GetLock(key);
@@ -106,7 +126,7 @@ public sealed class TokenClient : IDisposable
         try
         {
             if (TryCached(key, out cached)) return cached;
-            var set = await RequestTokenAsync("client_credentials", ct, ("scope", scope)).ConfigureAwait(false);
+            var set = await request().ConfigureAwait(false);
             lock (_sync) _cache[key] = set;
             return set;
         }

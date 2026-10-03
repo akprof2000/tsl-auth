@@ -53,6 +53,26 @@ class LiveTests(unittest.TestCase):
         # Без introspection локальная проверка по-прежнему проходит — отзыв виден только через introspect.
         self.assertTrue(Verifier(self.options()).verify(tokens.access_token))
 
+    def test_connection_token_robot(self):
+        """§6 токен подключения: робот своим секретом получает JWT с правами пользователя и act = робот; клиент без потока connection_token — unauthorized_client."""
+        robot = self.v.get("robot")
+        if not robot:
+            self.skipTest("в vectors.json нет robot — обновите make-vectors.py")
+        expected = self.v["expected"]["robot"]
+        client = TokenClient(self.options(client_id=robot["id"], client_secret=robot["secret"]))
+        tokens = client.connection_token(robot["connectionToken"])
+        self.assertIs(tokens, client.connection_token(robot["connectionToken"]), "повторный вызов — из кэша")
+        self.assertFalse(tokens.refresh_token)
+        p = Verifier(self.options()).verify(tokens.access_token)
+        self.assertEqual(p.subject_type, expected["subjectType"])
+        self.assertEqual(p.username, expected["username"])
+        self.assertEqual((p.actor or {}).get("sub"), expected["actorSub"])
+        for perm in expected["permissions"]:
+            self.assertTrue(p.has_permission(perm), perm)
+        with self.assertRaises(TokenError) as ctx:
+            TokenClient(self.options()).connection_token(robot["connectionToken"])
+        self.assertEqual(ctx.exception.error, "unauthorized_client")
+
     def test_client_credentials_cache(self):
         clock = {"now": time.time()}
         client = TokenClient(self.options(now=lambda: clock["now"]))

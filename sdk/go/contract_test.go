@@ -41,6 +41,11 @@ type vectors struct {
 		Prefix string `json:"prefix"`
 		Role   string `json:"role"`
 	} `json:"managedOwner"`
+	Robot struct {
+		ID              string `json:"id"`
+		Secret          string `json:"secret"`
+		ConnectionToken string `json:"connectionToken"`
+	} `json:"robot"`
 	Users map[string]struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -339,6 +344,55 @@ func TestClientCredentialsCache(t *testing.T) {
 
 // TestPrivateKeyJWTManagedClient — §6 private_key_jwt: владелец регистрирует подчинённого с открытым ключом SDK,
 // подчинённый получает токен без секрета (ES256-assertion) с ролью владельца; чужой ключ — invalid_client.
+// TestConnectionTokenRobot — §6 токен подключения: робот своим секретом получает JWT с правами пользователя и act = робот;
+// JWT кэшируется; клиент без потока connection_token — unauthorized_client.
+func TestConnectionTokenRobot(t *testing.T) {
+	v := loadVectors(t)
+	if v.Robot.ID == "" {
+		t.Skip("в vectors.json нет robot — обновите make-vectors.py")
+	}
+	ctx := context.Background()
+	exp := v.Expected["robot"]
+	robot, err := NewTokenClient(Options{Issuer: v.Issuer, ClientID: v.Robot.ID, ClientSecret: v.Robot.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := robot.ConnectionToken(ctx, v.Robot.ConnectionToken)
+	if err != nil {
+		t.Fatalf("токен подключения: %v", err)
+	}
+	if again, _ := robot.ConnectionToken(ctx, v.Robot.ConnectionToken); again != set {
+		t.Fatal("ожидался JWT из кэша")
+	}
+	opts := v.baseOptions()
+	opts.JWKSURI = v.JwksURI
+	verifier, err := New(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := verifier.Verify(ctx, set.AccessToken)
+	if err != nil {
+		t.Fatalf("проверка JWT робота: %v", err)
+	}
+	if p.SubjectType != exp.SubjectType || p.Username != exp.Username {
+		t.Fatalf("субъект %s/%s, ожидался %s/%s", p.SubjectType, p.Username, exp.SubjectType, exp.Username)
+	}
+	if p.Actor() == nil || p.Actor().Sub != exp.ActorSub {
+		t.Fatalf("act: %+v, ожидался sub=%s", p.Actor(), exp.ActorSub)
+	}
+	for _, perm := range exp.Permissions {
+		if !p.HasPermission(perm) {
+			t.Fatalf("нет разрешения %s", perm)
+		}
+	}
+	stranger, _ := NewTokenClient(Options{Issuer: v.Issuer, ClientID: v.Client.ID, ClientSecret: v.Client.Secret})
+	_, err = stranger.ConnectionToken(ctx, v.Robot.ConnectionToken)
+	var te *TokenError
+	if !errors.As(err, &te) || te.Code != "unauthorized_client" {
+		t.Fatalf("ожидался unauthorized_client, получено %v", err)
+	}
+}
+
 func TestPrivateKeyJWTManagedClient(t *testing.T) {
 	v := loadVectors(t)
 	if v.ManagedOwner.ID == "" {

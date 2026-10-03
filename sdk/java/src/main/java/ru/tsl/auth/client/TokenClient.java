@@ -53,19 +53,39 @@ public final class TokenClient {
         return new TokenClient(TslAuthOptions.fromEnvironment().build());
     }
 
+    /** Обмен токена подключения (PAT, выписанного пользователем этому сервису) на JWT пользователя. */
+    public static final String CONNECTION_TOKEN_GRANT = "urn:tsl:grant-type:pat";
+
     /** Сервисный токен; кэшируется по scope до expiresAt − 30 с, параллельные вызовы делают один запрос. */
     public TokenSet clientCredentials(String... scopes) {
         String scope = joinScopes(scopes);
+        Map<String, String> form = form("client_credentials");
+        if (!scope.isEmpty()) form.put("scope", scope);
+        return cached(scope, form);
+    }
+
+    /**
+     * Робот: JWT пользователя по его токену подключения ({@code tslpat_…}, выписан в «Мои токены» этому сервису).
+     * Сервис входит своим client_id и секретом; в JWT — права пользователя и claim {@code act} с этим сервисом.
+     * Кэшируется по токену до expiresAt − 30 с, как сервисный токен.
+     */
+    public TokenSet connectionToken(String connectionToken) {
+        if (connectionToken == null || connectionToken.isEmpty()) throw new IllegalArgumentException("пустой токен подключения");
+        Map<String, String> form = form(CONNECTION_TOKEN_GRANT);
+        form.put("token", connectionToken);
+        return cached("pat:" + connectionToken, form);
+    }
+
+    /** Кэш до expiresAt − 30 с; при протухшем кэше один запрос (под блокировкой). */
+    private TokenSet cached(String key, Map<String, String> form) {
         Instant now = options.clock().instant();
         synchronized (cacheLock) {
-            TokenSet cached = serviceTokens.get(scope);
+            TokenSet cached = serviceTokens.get(key);
             if (cached != null && cached.expiresAt() != null && now.isBefore(cached.expiresAt().minus(CACHE_MARGIN))) {
                 return cached;
             }
-            Map<String, String> form = form("client_credentials");
-            if (!scope.isEmpty()) form.put("scope", scope);
             TokenSet fresh = token(form); // ошибка запроса кэш не портит
-            serviceTokens.put(scope, fresh);
+            serviceTokens.put(key, fresh);
             return fresh;
         }
     }

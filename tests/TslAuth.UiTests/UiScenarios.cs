@@ -432,6 +432,53 @@ public sealed class UiScenarios(UiFixture fx)
         await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("tokens.revoked"));
     }
 
+    /// <summary>
+    /// Робот вместо пользователя: администратор разрешает сервису работать по токенам подключения, пользователь выписывает
+    /// ему токен на все свои приложения в «Мои токены», робот своим секретом получает JWT пользователя и вызывает Node API —
+    /// API видит пользователя и робота-посредника (calledVia = client_id робота из claim act).
+    /// </summary>
+    [Fact]
+    public async Task ConnectionToken_IssuedInUi_RobotActsAsUser()
+    {
+        var robot = Unique("ui-robot");
+        var created = await (await fx.Admin.PostAsJsonAsync("/api/admin/applications", new
+        {
+            clientId = robot, displayName = "Робот отчётов", clientType = "confidential", grantTypes = new[] { "connection_token" }
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var robotSecret = created.GetProperty("clientSecret").GetString()!;
+        try
+        {
+            var page = await fx.NewPageAsync();
+            await page.GotoAsync($"{UiFixture.Auth}/Account/Tokens");
+            await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
+            await page.FillAsync("#Name", "робот отчётов");
+            await page.CheckAsync($"input[name=ClientId][value={robot}]");
+            await page.CheckAsync("input[name=AllApplications]");
+            await page.ClickAsync("form[action*=Create] button");
+            var secret = (await page.Locator("#pat-secret").TextContentAsync())!.Trim();
+            await Expect(page.Locator("tr", new() { HasText = "робот отчётов" })).ToContainTextAsync(robot);
+            await UiFixture.ShotAsync(page, "81-connection-token-created");
+
+            using var http = new HttpClient();
+            var token = await (await http.PostAsync($"{UiFixture.Auth}/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["grant_type"] = "urn:tsl:grant-type:pat", ["client_id"] = robot, ["client_secret"] = robotSecret, ["token"] = secret
+            }))).Content.ReadFromJsonAsync<JsonElement>();
+            http.DefaultRequestHeaders.Authorization = new("Bearer", token.GetProperty("access_token").GetString());
+            var orders = await (await http.GetAsync($"{UiFixture.Spa}/api/orders")).Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("alice", orders.GetProperty("user").GetString());     // права и имя пользователя
+            Assert.Equal(robot, orders.GetProperty("calledVia").GetString());  // робот — посредник (claim act)
+
+            page.Dialog += (_, dialog) => dialog.AcceptAsync();
+            await page.Locator("tr", new() { HasText = "робот отчётов" }).Locator("form[action*=Revoke] button").ClickAsync();
+            await Expect(page.Locator(".alert.ok")).ToContainTextAsync(UiFixture.Ru("tokens.revoked"));
+        }
+        finally
+        {
+            await fx.Admin.DeleteAsync($"/api/admin/applications/{robot}");
+        }
+    }
+
     // ---------- Документация REST API модулей ----------
 
     /// <summary>

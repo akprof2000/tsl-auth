@@ -183,6 +183,8 @@ export type Scopes = string | string[] | undefined;
 export interface TokenClient {
   clientCredentials(scopes?: Scopes): Promise<TokenSet>;
   exchange(subjectToken: string, scopes?: Scopes): Promise<TokenSet>;
+  /** Робот: JWT пользователя по его токену подключения (tslpat_…), выписанному этому сервису; кэшируется до expiresAt − 30 с. */
+  connectionToken(connectionToken: string): Promise<TokenSet>;
   refresh(refreshToken: string, scopes?: Scopes): Promise<TokenSet>;
   password(username: string, password: string, scopes?: Scopes): Promise<TokenSet>;
   authorizationCode(code: string, redirectUri: string, codeVerifier: string): Promise<TokenSet>;
@@ -196,3 +198,6 @@ export interface TokenClientOptions extends CommonOptions {
 }
 
 export function createTokenClient(options?: TokenClientOptions): TokenClient;
+
+/** grant_type обмена токена подключения на JWT пользователя: urn:tsl:grant-type:pat. */
+export const CONNECTION_TOKEN_GRANT: "urn:tsl:grant-type:pat";

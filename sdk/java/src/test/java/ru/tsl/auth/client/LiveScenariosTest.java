@@ -21,6 +21,30 @@ import static org.junit.jupiter.api.Assertions.*;
 class LiveScenariosTest {
     private static final String SCOPE = "openid offline_access " + Vectors.AUDIENCE;
 
+    /** §6 токен подключения: робот своим секретом получает JWT пользователя с act = робот; клиент без потока connection_token — unauthorized_client. */
+    @Test
+    void connection_token_robot() {
+        com.fasterxml.jackson.databind.JsonNode robot = Vectors.ROOT.get("robot");
+        org.junit.jupiter.api.Assumptions.assumeTrue(robot != null, "в vectors.json нет robot — обновите make-vectors.py");
+        com.fasterxml.jackson.databind.JsonNode expected = Vectors.ROOT.get("expected").get("robot");
+        String connection = robot.get("connectionToken").asText();
+        TokenClient client = new TokenClient(Vectors.options().clientId(robot.get("id").asText()).clientSecret(robot.get("secret").asText()).build());
+        TokenSet set = client.connectionToken(connection);
+        assertSame(set, client.connectionToken(connection), "повторный вызов — из кэша");
+        assertNull(set.refreshToken());
+        Principal p = new TslAuthVerifier(Vectors.options().build()).verify(set.accessToken());
+        assertEquals(expected.get("subjectType").asText(), p.subjectType());
+        assertEquals(expected.get("username").asText(), p.username());
+        assertNotNull(p.actor());
+        assertEquals(expected.get("actorSub").asText(), p.actor().subject());
+        for (com.fasterxml.jackson.databind.JsonNode perm : expected.get("permissions")) {
+            assertTrue(p.hasPermission(perm.asText()), perm.asText());
+        }
+        TokenException e = assertThrows(TokenException.class,
+                () -> new TokenClient(Vectors.options().build()).connectionToken(connection));
+        assertEquals("unauthorized_client", e.getError());
+    }
+
     @Test
     void refresh_rotation() {
         TokenClient client = new TokenClient(Vectors.options().build());

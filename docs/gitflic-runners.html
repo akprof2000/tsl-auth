@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сборка на GitFlic на своих агентах — инструкция</title>
+<!-- Инструкция по сборке TSL Auth в GitFlic CI/CD на собственных агентах (сервер сборки в Хельсинки).
+     Самодостаточная страница: без внешних шрифтов, скриптов и CDN — открывается и в закрытом контуре.
+     Источник фактов — gitflic-ci.yaml, scripts/*, docs/gitflic-ci.md и CLAUDE.md репозитория (состояние на 04.10.2026). -->
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa; --code: #f3f4f6;
+    --accent: #0969da; --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; --accent-bg: #ddf4ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d; --card: #161b22; --code: #1c2128;
+      --accent: #4493f8; --ok: #3fb950; --warn: #d29922; --bad: #f85149; --accent-bg: #0c2d6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+  .wrap { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 32px; max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+  nav { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; font-size: 14px; }
+  nav ol { padding-left: 20px; margin: 8px 0; }
+  nav a { color: var(--fg); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  main { min-width: 0; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 22px; margin: 40px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  a { color: var(--accent); }
+  .lead { font-size: 17px; color: var(--fg); }
+  .meta { color: var(--muted); font-size: 13px; }
+  code { font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  pre { position: relative; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  pre code { background: none; padding: 0; font-size: 12.5px; line-height: 1.5; }
+  pre button { position: absolute; top: 6px; right: 6px; font: 12px system-ui; padding: 2px 8px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--card); color: var(--muted); cursor: pointer; }
+  pre button:hover { color: var(--fg); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--card); }
+  .note, .warn, .bad, .ok { border-left: 4px solid var(--accent); background: var(--card); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .warn { border-left-color: var(--warn); } .bad { border-left-color: var(--bad); } .ok { border-left-color: var(--ok); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+  ol.steps > li { margin-bottom: 10px; }
+  figure { margin: 16px 0; }
+  figcaption { color: var(--muted); font-size: 13px; }
+  svg text { font-family: system-ui, sans-serif; }
+  .check li { list-style: none; margin-left: -20px; }
+  .check li::before { content: "☐ "; color: var(--muted); }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } nav { position: static; max-height: none; } }
+  @media print { nav, pre button { display: none; } .wrap { display: block; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <strong>Содержание</strong>
+  <ol>
+    <li><a href="#overview">Как устроено</a></li>
+    <li><a href="#prereq">Что нужно заранее</a></li>
+    <li><a href="#server">Подготовка сервера</a></li>
+    <li><a href="#runners">Регистрация агентов</a></li>
+    <li><a href="#pipeline">Конвейер gitflic-ci.yaml</a></li>
+    <li><a href="#tricks">Приёмы в заданиях</a></li>
+    <li><a href="#vars">Переменные проекта</a></li>
+    <li><a href="#publish">Версии и публикация</a></li>
+    <li><a href="#release">Выпуск релиза</a></li>
+    <li><a href="#manual">Публикация с рабочей станции</a></li>
+    <li><a href="#mirror">Зеркало GitHub и LFS</a></li>
+    <li><a href="#ops">Обслуживание</a></li>
+    <li><a href="#api">GitFlic без браузера</a></li>
+    <li><a href="#quirks">Особенности GitFlic</a></li>
+    <li><a href="#trouble">Диагностика</a></li>
+    <li><a href="#checklist">Чек-лист нового проекта</a></li>
+  </ol>
+</nav>
+
+<main>
+<h1>Сборка на GitFlic на своих агентах</h1>
+<p class="meta">TSL Auth · <code>gitflic.ru/project/uklad/tsl-auth</code> · состояние на 04.10.2026 · исходник —
+  <code>docs/gitflic-runners.html</code> в репозитории</p>
+<p class="lead">GitFlic не даёт общих агентов: конвейер выполняют два наших агента на сервере сборки в Хельсинки.
+  Каждый push в <code>main</code> собирает решение, гоняет все уровни тестов в <code>docker:dind</code>, сканирует образ
+  и публикует образ и пакеты SDK в реестры GitFlic. Когда с сервера не проходит выгрузка в реестр, образ и пакеты
+  публикуются с рабочей станции теми же командами.</p>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. Как устроено</h2>
+<figure>
+<svg viewBox="0 0 900 350" width="100%" role="img" aria-label="Схема: разработчик, GitFlic, агенты на сервере, docker:dind, реестры, GitHub">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.3" style="color: var(--muted)">
+    <path d="M150 70 H262" marker-end="url(#arr)"/>
+    <path d="M450 110 V170" marker-end="url(#arr)"/>
+    <path d="M610 230 H682" marker-end="url(#arr)"/>
+    <path d="M450 70 H682" marker-end="url(#arr)" stroke-dasharray="5 4"/>
+    <path d="M150 316 H780 V281" marker-end="url(#arr)" stroke-dasharray="5 4"/>
+  </g>
+  <g style="color: var(--fg)" fill="currentColor" font-size="13">
+    <rect x="20" y="40" width="130" height="60" rx="8" fill="none" stroke="currentColor"/>
+    <text x="85" y="66" text-anchor="middle" font-weight="600">Рабочая станция</text>
+    <text x="85" y="84" text-anchor="middle" font-size="11.5">git push origin main</text>
+
+    <rect x="265" y="30" width="185" height="80" rx="8" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <text x="357" y="58" text-anchor="middle" font-weight="600">GitFlic</text>
+    <text x="357" y="76" text-anchor="middle" font-size="11.5">репозиторий + координатор</text>
+    <text x="357" y="92" text-anchor="middle" font-size="11.5">CI/CD (gitflic-ci.yaml)</text>
+
+    <rect x="290" y="172" width="320" height="120" rx="8" fill="none" stroke="currentColor"/>
+    <text x="450" y="194" text-anchor="middle" font-weight="600">Сервер сборки 77.42.83.24 (Хельсинки)</text>
+    <text x="450" y="214" text-anchor="middle" font-size="11.5">агенты tsl-auth-hel-1, tsl-auth-hel-2 (по 2 задания)</text>
+    <text x="450" y="234" text-anchor="middle" font-size="11.5">задание = контейнер + сервис docker:28-dind</text>
+    <text x="450" y="254" text-anchor="middle" font-size="11.5">Testcontainers, compose-стенд, Playwright, k6</text>
+    <text x="450" y="274" text-anchor="middle" font-size="11.5">cron hel-cleanup.sh — тома dind каждые 3 ч</text>
+
+    <rect x="685" y="40" width="190" height="70" rx="8" fill="none" stroke="currentColor"/>
+    <text x="780" y="66" text-anchor="middle" font-weight="600">GitHub (зеркало)</text>
+    <text x="780" y="84" text-anchor="middle" font-size="11.5">akprof2000/tsl-auth</text>
+
+    <rect x="685" y="182" width="190" height="96" rx="8" fill="none" stroke="currentColor"/>
+    <text x="780" y="206" text-anchor="middle" font-weight="600">Реестры GitFlic</text>
+    <text x="780" y="226" text-anchor="middle" font-size="11.5">образ: registry.gitflic.ru</text>
+    <text x="780" y="244" text-anchor="middle" font-size="11.5">пакеты: NuGet, npm, PyPI, Maven</text>
+    <text x="780" y="262" text-anchor="middle" font-size="11.5">релизы с архивами</text>
+
+    <rect x="20" y="270" width="130" height="60" rx="8" fill="none" stroke="currentColor" stroke-dasharray="5 4"/>
+    <text x="85" y="296" text-anchor="middle" font-weight="600">Рабочая станция</text>
+    <text x="85" y="314" text-anchor="middle" font-size="11.5">ручная публикация</text>
+  </g>
+  <g fill="var(--muted)" font-size="11.5">
+    <text x="206" y="62" text-anchor="middle">push</text>
+    <text x="462" y="146">задания</text>
+    <text x="645" y="222" text-anchor="middle">crane push</text>
+    <text x="566" y="62" text-anchor="middle">mirror-github</text>
+    <text x="470" y="334" text-anchor="middle">docker push (когда с сервера не проходит)</text>
+  </g>
+</svg>
+<figcaption>Обычный путь — сплошные стрелки. Пунктир: зеркало на GitHub и запасная публикация с рабочей станции,
+  когда с сервера не проходит выгрузка в <code>registry.gitflic.ru</code>.</figcaption>
+</figure>
+
+<table>
+  <tr><th>Что</th><th>Где</th></tr>
+  <tr><td>Исходники, конвейер, релизы</td><td><code>https://gitflic.ru/project/uklad/tsl-auth</code> (remote <code>origin</code>)</td></tr>
+  <tr><td>Образ сервиса</td><td><code>registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth</code></td></tr>
+  <tr><td>Пакеты SDK</td><td><code>https://registry.gitflic.ru/project/uklad/tsl-auth/package/-/&lt;nuget|npm|pypi|maven&gt;</code></td></tr>
+  <tr><td>Агенты</td><td>сервер <code>77.42.83.24</code>, compose в <code>~/gitflic-runner</code>, контейнеры <code>gitflic-runner-tsl-auth</code> и <code>-2</code></td></tr>
+  <tr><td>Зеркало</td><td>GitHub <code>akprof2000/tsl-auth</code> (remote <code>github</code>; workflow там отключены)</td></tr>
+  <tr><td>Управление без браузера</td><td><code>scripts/gitflic.ps1</code> (REST API <code>https://api.gitflic.ru</code>)</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="prereq">2. Что нужно заранее</h2>
+<table>
+  <tr><th>Что</th><th>Откуда</th><th>Где хранится</th></tr>
+  <tr><td>Регистрационный токен агента</td><td>GitFlic → проект → «Настройки» → «Агенты CI/CD»</td><td>только в переменной окружения при запуске агента; в файлы и чаты не попадает</td></tr>
+  <tr><td>API-токен профиля (<code>GITFLIC_API_TOKEN</code>)</td><td>GitFlic → профиль → «API токены»</td><td>локально <code>C:\Projects\TSL\Key\gitflic-tokens.env</code>; в CI — переменная проекта</td></tr>
+  <tr><td>Транспортный токен (<code>GITFLIC_TRANSPORT_TOKEN</code>)</td><td>GitFlic → профиль → транспортные токены</td><td>там же; в CI — <code>GITFLIC_PKG_TOKEN</code></td></tr>
+  <tr><td>Логин для реестров (<code>GITFLIC_API_USER</code>)</td><td>имя пользователя GitFlic</td><td>там же; в CI — <code>GITFLIC_PKG_USER</code></td></tr>
+  <tr><td>Токен GitHub с записью в репозиторий</td><td>GitHub → fine-grained token, Contents: read/write</td><td>переменная проекта <code>GITHUB_MIRROR_TOKEN</code></td></tr>
+  <tr><td>SSH к серверу</td><td>ключ <code>C:\Projects\TSL\Key\id_ed25519</code> с парольной фразой</td><td>загружается в ssh-agent Windows (<code>ssh-add</code>), вход — <code>ssh.exe</code> из PowerShell</td></tr>
+</table>
+<div class="warn">Значения токенов не выводить в журналы и чаты и не коммитить. Скрипты читают их сами из
+  <code>gitflic-tokens.env</code> (строки <code>ИМЯ=значение</code>); в документах и сообщениях — только имена ключей.</div>
+
+<!-- ============================================================ -->
+<h2 id="server">3. Подготовка сервера</h2>
+<ol class="steps">
+  <li><strong>Docker Engine и compose v2</strong> на Linux-сервере с выходом в интернет. Входящие подключения агенту не
+    нужны — он сам обращается к координатору GitFlic.</li>
+  <li><strong>Место.</strong> Задания с <code>docker:dind</code> оставляют анонимные тома с данными демона — до 100 ГБ в
+    сутки. Нужен диск от 200 ГБ и регулярная очистка (см. <a href="#ops">раздел 12</a>).</li>
+  <li><strong>Память.</strong> Заданию с .NET SDK и <code>docker:dind</code> нужно около 2 ГБ; сумму
+    <code>LIMIT_OF_CONCURRENCY_TO_PROCESS_JOBS</code> по всем агентам подбирают по памяти сервера.</li>
+  <li><strong>Каталог агентов</strong> — <code>~/gitflic-runner</code>: два compose-файла, скрипт очистки и его журнал.</li>
+  <li><strong>Чужие сервисы не трогать.</strong> На сервере живут <code>uklad-gitflic-runner</code>, агенты других проектов,
+    YouTrack, plaudio, platform_dev. Никаких <code>docker system prune -a</code>, <code>docker volume prune -a</code> и
+    удаления «всех» контейнеров.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="runners">4. Регистрация агентов</h2>
+<p>Агентов два: координатор выдаёт агенту примерно одно задание в минуту, поэтому два агента раздают задания вдвое
+  быстрее одного. Оба на одном сервере, с одинаковыми тегами, каждый берёт до двух заданий одновременно.</p>
+
+<h3>4.1. Файл <code>~/gitflic-runner/docker-compose.yaml</code></h3>
+<pre><code>services:
+  runner:
+    container_name: gitflic-runner-tsl-auth
+    image: registry.gitflic.ru/company/gitflic/runner:latest
+    environment:
+      # URL со страницы «Агенты CI/CD», но с явным портом :443: без него агент 5.0.0 сохраняет порт «-1»
+      # и падает при запросе конфигурации («Bad authority»).
+      REG_URL: "https://coordinator.gitflic.ru:443/-/runner/registration"
+      REG_TOKEN: "${GITFLIC_RUNNER_TOKEN}"     # токен — только из переменной окружения
+      NAME: "tsl-auth-hel-1"
+      TAGS: "tsl-auth,tsl-auth-hel"           # действует только при первой регистрации
+      PRIVILEGED: "true"                      # нужно для сервиса docker:dind
+      LOG_LEVEL: INFO
+      CONCURRENCY_MODE: CUSTOM
+      LIMIT_OF_CONCURRENCY_TO_PROCESS_JOBS: "2"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-config:/gitflic-runner/config
+      - runner-log:/gitflic-runner/log
+    restart: unless-stopped
+volumes:
+  runner-config:
+  runner-log:</code></pre>
+<p>Второй агент — копия <code>docker-compose-2.yaml</code> с другими <code>container_name</code>
+  (<code>gitflic-runner-tsl-auth-2</code>), <code>NAME</code> (<code>tsl-auth-hel-2</code>) и именами томов
+  (<code>runner2-config</code>, <code>runner2-log</code>).</p>
+
+<h3>4.2. Запуск</h3>
+<pre><code>cd ~/gitflic-runner
+GITFLIC_RUNNER_TOKEN='&lt;токен со страницы «Агенты CI/CD»&gt;' docker compose -p gitflic-runner up -d
+GITFLIC_RUNNER_TOKEN='&lt;токен&gt;' docker compose -p gitflic-runner-2 -f docker-compose-2.yaml up -d</code></pre>
+<ol class="steps">
+  <li>Агенты появляются в «Агенты CI/CD» проекта со статусом «активен». Проверка без браузера:
+    <code>./scripts/gitflic.ps1 runners</code>.</li>
+  <li>Агент 5.0.0 регистрируется заново при каждом старте контейнера, поэтому токен регистрации не сбрасывайте, пока агенты
+    могут перезапускаться. Если токен сбросили — перезапустите агентов с новым.</li>
+  <li><strong>Теги</strong> уже зарегистрированного агента меняются через GitFlic (агент → «Теги») или API
+    (<code>runner-tags</code>); переменная <code>TAGS</code> при перезапуске их не меняет.</li>
+  <li>Тег <code>tsl-auth</code> получают все задания конвейера; <code>tsl-auth-hel</code> — только проверка сети
+    <code>net-check-hel</code>. Так когда-то разделяли сборку на рабочей станции и серверную проверку сети.</li>
+</ol>
+<div class="note"><code>PRIVILEGED=true</code> нужен только для <code>docker:dind</code>: задания идут в отдельных
+  контейнерах и используют свой демон, а не Docker хоста. Поэтому агент проекта лучше держать на выделенной машине.</div>
+
+<!-- ============================================================ -->
+<h2 id="pipeline">5. Конвейер <code>gitflic-ci.yaml</code></h2>
+<p>Конвейер запускается на push в <code>main</code> и на теги <code>v*</code>
+  (<code>workflow.rules</code>; ветки-черновики агентов не занимают). Стадии: <code>build → test → publish → release</code>.
+  Задания со <code>needs</code> стартуют сразу после своих зависимостей, не дожидаясь всей стадии.</p>
+<table>
+  <tr><th>Задание</th><th>Стадия</th><th>Образ</th><th>Что делает</th></tr>
+  <tr><td><code>build-and-unit</code></td><td>build</td><td><code>dotnet/sdk:10.0</code></td><td>restore, сборка с <code>-warnaserror</code>, unit-тесты, проверка <code>.trx</code> (≥ 100 тестов)</td></tr>
+  <tr><td><code>validate-docs</code></td><td>build</td><td><code>dotnet/sdk:10.0</code></td><td>ссылки, якоря, таблицы, актуальность картинок схем, копии страниц <code>/docs</code> демо</td></tr>
+  <tr><td><code>build-image</code></td><td>build</td><td><code>docker:28</code> + dind</td><td><code>docker build --pull</code>, <code>docker save</code> → артефакт <code>image.tar</code> (2 часа)</td></tr>
+  <tr><td><code>net-check-hel</code></td><td>build</td><td><code>alpine</code></td><td>скачивает слой ~85 МБ из реестра — проверяет путь с сервера; <span class="tag">allow_failure</span></td></tr>
+  <tr><td><code>mirror-github</code></td><td>build</td><td><code>alpine</code></td><td>main, теги и объекты LFS → GitHub; <span class="tag">allow_failure</span></td></tr>
+  <tr><td><code>integration-tests</code></td><td>test</td><td>SDK + dind</td><td>интеграционные тесты SQLite и PostgreSQL/OpenBao (Testcontainers в dind)</td></tr>
+  <tr><td><code>sdk-contract</code></td><td>test</td><td>SDK + dind</td><td>стенд из исходников в dind, Node/Go/Java/Python ставятся в задании, контрактные тесты пяти SDK</td></tr>
+  <tr><td><code>e2e-stand</code></td><td>test</td><td>SDK + dind</td><td>стенд, демо-данные, четыре демо-приложения, UI-тесты Playwright, k6, отказы одиночного режима</td></tr>
+  <tr><td><code>scan-image</code></td><td>test</td><td><code>aquasec/trivy:0.74.0</code></td><td>HIGH/CRITICAL с исправлением в <code>image.tar</code> — конвейер красный</td></tr>
+  <tr><td><code>publish-image</code></td><td>publish</td><td><code>alpine</code> + crane</td><td>после <strong>всех</strong> проверок: <code>crane push</code> и теги версии (<a href="#publish">раздел 8</a>)</td></tr>
+  <tr><td><code>publish-sdk-*</code></td><td>release</td><td>dotnet / node / python / maven</td><td>пакеты NuGet, npm, PyPI, Maven той же версии</td></tr>
+  <tr><td><code>gitflic-release</code></td><td>release</td><td><code>gcli</code></td><td>страница релиза на тег <code>vX.Y.Z</code> (на практике релиз делается вручную, <a href="#release">раздел 9</a>)</td></tr>
+  <tr><td><code>cleanup</code></td><td>release</td><td><code>alpine</code></td><td>оставляет 3 новейшие версии в реестрах и релизах (<code>scripts/gitflic-prune.sh</code>)</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="tricks">6. Приёмы в заданиях</h2>
+<h3>6.1. Сервис <code>docker:dind</code></h3>
+<pre><code>variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  TESTCONTAINERS_HOST_OVERRIDE: docker      # контейнеры тестов — по имени сервиса dind
+  TESTCONTAINERS_RYUK_DISABLED: "true"
+
+integration-tests:
+  services:
+    - name: docker:28-dind
+      alias: docker
+      command: ["--tls=false"]
+  script:
+    # dind стартует вместе с заданием — ждём демон до 60 с, иначе первая команда падает
+    - for i in $(seq 1 60); do wget -q -O /dev/null http://docker:2375/_ping 2&gt;/dev/null &amp;&amp; break; sleep 1; done</code></pre>
+<h3>6.2. Защита от «зелёного нуля»</h3>
+<p><code>dotnet test --no-build</code> без бинарников или без найденных тестов завершается с кодом 0. После каждого
+  запуска тестов — <code>sh scripts/ci-check-trx.sh TestResults/unit.trx 100</code>: требует, чтобы тесты выполнились
+  (не меньше указанного числа) и ни один не упал.</p>
+<h3>6.3. Кэш NuGet</h3>
+<pre><code>variables:
+  NUGET_PACKAGES: $CI_PROJECT_DIR/.nuget/packages   # GitFlic кэширует только внутри каталога проекта
+cache:
+  key: nuget
+  paths: [.nuget/packages/]</code></pre>
+<p>Задания без .NET указывают <code>cache: []</code>, чтобы не качать кэш зря.</p>
+<h3>6.4. Порядок через <code>needs</code></h3>
+<p>Без явного <code>needs</code> GitFlic запускал <code>publish-image</code>, как только освобождался агент, — ещё до
+  окончания тестов. Поэтому у публикации <code>needs: [build-and-unit, integration-tests, sdk-contract, e2e-stand,
+  build-image, scan-image]</code>. Тестовые задания с <code>needs: [build-and-unit]</code> к тому же не тянут чужой
+  <code>image.tar</code> (200 МБ): большие загрузки артефактов на агент обрывались.</p>
+<h3>6.5. Стенд в dind и <code>socat</code></h3>
+<p>В <code>e2e-stand</code> сервис поднимается <code>docker compose</code> внутри dind, а браузер и скрипты задания ходят
+  на <code>localhost</code>. Порты сводит <code>socat</code>:</p>
+<pre><code>for p in $(seq 8080 8099); do socat TCP-LISTEN:$p,fork,reuseaddr TCP:docker:$p &amp; done</code></pre>
+<p>Кластер, стенд мониторинга, OpenBao и секреты из файла настроек здесь не проверяются: их compose монтирует каталоги
+  репозитория, которых нет на хосте dind. Это ручная проверка перед релизом (<code>tests/resilience/run-*.ps1</code>).</p>
+<h3>6.6. Секреты стенда в CI</h3>
+<p>Пароль администратора и секрет клиента <code>admin-cli</code> генерируются на каждый прогон из
+  <code>/dev/urandom</code> и живут только внутри задания.</p>
+
+<!-- ============================================================ -->
+<h2 id="vars">7. Переменные проекта GitFlic</h2>
+<p>Настройки → CI/CD → Переменные. Значения задаются в интерфейсе GitFlic и в репозиторий не попадают.</p>
+<table>
+  <tr><th>Переменная</th><th>Для чего</th><th>Без неё</th></tr>
+  <tr><td><code>GITFLIC_PKG_USER</code>, <code>GITFLIC_PKG_TOKEN</code></td><td>логин и транспортный токен для реестров пакетов</td><td>задания <code>publish-sdk-*</code> пропускаются</td></tr>
+  <tr><td><code>GITFLIC_API_TOKEN</code></td><td>API-токен для <code>cleanup</code> (REST API)</td><td><code>cleanup</code> пропускается</td></tr>
+  <tr><td><code>GITHUB_MIRROR_TOKEN</code></td><td>запись в GitHub для <code>mirror-github</code></td><td>зеркало не обновляется</td></tr>
+  <tr><td><code>GITFLIC_PUBLISH_FROM_AGENT</code></td><td><code>false</code> — не публиковать с агента (нет пути до реестра)</td><td>публикация с агента включена</td></tr>
+  <tr><td><code>DRY_RUN</code></td><td><code>1</code> — <code>cleanup</code> только показывает, что удалил бы</td><td>удаляет</td></tr>
+</table>
+<p>Встроенные переменные GitFlic: <code>CI_REGISTRY</code>, <code>CI_REGISTRY_USER</code>, <code>CI_REGISTRY_PASSWORD</code>,
+  <code>CI_REGISTRY_IMAGE</code> (= <code>registry.gitflic.ru/project/uklad/tsl-auth</code>, имя образа дописываем сами),
+  <code>CI_COMMIT_SHA</code>, <code>CI_COMMIT_TAG</code>, <code>CI_COMMIT_REF_NAME</code>. <code>CI_PIPELINE_ID</code> — UUID,
+  <code>CI_PROJECT_PATH</code> нет (путь берём из <code>CI_REGISTRY_IMAGE</code>), клон неглубокий.</p>
+
+<!-- ============================================================ -->
+<h2 id="publish">8. Версии и публикация</h2>
+<ul>
+  <li><strong>Версия прогона main</strong>: <code>MAJOR.MINOR</code> из файла <code>sdk/VERSION</code> плюс unix-время
+    коммита — например <code>1.6.1790990000</code>. Порядковый номер не годится: <code>CI_PIPELINE_ID</code> — UUID, а число
+    коммитов при неглубоком клоне постоянно.</li>
+  <li><strong>Образ</strong>: <code>crane push image.tar …:sha-&lt;коммит&gt;</code>, затем <code>crane tag</code> версии
+    прогона и <code>latest</code> (на теге — ещё <code>X.Y.Z</code>). Используется <code>crane</code> в alpine, а не
+    <code>docker push</code>: демон dind не дожидался ответа реестра, а <code>crane</code> грузит архив напрямую.</li>
+  <li><strong>NuGet</strong> — прямой <code>PUT</code> (<code>scripts/gitflic-nuget-push.sh</code>): <code>dotnet nuget push</code>
+    добавляет «/» к адресу и получает 404. AssemblyVersion не больше 65535, поэтому время коммита — только в
+    <code>PackageVersion</code>.</li>
+  <li><strong>npm</strong> — <code>.npmrc</code> с <code>_authToken</code>; npm не публикует версию «меньше» уже
+    существующей — временную большую версию сначала удаляют.</li>
+  <li><strong>PyPI</strong> — <code>twine</code> через <code>.pypirc</code> (<code>scripts/gitflic-pypirc.sh</code>), без
+    <code>--skip-existing</code> (реестр его не поддерживает).</li>
+  <li><strong>Maven</strong> — <code>mvn deploy -DaltDeploymentRepository=gitflic::$PKG_BASE/maven</code>, учётные данные
+    в <code>~/.m2/settings.xml</code>, созданном в задании.</li>
+  <li><strong>Go</strong> — сам репозиторий (<code>sdk/go</code>), публиковать нечего.</li>
+</ul>
+<div class="warn"><strong>С 30.09.2026 с сервера обрывается выгрузка в <code>registry.gitflic.ru</code>.</strong>
+  <code>net-check-hel</code> даёт WARNING, <code>publish-image</code> падает на тайм-аутах PATCH blob, хотя все тесты
+  зелёные. Сборку и тесты это не затрагивает. Образ и пакеты выпуска публикуются с рабочей станции
+  (<a href="#manual">раздел 10</a>). Когда <code>net-check-hel</code> снова станет зелёным, публикация вернётся на агента
+  сама.</div>
+
+<!-- ============================================================ -->
+<h2 id="release">9. Выпуск релиза</h2>
+<p>GitFlic <strong>не создаёт конвейер на push тега</strong>, а <code>POST …/cicd/pipeline/start</code> с
+  <code>{"ref":"vX.Y.Z"}</code> запускает обычный прогон main. Поэтому релиз оформляется вручную через API (образец —
+  релиз 1.5.1):</p>
+<ol class="steps">
+  <li>Дождаться зелёного main: все задания, кроме публикации.</li>
+  <li>Поставить аннотированный тег и отправить его: <code>git tag -a vX.Y.Z -m "…"</code>, <code>git push origin vX.Y.Z</code>.</li>
+  <li>Опубликовать образ с тегами <code>X.Y.Z</code>, <code>X.Y</code>, <code>X</code>, <code>latest</code> и пакеты SDK
+    версией <code>X.Y.Z</code> — с агента или с рабочей станции. Временные версии <code>X.Y.&lt;время&gt;</code> удалить.</li>
+  <li>Собрать файлы релиза — <strong>только архивы</strong> (текстовые файлы GitFlic отвергает с 415):
+    <code>tsl-auth-image-X.Y.Z-linux-amd64.tar.gz</code> (<code>docker save | gzip</code>),
+    <code>tsl-auth-sdk-X.Y.Z.tar.gz</code> (<code>scripts/build-sdk-packages.sh X.Y.Z</code>),
+    <code>tsl-auth-deploy-X.Y.Z.tar.gz</code> (compose, <code>.env.example</code>, <code>deploy/</code>, демо- и
+    импорт-скрипты), <code>tsl-auth-docs-X.Y.Z.zip</code>.</li>
+  <li>Создать релиз: <code>POST /project/uklad/tsl-auth/release</code> с JSON
+    <code>{title, tagName, description, isDraft, isPreRelease}</code> (другие имена полей — 500). SHA-256 файлов —
+    в описании.</li>
+  <li>Загрузить файлы: <code>POST …/release/&lt;id&gt;/file</code>, multipart-поле <code>files</code>. Удалить
+    неудачный релиз — <code>DELETE …/release/&lt;id&gt;</code>.</li>
+  <li>Обновить затронутые статьи YouTrack (ЧТЗ и Word-вложения).</li>
+</ol>
+<div class="bad"><code>scripts/gitflic-prune.sh</code> с <code>KEEP=1</code> для образа не запускать: теги <code>1</code>,
+  <code>1.5</code>, <code>1.5.1</code>, <code>latest</code> он считает разными версиями и удалил бы нужные.</div>
+
+<!-- ============================================================ -->
+<h2 id="manual">10. Публикация с рабочей станции</h2>
+<p>Когда агент не может выгрузить образ, используются те же команды, что в заданиях. Вход — логин
+  <code>GITFLIC_API_USER</code>, пароль — транспортный токен; вводятся интерактивно или из файла токенов, не в командной строке.</p>
+<pre><code>docker login registry.gitflic.ru
+docker build -t registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:X.Y.Z .
+for t in X.Y X latest sha-&lt;коммит&gt;; do
+  docker tag registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:X.Y.Z registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:$t
+done
+docker push --all-tags registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth</code></pre>
+<p>Пакеты SDK — командами из заданий <code>publish-sdk-*</code> с
+  <code>PKG_BASE=https://registry.gitflic.ru/project/uklad/tsl-auth/package/-</code> и
+  <code>GITFLIC_PKG_USER</code>/<code>GITFLIC_PKG_TOKEN</code> в окружении.</p>
+
+<!-- ============================================================ -->
+<h2 id="mirror">11. Зеркало GitHub и Git LFS</h2>
+<ul>
+  <li><code>git push origin main</code> отправляет в оба репозитория: у <code>origin</code> два push-URL (GitFlic и GitHub).</li>
+  <li><code>*.docx</code> хранятся в Git LFS. Без настройки ниже git-lfs шлёт объекты на <strong>последний</strong>
+    push-URL (GitHub), и в GitFlic остаются указатели без содержимого (404 при скачивании). Проверку блокировок GitFlic
+    отвергает (403):
+<pre><code>git config remote.origin.lfsurl https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs
+git config remote.origin.lfspushurl https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs
+git config lfs.https://gitflic.ru/project/uklad/tsl-auth.git/info/lfs.locksverify false</code></pre></li>
+  <li>Если коммит меняет <code>*.docx</code>, GitHub отклоняет push («pre-receive hook declined»). Поэтому перед push:
+    <code>git lfs push https://github.com/akprof2000/tsl-auth.git main</code>.</li>
+  <li>Задание <code>mirror-github</code> (<code>scripts/mirror-github.sh</code>) дотягивает историю
+    (<code>--unshallow</code>), переносит объекты LFS текущего коммита (<code>git lfs fetch</code> → <code>git lfs push</code>;
+    у git-lfs в Alpine нет <code>--quiet</code>), затем <code>main</code> и теги.</li>
+  <li>Проверка LFS: чистый клон GitFlic и <code>git lfs pull</code> — файлы полного размера, а не указатели по 130 байт.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="ops">12. Обслуживание</h2>
+<h3>12.1. Место на сервере</h3>
+<p>Cron пользователя каждые 3 часа запускает <code>~/gitflic-runner/hel-cleanup.sh</code> (копия
+  <code>scripts/hel-cleanup.sh</code>). Он удаляет только анонимные висячие тома — пустые или с данными dind
+  (<code>overlay2</code>, <code>containers</code>, <code>image</code>) — и образы без тега старше суток. Именованные тома
+  чужих сервисов не трогает.</p>
+<pre><code>scp -P 443 scripts/hel-cleanup.sh alexey_kozlov@77.42.83.24:~/gitflic-runner/
+ssh -p 443 alexey_kozlov@77.42.83.24 '(crontab -l 2&gt;/dev/null | grep -v hel-cleanup; echo "17 */3 * * * sh $HOME/gitflic-runner/hel-cleanup.sh &gt;&gt; $HOME/gitflic-runner/hel-cleanup.log 2&gt;&amp;1") | crontab -'
+ssh -p 443 alexey_kozlov@77.42.83.24 'df -h /; docker system df; sh ~/gitflic-runner/hel-cleanup.sh'</code></pre>
+<p>После своих заданий и выпусков — проверить <code>df -h /</code>. Без очистки 30.09.2026 задания падали с
+  «No space left on device».</p>
+<h3>12.2. Место на GitFlic</h3>
+<ul>
+  <li>Артефакты заданий живут от 2 часов до суток (<code>expire_in</code>). GitFlic сам их не удаляет — их убирает
+    удаление старых конвейеров: <code>./scripts/gitflic.ps1 prune-pipelines -Keep 3</code>.</li>
+  <li>В реестрах и релизах — не больше трёх версий (задание <code>cleanup</code>), а после выпуска — только текущий
+    выпуск (<code>X.Y.Z</code> + <code>latest</code>) и последняя версия пакетов.</li>
+</ul>
+<h3>12.3. Обновление агента</h3>
+<pre><code>cd ~/gitflic-runner
+docker compose -p gitflic-runner pull
+GITFLIC_RUNNER_TOKEN='&lt;токен&gt;' docker compose -p gitflic-runner up -d</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="api">13. GitFlic без браузера</h2>
+<p><code>scripts/gitflic.ps1</code> берёт <code>GITFLIC_API_TOKEN</code> из файла токенов и ходит в
+  <code>https://api.gitflic.ru</code>:</p>
+<pre><code>./scripts/gitflic.ps1 pipelines -Top 5          # конвейеры
+./scripts/gitflic.ps1 jobs 72                   # задания конвейера
+./scripts/gitflic.ps1 runners                   # агенты и их теги
+./scripts/gitflic.ps1 prune-pipelines -Keep 3   # удалить старые конвейеры вместе с артефактами
+./scripts/gitflic.ps1 raw GET /project/uklad/tsl-auth/cicd/job/347/artifacts</code></pre>
+<ul>
+  <li>Журнал задания — артефакт с <code>fileType: trace</code>: скачать по <code>downloadUrl</code> с заголовком
+    <code>Authorization: token …</code>.</li>
+  <li>Запуск конвейера: <code>POST /project/uklad/tsl-auth/cicd/pipeline/start</code> с телом <code>{"ref":"main"}</code>.</li>
+  <li>git по HTTPS: <code>git config credential.https://gitflic.ru.helper '!sh scripts/git-credential-gitflic.sh'</code>.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="quirks">14. Особенности GitFlic (проверено)</h2>
+<table>
+  <tr><th>Особенность</th><th>Что делаем</th></tr>
+  <tr><td>Имя задания совпадает с ключевым словом (<code>image</code>, <code>release</code>, <code>services</code>) — файл даёт 0 заданий</td><td>имена вида <code>build-image</code>, <code>gitflic-release</code></td></tr>
+  <tr><td>Парсер YAML отвергает строки <code>script</code> с <code>: </code> или <code>%{…}</code> в кавычках</td><td>такие команды — в <code>scripts/*.sh</code></td></tr>
+  <tr><td>Скрипты заданий выполняются через <code>/bin/sh</code> (dash)</td><td>общие скрипты CI — без bash-измов</td></tr>
+  <tr><td>У <code>rules</code> есть только <code>if</code></td><td>условия — выражениями над переменными</td></tr>
+  <tr><td>Артефакты с glob-путями (<code>bin/**</code>) не переносятся</td><td>собирать в каждом задании (restore из кэша — секунды)</td></tr>
+  <tr><td>Большие загрузки артефактов на агент обрываются («File download error»)</td><td><code>needs</code> только на нужные задания, без <code>image.tar</code></td></tr>
+  <tr><td>Координатор выдаёт агенту примерно одно задание в минуту</td><td>несколько агентов; «Ожидает выполнения» между заданиями — норма</td></tr>
+  <tr><td>Агент 5.0.0 без явного <code>:443</code> в <code>REG_URL</code> падает («Bad authority»)</td><td><code>https://coordinator.gitflic.ru:443/-/runner/registration</code></td></tr>
+  <tr><td>Конвейер на push тега не создаётся</td><td>релиз вручную через API (<a href="#release">раздел 9</a>)</td></tr>
+  <tr><td>Файлы релиза — только архивы (текст и <code>.exe</code> → 415)</td><td>SHA-256 — в описании релиза</td></tr>
+  <tr><td><code>dotnet nuget push</code> → 404</td><td>прямой <code>PUT</code></td></tr>
+  <tr><td>PyPI не поддерживает <code>--skip-existing</code></td><td><code>twine</code> через <code>.pypirc</code></td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="trouble">15. Диагностика</h2>
+<table>
+  <tr><th>Симптом</th><th>Причина</th><th>Что делать</th></tr>
+  <tr><td><code>publish-image</code> висит или падает на PATCH blob; <code>net-check-hel</code> — WARNING</td><td>с сервера обрываются большие передачи в <code>registry.gitflic.ru</code> (с 30.09.2026)</td><td>опубликовать с рабочей станции (<a href="#manual">раздел 10</a>); при долгой проблеме — <code>GITFLIC_PUBLISH_FROM_AGENT=false</code></td></tr>
+  <tr><td>«No space left on device» в integration/e2e</td><td>тома dind заполнили диск</td><td><code>sh ~/gitflic-runner/hel-cleanup.sh</code>, проверить cron</td></tr>
+  <tr><td>Задание падает «без логов» на загрузке helper-образа</td><td>сеть сервера до GitFlic</td><td>проверить PMTU: <code>ping -M do -s 1472 217.23.139.246</code>; при «чёрной дыре» — MSS clamp <code>--set-mss 1360</code></td></tr>
+  <tr><td>Первая команда с Docker падает в начале задания</td><td>dind ещё не стартовал</td><td>цикл ожидания <code>_ping</code> до 60 с (<a href="#tricks">раздел 6.1</a>)</td></tr>
+  <tr><td>Тесты «прошли», но их ноль</td><td><code>dotnet test --no-build</code> без бинарников</td><td><code>scripts/ci-check-trx.sh</code> после каждого прогона</td></tr>
+  <tr><td>Публикация стартовала до конца тестов</td><td>нет <code>needs</code></td><td>явный <code>needs</code> на все проверки</td></tr>
+  <tr><td>GitHub отклоняет push («pre-receive hook declined»)</td><td>нет объектов LFS на GitHub</td><td><code>git lfs push https://github.com/akprof2000/tsl-auth.git main</code></td></tr>
+  <tr><td>В GitFlic вместо docx — файл 130 байт</td><td>LFS-объекты ушли на GitHub</td><td>настройка <code>lfspushurl</code> (<a href="#mirror">раздел 11</a>), <code>git lfs push --all origin</code></td></tr>
+  <tr><td>Агент «активен», но задания не берёт</td><td>теги агента не совпадают с <code>tags</code> заданий</td><td><code>./scripts/gitflic.ps1 runners</code>, поправить теги в GitFlic</td></tr>
+  <tr><td>Агент не стартует после сброса токена</td><td>агент 5.0.0 регистрируется при каждом старте</td><td>перезапустить с новым <code>GITFLIC_RUNNER_TOKEN</code></td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="checklist">16. Чек-лист нового проекта</h2>
+<ul class="check">
+  <li>Проект на GitFlic создан, <code>origin</code> → GitFlic, второй push-URL → GitHub (зеркало), настройки LFS из раздела 11.</li>
+  <li>Два агента зарегистрированы с тегом проекта, <code>PRIVILEGED=true</code>, <code>REG_URL</code> с <code>:443</code>.</li>
+  <li>Cron очистки томов dind на сервере работает, места больше 100 ГБ.</li>
+  <li><code>gitflic-ci.yaml</code>: <code>workflow.rules</code> (main и <code>v*</code>), кэш пакетов в каталоге проекта, dind с ожиданием <code>_ping</code>.</li>
+  <li>После каждого прогона тестов — проверка результатов (<code>ci-check-trx.sh</code> или аналог).</li>
+  <li>Публикация — с <code>needs</code> на все проверки, образ через <code>crane</code>, версия = <code>sdk/VERSION</code> + время коммита.</li>
+  <li>Переменные проекта: <code>GITFLIC_PKG_USER/TOKEN</code>, <code>GITFLIC_API_TOKEN</code>, <code>GITHUB_MIRROR_TOKEN</code>.</li>
+  <li>Задание <code>cleanup</code> (не больше трёх версий) и периодический <code>prune-pipelines</code>.</li>
+  <li>Задание проверки сети (<code>net-check</code>), чтобы видеть, когда публикацию с агента можно вернуть.</li>
+  <li>Порядок выпуска (раздел 9) и ручной публикации (раздел 10) записан в <code>CLAUDE.md</code> проекта.</li>
+</ul>
+<p class="meta">Подробности и история решений — <code>docs/gitflic-ci.md</code>, <code>gitflic-ci.yaml</code>
+  (комментарии к заданиям) и раздел «Репозитории и CI» в <code>CLAUDE.md</code>.</p>
+</main>
+</div>
+<script>
+  // Кнопка «Копировать» у блоков кода (без внешних библиотек).
+  for (const pre of document.querySelectorAll("pre")) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Копировать";
+    b.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(pre.querySelector("code").innerText); b.textContent = "Скопировано"; }
+      catch { b.textContent = "Не удалось"; }
+      setTimeout(() => (b.textContent = "Копировать"), 1500);
+    });
+    pre.appendChild(b);
+  }
+</script>
+</body>
+</html>

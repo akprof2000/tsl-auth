@@ -444,6 +444,8 @@ GITFLIC_RUNNER_TOKEN='&lt;токен&gt;' docker compose -p gitflic-runner up -d
   <li>Журнал задания — артефакт с <code>fileType: trace</code>: скачать по <code>downloadUrl</code> с заголовком
     <code>Authorization: token …</code>.</li>
   <li>Запуск конвейера: <code>POST /project/uklad/tsl-auth/cicd/pipeline/start</code> с телом <code>{"ref":"main"}</code>.</li>
+  <li>Настройки проекта (название, описание, язык, темы): <code>PUT /project/uklad/tsl-auth/setting/change-setting</code>
+    с JSON <code>{title, description, language, topics}</code>; <code>PUT</code>/<code>PATCH</code> на сам проект — 405.</li>
   <li>git по HTTPS: <code>git config credential.https://gitflic.ru.helper '!sh scripts/git-credential-gitflic.sh'</code>.</li>
 </ul>
 

@@ -137,6 +137,9 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 
 Журнал задания — артефакт с `fileType: trace` (скачать по `downloadUrl` с заголовком `Authorization: token …`).
 Запуск конвейера: `POST /project/uklad/tsl-auth/cicd/pipeline/start` с телом `{"ref":"main"}`.
+Настройки проекта (название, описание, язык, темы): `PUT /project/uklad/tsl-auth/setting/change-setting` с JSON
+`{title, description, language, topics}` (`PUT`/`PATCH` на `/project/…` — 405). С 04.10.2026: «Сервис идентификации и
+доступа TSL Auth», язык C#, темы oauth2, openid-connect, jwt, authentication, authorization, dotnet, uklad.
 
 ### Агенты
 

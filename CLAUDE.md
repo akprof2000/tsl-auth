@@ -85,9 +85,9 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   `tsl-auth:latest` можно оставить — по нему стенд поднимается снова. На машине
   идут и другие проекты (1c-import, tsl-dev, tslmesh, openbao-config) — их контейнеры, тома и сборщики buildx не трогать:
   никаких `docker rm` по всем контейнерам, `docker volume prune -a` и `docker builder prune` по общему кэшу (30.09.2026 так
-  были потеряны стенды 1c-import и tsl-dev). В реестре GitFlic —
-  только текущий образ выпуска (`X.Y.Z` + `latest`) и последняя версия пакетов SDK:
-  `KEEP=1 KEEP_PIPELINES=1 CI_REGISTRY_IMAGE=registry.gitflic.ru/project/uklad/tsl-auth CI_PROJECT_PATH=uklad/tsl-auth sh scripts/gitflic-prune.sh`
+  были потеряны стенды 1c-import и tsl-dev). В реестре GitFlic — текущий выпуск (`X.Y.Z`, плавающие `X.Y`, `X`,
+  `latest`) и последние сборки main; вручную после выпуска убрать и временные версии сборок:
+  `KEEP=0 KEEP_RELEASES=1 KEEP_PIPELINES=1 CI_REGISTRY_IMAGE=registry.gitflic.ru/project/uklad/tsl-auth CI_PROJECT_PATH=uklad/tsl-auth sh scripts/gitflic-prune.sh`
   (с `GITFLIC_API_TOKEN` в окружении; сначала `DRY_RUN=1`).
 - Место ограничено: артефакты CI живут до суток, в реестрах и релизах — не больше трёх версий.
 - `*.docx` хранятся в **Git LFS** (`.gitattributes`): после клона — `git lfs install --local` и `git lfs pull`.
@@ -159,6 +159,14 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   `publish-sdk-*` (`PKG_BASE=https://registry.gitflic.ru/project/uklad/tsl-auth/package/-`, `GITFLIC_PKG_USER/TOKEN`).
   Когда `net-check-hel` снова зелёный — публикация возвращается на агент (ничего менять не нужно).
   Так же опубликован 1.5.1 (30.09.2026): образ `1.5.1`/`latest` (digest `sha256:97640efb…`), пакеты SDK `1.5.1790790170`.
+  **03.10.2026 путь снова работает**: в конвейере #73 `net-check-hel` зелёный, образ и пакеты опубликованы с агента.
+- **Выпуск 1.6.0 (04.10.2026)**: тег `v1.6.0` на `9184fb4` (конвейер #73 зелёный), образ `1.6.0`/`1.6`/`1`/`latest`
+  (digest `sha256:bd1d9594…`), пакеты SDK `1.6.0` (NuGet, npm, PyPI, Maven), релиз GitFlic
+  https://gitflic.ru/project/uklad/tsl-auth/release/68ee3ce5-468e-4ad7-89a3-f49658af83f4 с четырьмя архивами.
+  Теги выпуска — `scripts/gitflic-image-tag.sh sha-<коммит> X.Y.Z X.Y X` (копия манифеста через Registry API, без Docker);
+  архив образа — `scripts/gitflic-image-archive.sh X.Y.Z <файл>` (из реестра, формат `docker save`): сам `docker save`
+  в Docker Desktop (хранилище containerd) у образов, выгруженных `crane`, отдаёт пустой архив 8 КБ. npm: временную
+  версию `X.Y.<время>` удалить до публикации `X.Y.Z`. Полная инструкция — `docs/gitflic-runners.html`.
 - GitFlic **не создаёт конвейер на push тега** (`git push origin vX.Y.Z` — в списке конвейеров ничего), а
   `POST …/cicd/pipeline/start` с `{"ref":"vX.Y.Z"}` запускает обычный прогон `main`.
 - **Релиз GitFlic вручную (как 1.5.1, образец — релиз openbao-config 1.0.0):** `POST /project/uklad/tsl-auth/release`
@@ -168,8 +176,11 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   `tsl-auth-sdk-X.Y.Z.tar.gz` (`scripts/build-sdk-packages.sh X.Y.Z`), `tsl-auth-deploy-X.Y.Z.tar.gz` (compose,
   `.env.example`, `deploy/`, демо- и импорт-скрипты), `tsl-auth-docs-X.Y.Z.zip`; образ с тегами `X.Y.Z`, `X.Y`, `X`,
   `latest`; пакеты SDK — версией `X.Y.Z` (временные `X.Y.<время>` удалить; npm не публикует «меньшую» версию, пока
-  есть большая — сначала удалить её). `gitflic-prune.sh` с `KEEP=1` для образа не запускать: он считает теги
-  (`1`, `1.5`, `1.5.1`, `latest`) отдельными версиями и удалил бы нужные.
+  есть большая — сначала удалить её).
+- **Очистка реестра (`scripts/gitflic-prune.sh`, задание `cleanup`) с 04.10.2026 различает виды версий**: плавающие
+  `latest`/`X`/`X.Y` не трогает, выпусков `X.Y.Z` оставляет `KEEP_RELEASES` (1), временных `X.Y.<время>` и `sha-…` —
+  `KEEP` (3). Удаление версии образа через API снимает только тег (манифест и другие теги остаются — проверено).
+  Прежняя версия считала всё вместе, и прогоны main удалили теги выпуска `1.5.1` и `1.5`.
 - На сервере агентов кончалось место (30.09.2026, `No space left on device` в integration/e2e): тома docker:dind —
   проверка `ssh.exe -p 443 alexey_kozlov@77.42.83.24 'df -h /; docker system df'`.
 

@@ -1,8 +1,14 @@
 #!/bin/sh
-# Очистка проекта GitFlic после сборки: в реестре пакетов (образ, NuGet, npm, PyPI, Maven) и в релизах остаётся
-# не больше KEEP новейших версий — место на GitFlic ограничено. Работает через REST API (api.gitflic.ru).
+# Очистка проекта GitFlic после сборки (место на GitFlic ограничено). Работает через REST API (api.gitflic.ru).
+# Версии в реестре пакетов (образ, NuGet, npm, PyPI, Maven) делятся на три вида:
+#   - плавающие теги образа latest, X, X.Y — не удаляются никогда;
+#   - выпуски X.Y.Z (PATCH короче 9 цифр) — остаются KEEP_RELEASES новейших (по умолчанию 1: только текущий выпуск);
+#   - временные версии сборок main — X.Y.<unix-время коммита> и теги sha-<коммит> — остаются KEEP новейших.
+# Удаление версии образа снимает только этот тег: манифест и другие теги на него остаются (проверено 04.10.2026).
+# Раньше выпуски и временные версии считались вместе, и прогоны main вытесняли теги выпуска (так пропали 1.5.1 и 1.5).
 # Переменные: GITFLIC_API_TOKEN (API-токен профиля: Настройки → «API токены»), CI_PROJECT_PATH (uklad/tsl-auth),
-# KEEP (по умолчанию 3), DRY_RUN=1 — только показать, что было бы удалено. Нужны curl и jq.
+# KEEP (по умолчанию 3), KEEP_RELEASES (по умолчанию 1), DRY_RUN=1 — только показать, что было бы удалено.
+# Нужны curl и jq.
 set -eu
 API="${GITFLIC_API:-https://api.gitflic.ru}"
 # GitFlic не даёт CI_PROJECT_PATH — владелец/проект берутся из CI_REGISTRY_IMAGE (registry.gitflic.ru/project/<владелец>/<проект>).
@@ -10,6 +16,7 @@ PROJECT="${CI_PROJECT_PATH:-${CI_REGISTRY_IMAGE#*/project/}}"
 [ -n "$PROJECT" ] && [ "$PROJECT" != "$CI_REGISTRY_IMAGE" ] || { echo "не удалось определить владельца/проект (CI_PROJECT_PATH или CI_REGISTRY_IMAGE)"; exit 1; }
 echo "проект: $PROJECT"
 KEEP="${KEEP:-3}"
+KEEP_RELEASES="${KEEP_RELEASES:-1}"
 DRY="${DRY_RUN:-0}"
 AUTH="Authorization: token ${GITFLIC_API_TOKEN:?нужен GITFLIC_API_TOKEN}"
 
@@ -24,7 +31,7 @@ uuid()  { jq -r '.uuid // .id // .packageUuid // .releaseUuid // empty'; }
 # У версии пакета GitFlic даты нет — берём дату первого файла версии (packageFiles[0].createdAt); у релиза — createdAt.
 stamp() { jq -r '(.createdAt // .created // .publishedAt // (.packageFiles[0].createdAt // "")) | tostring'; }
 
-echo "== Реестр пакетов $PROJECT: оставляем $KEEP версий у каждого пакета"
+echo "== Реестр пакетов $PROJECT: выпусков $KEEP_RELEASES, временных версий $KEEP, плавающие теги не трогаем"
 get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; do
   id=$(printf '%s' "$pkg" | uuid); name=$(printf '%s' "$pkg" | jq -r '.name // .packageName // .alias // "?"'); type=$(printf '%s' "$pkg" | jq -r '.type // .packageType // "?"')
   [ -n "$id" ] || { echo "  пакет без идентификатора: $pkg"; continue; }
@@ -42,11 +49,14 @@ get "/registry/project/$PROJECT/package?size=100" | items | while read -r pkg; d
     [ -n "$ver" ] && printf '%s|%s\n' "$st" "$ver"
   done < "/tmp/raw.$id" | sort -r > "/tmp/versions.$id"
   total=$(wc -l < "/tmp/versions.$id"); echo "    версий: $total"
-  # latest — плавающий тег образа, его не трогаем; остальные — по дате, новейшие KEEP остаются.
-  # Пустое имя версии пропускается; «|| true» — иначе ложный код возврата цикла останавливает скрипт (set -e).
-  grep -v "|latest$" "/tmp/versions.$id" | tail -n +$((KEEP + 1)) | while IFS='|' read -r st ver; do
+  # Вид версии: float — latest, X, X.Y; release — X.Y.Z; temp — X.Y.<unix-время> и sha-<коммит>; иное не трогаем.
+  # Внутри вида — по дате, новейшие остаются. «|| true» — иначе ложный код возврата цикла останавливает скрипт (set -e).
+  grep -E '\|[0-9]+\.[0-9]+\.[0-9]{1,8}$' "/tmp/versions.$id" | tail -n +$((KEEP_RELEASES + 1)) > "/tmp/drop.$id" || true
+  grep -E '\|([0-9]+\.[0-9]+\.[0-9]{9,}|sha-[0-9a-f]+)$' "/tmp/versions.$id" | tail -n +$((KEEP + 1)) >> "/tmp/drop.$id" || true
+  echo "    удаляем: $(wc -l < "/tmp/drop.$id")"
+  while IFS='|' read -r st ver; do
     if [ -n "$ver" ]; then del POST "/registry/project/$PROJECT/package/$id/$ver/delete"; fi
-  done || true
+  done < "/tmp/drop.$id" || true
 done
 
 echo "== Релизы $PROJECT: оставляем $KEEP"

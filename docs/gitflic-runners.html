@@ -254,7 +254,7 @@ GITFLIC_RUNNER_TOKEN='&lt;токен&gt;' docker compose -p gitflic-runner-2 -f 
   <tr><td><code>publish-image</code></td><td>publish</td><td><code>alpine</code> + crane</td><td>после <strong>всех</strong> проверок: <code>crane push</code> и теги версии (<a href="#publish">раздел 8</a>)</td></tr>
   <tr><td><code>publish-sdk-*</code></td><td>release</td><td>dotnet / node / python / maven</td><td>пакеты NuGet, npm, PyPI, Maven той же версии</td></tr>
   <tr><td><code>gitflic-release</code></td><td>release</td><td><code>gcli</code></td><td>страница релиза на тег <code>vX.Y.Z</code> (на практике релиз делается вручную, <a href="#release">раздел 9</a>)</td></tr>
-  <tr><td><code>cleanup</code></td><td>release</td><td><code>alpine</code></td><td>оставляет 3 новейшие версии в реестрах и релизах (<code>scripts/gitflic-prune.sh</code>)</td></tr>
+  <tr><td><code>cleanup</code></td><td>release</td><td><code>alpine</code></td><td>чистит реестры и релизы (<code>scripts/gitflic-prune.sh</code>): плавающие теги не трогает, выпусков оставляет 1, временных версий сборок — 3</td></tr>
 </table>
 
 <!-- ============================================================ -->
@@ -350,10 +350,15 @@ cache:
 <ol class="steps">
   <li>Дождаться зелёного main: все задания, кроме публикации.</li>
   <li>Поставить аннотированный тег и отправить его: <code>git tag -a vX.Y.Z -m "…"</code>, <code>git push origin vX.Y.Z</code>.</li>
-  <li>Опубликовать образ с тегами <code>X.Y.Z</code>, <code>X.Y</code>, <code>X</code>, <code>latest</code> и пакеты SDK
-    версией <code>X.Y.Z</code> — с агента или с рабочей станции. Временные версии <code>X.Y.&lt;время&gt;</code> удалить.</li>
+  <li>Образ этого коммита CI уже выгрузил как <code>sha-&lt;коммит&gt;</code>. Теги выпуска ставятся без Docker и без
+    перекачки слоёв: <code>sh scripts/gitflic-image-tag.sh sha-&lt;коммит&gt; X.Y.Z X.Y X</code>.</li>
+  <li>Пакеты SDK — версией <code>X.Y.Z</code> командами заданий <code>publish-sdk-*</code>. npm не публикует версию «меньше»
+    существующей, поэтому временную <code>X.Y.&lt;время&gt;</code> в npm сначала удалить
+    (<code>POST /registry/project/uklad/tsl-auth/package/&lt;id&gt;/&lt;версия&gt;/delete</code>).</li>
   <li>Собрать файлы релиза — <strong>только архивы</strong> (текстовые файлы GitFlic отвергает с 415):
-    <code>tsl-auth-image-X.Y.Z-linux-amd64.tar.gz</code> (<code>docker save | gzip</code>),
+    <code>tsl-auth-image-X.Y.Z-linux-amd64.tar.gz</code> (<code>sh scripts/gitflic-image-archive.sh X.Y.Z tsl-auth-image-X.Y.Z-linux-amd64.tar.gz</code>
+    — архив прямо из реестра в формате <code>docker save</code>; сам <code>docker save</code> в Docker Desktop с хранилищем
+    containerd для образов, выгруженных <code>crane</code>, отдаёт пустой архив в 8 КБ),
     <code>tsl-auth-sdk-X.Y.Z.tar.gz</code> (<code>scripts/build-sdk-packages.sh X.Y.Z</code>),
     <code>tsl-auth-deploy-X.Y.Z.tar.gz</code> (compose, <code>.env.example</code>, <code>deploy/</code>, демо- и
     импорт-скрипты), <code>tsl-auth-docs-X.Y.Z.zip</code>.</li>
@@ -364,8 +369,11 @@ cache:
     неудачный релиз — <code>DELETE …/release/&lt;id&gt;</code>.</li>
   <li>Обновить затронутые статьи YouTrack (ЧТЗ и Word-вложения).</li>
 </ol>
-<div class="bad"><code>scripts/gitflic-prune.sh</code> с <code>KEEP=1</code> для образа не запускать: теги <code>1</code>,
-  <code>1.5</code>, <code>1.5.1</code>, <code>latest</code> он считает разными версиями и удалил бы нужные.</div>
+<div class="note"><strong>Очистка различает виды версий</strong> (с 04.10.2026): плавающие теги <code>latest</code>,
+  <code>X</code>, <code>X.Y</code> не удаляются никогда; выпусков <code>X.Y.Z</code> остаётся <code>KEEP_RELEASES</code>
+  (по умолчанию 1 — только текущий); временных версий сборок (<code>X.Y.&lt;unix-время&gt;</code>, <code>sha-…</code>) —
+  <code>KEEP</code> (3). Удаление версии образа снимает только тег, манифест и другие теги остаются. До исправления
+  выпуски считались вместе со сборками, и прогоны <code>main</code> вытеснили теги <code>1.5.1</code> и <code>1.5</code>.</div>
 
 <!-- ============================================================ -->
 <h2 id="manual">10. Публикация с рабочей станции</h2>
@@ -415,8 +423,8 @@ ssh -p 443 alexey_kozlov@77.42.83.24 'df -h /; docker system df; sh ~/gitflic-ru
 <ul>
   <li>Артефакты заданий живут от 2 часов до суток (<code>expire_in</code>). GitFlic сам их не удаляет — их убирает
     удаление старых конвейеров: <code>./scripts/gitflic.ps1 prune-pipelines -Keep 3</code>.</li>
-  <li>В реестрах и релизах — не больше трёх версий (задание <code>cleanup</code>), а после выпуска — только текущий
-    выпуск (<code>X.Y.Z</code> + <code>latest</code>) и последняя версия пакетов.</li>
+  <li>Реестры и релизы чистит задание <code>cleanup</code>: в реестрах — текущий выпуск, плавающие теги и три последние
+    сборки <code>main</code>; релизов — не больше трёх. Проверить без удаления — <code>DRY_RUN=1</code>.</li>
 </ul>
 <h3>12.3. Обновление агента</h3>
 <pre><code>cd ~/gitflic-runner

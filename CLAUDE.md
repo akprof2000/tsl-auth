@@ -287,6 +287,9 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - `Api/AccountApi.cs` — `/api/account/tokens` (options, список, выпуск, отзыв своих) access-токеном пользователя
   (схема валидации OpenIddict, audience `tsl-auth-admin`, `subject_type=user`); токен подключения робота здесь не выпускается.
 - Тесты: `tests/TslAuth.IntegrationTests/AccountTokenScenarios.cs` (SQLite + PostgreSQL).
+- **Выпуск 1.7.0 (05.10.2026)**: тег `v1.7.0` на `392da87` (конвейер #76 зелёный), образ `1.7.0`/`1.7`/`1`/`latest`
+  (digest `sha256:3a8c3b17…`, теги — `scripts/gitflic-image-tag.sh`). SDK не менялись (`sdk/VERSION` 1.6, пакеты 1.6.0);
+  релиз GitFlic с архивами не публиковался.
 
 ## Документация в YouTrack (база знаний UKA)
 

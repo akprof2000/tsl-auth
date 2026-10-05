@@ -164,6 +164,7 @@
   "error.tokenServiceInvalid": "A connection token cannot be issued to this service: it does not exist or the administrator has not allowed it to act for users.",
   "error.tokenExpiryInvalid": "Invalid token lifetime.",
   "error.tokensDisabled": "Personal access tokens are disabled by the administrator.",
+  "error.tokensForbidden": "Issuing tokens requires a role assigned by the administrator (for example, \"API access\").",
   "error.generic": "The operation failed. Try again or contact the administrator.",
   "error.notFound": "The requested item was not found — it may have been deleted already.",
 

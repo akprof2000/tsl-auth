@@ -220,13 +220,26 @@ public sealed record InactivityPolicy(bool Enabled = true, int DisableAfterDays 
 }
 
 /// <summary>Политика персональных токенов доступа.</summary>
-public sealed record PatPolicy(bool Enabled = true, int MaxLifetimeDays = 365, int MaxTokensPerUser = 20)
+/// <param name="RequiredPermission">
+/// Разрешение «приложение:разрешение», без которого пользователь не может выпустить себе токен (например,
+/// <c>tsl-users:api-tokens.issue</c> — роль «Доступ по API»); пусто — выпускать может любой пользователь с ролями.
+/// </param>
+public sealed record PatPolicy(bool Enabled = true, int MaxLifetimeDays = 365, int MaxTokensPerUser = 20, string? RequiredPermission = null)
 {
     /// <summary>Проверка допустимых значений перед сохранением; ошибка — AdminException с понятным текстом.</summary>
     public void Validate()
     {
         if (MaxLifetimeDays is < 1 or > 3650) throw new AdminException("Максимальный срок PAT: от 1 до 3650 дней.");
         if (MaxTokensPerUser is < 1 or > 1000) throw new AdminException("Токенов на пользователя: от 1 до 1000.");
+        if (!string.IsNullOrWhiteSpace(RequiredPermission) && SplitPermission(RequiredPermission) is null)
+            throw new AdminException("Разрешение для выпуска PAT задаётся как «приложение:разрешение».");
+    }
+
+    /// <summary>Разбор «приложение:разрешение»; null — формат неверный.</summary>
+    public static (string ClientId, string Permission)? SplitPermission(string? value)
+    {
+        var i = value?.IndexOf(':') ?? -1;
+        return i > 0 && i < value!.Length - 1 ? (value[..i].Trim(), value[(i + 1)..].Trim()) : null;
     }
 }
 

@@ -31,7 +31,8 @@ public sealed record PatServiceClient(string ClientId, string DisplayName);
 /// сервиса-робота (обменивает только этот сервис со своим секретом или ключом; в JWT — claim act с его client_id).
 /// Создание/отзыв — страница Account/Tokens, Admin/Users/Edit и Admin API; проверка — AuthorizationController.
 /// </summary>
-public sealed class PatService(AuthDbContext db, SettingsService settings, AuditService audit, ApplicationService applications)
+public sealed class PatService(AuthDbContext db, SettingsService settings, AuditService audit, ApplicationService applications,
+    AccessService access)
 {
     /// <summary>Узнаваемый префикс: позволяет сканерам секретов находить утёкшие токены и быстро отсекать мусор.</summary>
     public const string TokenPrefix = "tslpat_";
@@ -68,11 +69,26 @@ public sealed class PatService(AuthDbContext db, SettingsService settings, Audit
             ? await AvailableAudiencesAsync(token.UserId, ct)
             : token.Audiences.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-    /// <summary>Выпускает PAT с учётом политики (включено, лимит числа, макс. срок); секрет возвращается один раз.</summary>
+    /// <summary>
+    /// Может ли пользователь выпускать себе токены: PAT включены и, если политика требует разрешения
+    /// (<see cref="PatPolicy.RequiredPermission"/>), оно есть у пользователя по его текущим ролям.
+    /// </summary>
+    public async Task<bool> CanIssueAsync(Guid userId, CancellationToken ct = default)
+    {
+        var policy = (await settings.GetAsync(ct)).Pats;
+        if (!policy.Enabled) return false;
+        if (PatPolicy.SplitPermission(policy.RequiredPermission) is not { } required) return true;
+        return await access.HasPermissionAsync(SubjectType.User, userId.ToString(), required.ClientId, required.Permission, ct);
+    }
+
+    /// <summary>Выпускает PAT с учётом политики (включено, разрешение, лимит числа, макс. срок); секрет возвращается один раз.</summary>
     public async Task<(PatDto Token, string Secret)> CreateAsync(Guid userId, PatInput input, CancellationToken ct = default)
     {
         var policy = (await settings.GetAsync(ct)).Pats;
         if (!policy.Enabled) throw AdminException.Localized("error.tokensDisabled", "Персональные токены отключены администратором.", StatusCodes.Status403Forbidden);
+        if (!await CanIssueAsync(userId, ct))
+            throw AdminException.Localized("error.tokensForbidden",
+                "Выпуск токенов доступен только с ролью, которую назначает администратор (например, «Доступ по API»).", StatusCodes.Status403Forbidden);
 
         var name = input.Name?.Trim();
         if (string.IsNullOrEmpty(name) || name.Length > 100) throw AdminException.Localized("error.tokenNameRequired", "Укажите название токена (до 100 символов).");

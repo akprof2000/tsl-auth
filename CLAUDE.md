@@ -59,7 +59,7 @@ $env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с види
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
 ./tests/load/run-managed-load.ps1                    # k6: 200 подчинённых клиентов по private_key_jwt (стенд запущен)
-python scripts/build-tz-docx.py --version 2.5 --date 03.10.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx); версию поднимать при каждом изменении tz.md
+python scripts/build-tz-docx.py --version 2.6 --date 05.10.2026   # Word-версия ЧТЗ из docs/tz.md (python-docx); версию поднимать при каждом изменении tz.md
 python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/TZ-active-directory.docx --version 1.1 --date 03.10.2026 --status "постановка для согласования, реализация не начата"
 ```
 
@@ -275,6 +275,18 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - Тесты: интеграционные `RobotTokenScenarios.cs` (SQLite + PostgreSQL), UI `ConnectionToken_IssuedInUi_RobotActsAsUser`
   (Node API отвечает `calledVia` = робот), контрактные тесты SDK `connection_token_robot` (вектор `robot` в
   `make-vectors.py`: `sdk-operator` выписывает токен через вход и форму «Мои токены», как в браузере).
+
+## Выпуск PAT по праву и самообслуживание (05.10.2026)
+
+Просьба Алексея: токен для работы через API выписывает себе сам пользователь, но только после того, как администратор
+назначит ему роль («Доступ по API» модуля «Пользователи» ERP, `tsl-users:api-tokens.issue`).
+
+- `PatPolicy.RequiredPermission` («приложение:разрешение»; пусто — как раньше, без ограничения); проверка —
+  `PatService.CanIssueAsync` в `CreateAsync` (любой путь: страница, API, админка), поле в `Admin/Settings`, страница
+  `Account/Tokens` без права показывает пояснение вместо формы. Ф-31 ЧТЗ, `docs/integration.md` §6.
+- `Api/AccountApi.cs` — `/api/account/tokens` (options, список, выпуск, отзыв своих) access-токеном пользователя
+  (схема валидации OpenIddict, audience `tsl-auth-admin`, `subject_type=user`); токен подключения робота здесь не выпускается.
+- Тесты: `tests/TslAuth.IntegrationTests/AccountTokenScenarios.cs` (SQLite + PostgreSQL).
 
 ## Документация в YouTrack (база знаний UKA)
 

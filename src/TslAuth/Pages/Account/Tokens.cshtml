@@ -18,6 +18,10 @@
     {
         <p class="muted">@L["tokens.disabled"]</p>
     }
+    else if (!Model.CanIssue)
+    {
+        <p class="muted">@L["error.tokensForbidden"]</p>
+    }
     else if (Model.Available.Count == 0)
     {
         <p class="muted">@L["tokens.noApps"]</p>

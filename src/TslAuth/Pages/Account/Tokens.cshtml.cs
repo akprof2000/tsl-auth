@@ -26,6 +26,8 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     public List<string> Available { get; private set; } = [];
     public List<PatServiceClient> Services { get; private set; } = [];
     public PatPolicy Policy { get; private set; } = new();
+    /// <summary>Политика разрешает пользователю выпуск (роль с разрешением из <see cref="PatPolicy.RequiredPermission"/>).</summary>
+    public bool CanIssue { get; private set; }
     public string? CreatedSecret { get; private set; }
 
     private Guid UserId => Guid.Parse(users.GetUserId(User)!);
@@ -71,6 +73,7 @@ public sealed class TokensModel(PatService pats, SettingsService settings, UserM
     private async Task LoadAsync(CancellationToken ct)
     {
         Policy = (await settings.GetAsync(ct)).Pats;
+        CanIssue = await pats.CanIssueAsync(UserId, ct);
         Items = await pats.ListAsync(UserId, ct);
         Available = await pats.AvailableAudiencesAsync(UserId, ct);
         Services = await pats.ServiceClientsAsync(ct);

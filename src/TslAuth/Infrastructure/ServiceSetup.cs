@@ -262,6 +262,7 @@ public static class ServiceSetup
         services.AddAuthorization(o =>
         {
             AdminPolicies.Register(o);
+            Api.AccountApi.Register(o);
             Api.AppApi.AddAppApiPolicy(o);
             Api.ManagedClientsApi.AddManagedClientsPolicy(o);
             Api.BotApi.AddBotPolicy(o);

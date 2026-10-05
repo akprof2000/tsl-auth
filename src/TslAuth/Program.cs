@@ -78,6 +78,7 @@ app.MapAppApi();
 app.MapManagedClientsApi();
 app.MapEventsApi();
 app.MapBotApi();
+app.MapAccountApi();
 app.MapTslApiDocs();
 
 // live — процесс жив; ready — есть связь с БД (для балансировщика/оркестратора).

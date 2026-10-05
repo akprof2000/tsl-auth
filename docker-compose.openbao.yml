@@ -19,7 +19,7 @@ x-openbao-hardening: &openbao-hardening
 services:
   openbao:
     <<: *openbao-hardening
-    image: openbao/openbao:2.4.1
+    image: openbao/openbao:2.7.1
     container_name: tsl-auth-openbao
     restart: unless-stopped
     command: ["server", "-config=/openbao/config/openbao.hcl"]
@@ -38,7 +38,7 @@ services:
 
   openbao-init:
     <<: *openbao-hardening
-    image: openbao/openbao:2.4.1
+    image: openbao/openbao:2.7.1
     restart: "no"
     entrypoint: ["sh", "/openbao/scripts/init.sh"]
     environment:

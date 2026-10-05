@@ -69,6 +69,8 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 
 - **Имена — с префиксом `tsl-`** (Алексей, 05.10.2026, правило в `../CLAUDE.md`): образ `tsl-auth`, контейнер `tsl-auth`
   (на общем стенде `../Money` — тоже `tsl-auth`; оба стенда сразу не поднимать — имя занято).
+- Compose-проект `tsl-auth` (HA — `tsl-auth-ha`), OpenBao — контейнер `tsl-auth-openbao`; пример docflow-demo — проект `tsl-auth-docflow-demo`,
+  контейнеры и образы `tsl-auth-docflow-auth`, `tsl-auth-docflow-api`, `tsl-auth-docflow-bot`, `tsl-auth-docflow-openbao`.
 - **Коммиты сразу в `main`**, без веток и pull request'ов. В конце сообщения коммита — строка соавторства.
 - **Полная пирамида тестов** для любого изменения/проекта: unit → интеграционные (SQLite и PostgreSQL) → нагрузка →
   отказоустойчивость → наблюдаемость → UI-автотесты. В отчёте указывать, какие уровни прогнаны.

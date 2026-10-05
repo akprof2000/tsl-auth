@@ -26,21 +26,21 @@ $dotenv = [ordered]@{}
 if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $k, $v = $_ -split "=", 2; if ($k -and -not $k.StartsWith("#")) { $dotenv[$k] = $v } } }
 
 # OpenBao используется, только если его контейнер запущен (оверлей docker-compose.openbao.yml).
-$useVault = [bool](& docker ps -q --filter "name=^docflow-openbao$" 2>$null)
+$useVault = [bool](& docker ps -q --filter "name=^tsl-auth-docflow-openbao$" 2>$null)
 function Bao {
-    $out = & docker exec docflow-openbao sh /openbao/scripts/bao.sh @args 2>&1
+    $out = & docker exec tsl-auth-docflow-openbao sh /openbao/scripts/bao.sh @args 2>&1
     if ($LASTEXITCODE -ne 0) { throw "bao $($args -join ' '): $out" }
     ($out | Out-String).Trim()
 }
 # Секрет: (путь OpenBao, ключ настройки, переменная .env).
 function Get-Secret($path, $field, $envName) {
     if (-not $useVault) { return $dotenv[$envName] }
-    $out = & docker exec docflow-openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path" 2>$null
+    $out = & docker exec tsl-auth-docflow-openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path" 2>$null
     if ($LASTEXITCODE -eq 0) { ($out | Out-String).Trim() } else { $null }
 }
 function Set-Secret($path, $field, $envName, $value) {
     if (-not $useVault) { $dotenv[$envName] = $value; return }
-    & docker exec docflow-openbao sh /openbao/scripts/bao.sh kv patch "secret/$path" "$field=$value" 2>$null | Out-Null
+    & docker exec tsl-auth-docflow-openbao sh /openbao/scripts/bao.sh kv patch "secret/$path" "$field=$value" 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) { Bao kv put "secret/$path" "$field=$value" | Out-Null }
 }
 if (-not $AdminClientSecret) { $AdminClientSecret = Get-Secret "tsl-auth" "Bootstrap__AdminApiClientSecret" "BOOTSTRAP_API_CLIENT_SECRET" }

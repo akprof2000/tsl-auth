@@ -3,7 +3,7 @@
 #   ./seed.ps1                    — сам увидит OpenBao и запишет секреты клиентов в secret/docflow-api и secret/docflow-bot
 #   docker compose -f docker-compose.yml -f docker-compose.openbao.yml up -d --build
 # Пароль администратора TSL Auth:
-#   docker exec docflow-openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
+#   docker exec tsl-auth-docflow-openbao sh /openbao/scripts/bao.sh kv get -field=Bootstrap__AdminPassword secret/tsl-auth
 
 x-openbao: &openbao-client
   OpenBao__Address: http://openbao:8200
@@ -11,7 +11,7 @@ x-openbao: &openbao-client
 services:
   openbao:
     image: openbao/openbao:2.4.1
-    container_name: docflow-openbao
+    container_name: tsl-auth-docflow-openbao
     restart: unless-stopped
     command: ["server", "-config=/openbao/config/openbao.hcl"]
     cap_drop: [ALL]

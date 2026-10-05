@@ -17,6 +17,8 @@ x-hardening: &hardening
     driver: json-file                   # 5 файлов по 20 МБ, ротированные сжимаются (gzip) — не более ~100 МБ на контейнер
     options: { max-size: "20m", max-file: "5", compress: "true" }
 
+name: tsl-auth
+
 services:
   auth:
     <<: *hardening

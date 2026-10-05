@@ -6,7 +6,7 @@ $lines = @(if (Test-Path $envFile) { Get-Content $envFile })
 if ($lines | Where-Object { $_ -match '^BOOTSTRAP_API_CLIENT_SECRET=.+' }) { exit 0 }
 # Том TSL Auth уже есть, а секрета в .env нет: клиент admin-cli создан со старым значением по умолчанию,
 # новый секрет он не примет. Старое значение было публичным — такой стенд пересоздаётся.
-if (& docker volume ls -q --filter "name=^docflow-demo_auth-data$" 2>$null) {
+if (& docker volume ls -q --filter "name=^tsl-auth-docflow-demo_auth-data$" 2>$null) {
     Write-Host "[ОШИБКА] Демо создано со старым общим секретом Admin API. Пересоздайте его: demo-stop.cmd clean, затем demo-start.cmd."
     exit 1
 }

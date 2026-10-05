@@ -8,13 +8,13 @@ $envFile = Join-Path $PSScriptRoot ".env"
 if (-not (Test-Path $envFile)) { throw "Нет $envFile — сначала запустите seed.ps1" }
 $cfg = @{}
 Get-Content $envFile | ForEach-Object { $k, $v = $_ -split "=", 2; if ($k) { $cfg[$k] = $v } }
-$useVault = [bool](& docker ps -q --filter "name=^docflow-openbao$" 2>$null)
+$useVault = [bool](& docker ps -q --filter "name=^tsl-auth-docflow-openbao$" 2>$null)
 function Get-Secret($path, $field, $envName) {
     if (-not $useVault) {
         if (-not $cfg[$envName]) { throw "Нет $envName в .env — запустите seed.ps1" }
         return $cfg[$envName]
     }
-    $out = & docker exec docflow-openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path"
+    $out = & docker exec tsl-auth-docflow-openbao sh /openbao/scripts/bao.sh kv get "-field=$field" "secret/$path"
     if ($LASTEXITCODE -ne 0) { throw "Нет secret/$path $field в OpenBao — запустите seed.ps1" }
     ($out | Out-String).Trim()
 }

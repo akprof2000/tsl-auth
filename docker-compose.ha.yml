@@ -75,6 +75,8 @@ x-auth: &auth
     Observability__OpenTelemetry__Logs: "${OBS_OTLP_LOGS:-false}"
     Observability__ResourceAttributes: "${OBS_RESOURCE_ATTRIBUTES:-}"
 
+name: tsl-auth-ha
+
 services:
   postgres:
     image: postgres:17-alpine

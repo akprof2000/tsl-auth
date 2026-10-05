@@ -6,16 +6,16 @@
 #   2) ./seed.ps1                           — приложения, роли, сотрудники; секреты клиентов → .env
 #   3) docker compose up -d --build         — API + PWA (http://localhost:5200) и бот
 # Пароль администратора TSL Auth — BOOTSTRAP_ADMIN_PASSWORD в .env, иначе одноразовый в журнале:
-#   docker logs docflow-tsl-auth | findstr "временным"
+#   docker logs tsl-auth-docflow-auth | findstr "временным"
 # Секреты в OpenBao (после MVP): добавьте -f docker-compose.openbao.yml ко всем командам compose.
 # Порты: DOCFLOW_AUTH_PORT (8080) и DOCFLOW_WEB_PORT (5200) — если заняты другим стендом.
 # Свой образ TSL Auth: TSL_AUTH_IMAGE=tsl-auth:local (docker build -t tsl-auth:local в корне репозитория).
-name: docflow-demo
+name: tsl-auth-docflow-demo
 
 services:
   tsl-auth:
     image: ${TSL_AUTH_IMAGE:-akprof2000/tsl-auth:latest}
-    container_name: docflow-tsl-auth
+    container_name: tsl-auth-docflow-auth
     restart: unless-stopped
     ports: ["${DOCFLOW_AUTH_PORT:-8080}:8080"]
     environment:
@@ -34,8 +34,8 @@ services:
 
   docflow-api:
     build: { context: ., dockerfile: api/Dockerfile }
-    image: docflow-demo-api:latest
-    container_name: docflow-api
+    image: tsl-auth-docflow-api:latest
+    container_name: tsl-auth-docflow-api
     restart: unless-stopped
     depends_on: [tsl-auth, docflow-bot]
     ports: ["${DOCFLOW_WEB_PORT:-5200}:8080"]
@@ -49,8 +49,8 @@ services:
 
   docflow-bot:
     build: { context: ., dockerfile: bot/Dockerfile }
-    image: docflow-demo-bot:latest
-    container_name: docflow-bot
+    image: tsl-auth-docflow-bot:latest
+    container_name: tsl-auth-docflow-bot
     restart: unless-stopped
     depends_on: [tsl-auth]
     environment:

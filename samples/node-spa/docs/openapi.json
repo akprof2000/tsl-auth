@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Demo Node API",
+    "title": "Sample Node API",
     "version": "v1",
-    "description": "REST API демо-сервиса на Node.js (без npm-зависимостей) поверх TSL Auth. Тот же процесс раздаёт SPA `demo-node-spa`.\n\n* Токен — access-токен TSL Auth с `aud = demo-node-api` (вход в SPA: authorization code + PKCE, либо `client_credentials`).\n* Права — разрешения матрицы приложения `demo-node-api` (claim `permissions` = `demo-node-api:<разрешение>`); у каждого метода указано нужное.\n* Если запрос пришёл через Go API (token exchange, RFC 8693), в токене есть claim `act` — сервис-посредник; `/api/orders` возвращает его в `calledVia`.\n* Ошибки — JSON `{ \"error\": \"…\" }`: 401 — нет или неверный токен, 403 — нет разрешения."
+    "description": "REST API сервиса-примера на Node.js (без npm-зависимостей) поверх TSL Auth. Тот же процесс раздаёт SPA `sample-node-spa`.\n\n* Токен — access-токен TSL Auth с `aud = sample-node-api` (вход в SPA: authorization code + PKCE, либо `client_credentials`).\n* Права — разрешения матрицы приложения `sample-node-api` (claim `permissions` = `sample-node-api:<разрешение>`); у каждого метода указано нужное.\n* Если запрос пришёл через Go API (token exchange, RFC 8693), в токене есть claim `act` — сервис-посредник; `/api/orders` возвращает его в `calledVia`.\n* Ошибки — JSON `{ \"error\": \"…\" }`: 401 — нет или неверный токен, 403 — нет разрешения."
   },
   "paths": {
     "/health": {
@@ -35,7 +35,7 @@
     "/api/orders": {
       "get": {
         "summary": "Список заказов",
-        "description": "Нужен access-токен с разрешением `demo-node-api:orders.read` (матрица TSL Auth).",
+        "description": "Нужен access-токен с разрешением `sample-node-api:orders.read` (матрица TSL Auth).",
         "responses": {
           "200": { "description": "`{ service, user, calledVia, orders: [{ id, total }] }`; `calledVia` — сервис из `act.sub` или «напрямую»" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
@@ -51,7 +51,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Access-токен TSL Auth с aud = demo-node-api."
+        "description": "Access-токен TSL Auth с aud = sample-node-api."
       }
     },
     "responses": {

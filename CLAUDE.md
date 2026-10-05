@@ -34,14 +34,14 @@
 | `src/TslAuth` | сервис (Api, Controllers, Pages, Services, Infrastructure, Data) |
 | `tests/TslAuth.UnitTests` | unit |
 | `tests/TslAuth.IntegrationTests` | интеграционные: SQLite и PostgreSQL/OpenBao через Testcontainers (нужен Docker) |
-| `tests/TslAuth.UiTests` | Playwright против стенда с демо-приложениями |
-| `tests/load`, `tests/resilience`, `tests/e2e` | k6, сценарии отказов, запуск демо для E2E |
+| `tests/TslAuth.UiTests` | Playwright против стенда с приложениями-примерами |
+| `tests/load`, `tests/resilience`, `tests/e2e` | k6, сценарии отказов, запуск приложений-примеров для E2E |
 | `tests/sdk-contract` | контрактные тесты SDK: `make-vectors.py` + `run.ps1` |
 | `sdk/{dotnet,node,go,python,java}` | клиентские библиотеки; контракт — `docs/client-contract.md`; `sdk/VERSION` = MAJOR.MINOR |
-| `samples/` | демо: dotnet-mvc 5101, node-spa 5102, go-api 5103, python-app 5104, java-api 5105, docflow-demo; `seed-demo.ps1` |
+| `samples/` | приложения-примеры: dotnet-mvc 5101, node-spa 5102, go-api 5103, python-app 5104, java-api 5105, docflow; `seed-samples.ps1` |
 | `docs/` | ЧТЗ (`tz.md` + Word), архитектура, развёртывание, конфигурация, интеграция, SDK, тестирование, релизная политика, GitFlic |
 | `deploy/` | nginx, примеры appsettings, стенд мониторинга (Victoria), OpenBao |
-| `scripts/` | демо-стенд (`demo.cmd`/`demo.ps1` — Windows, `demo.sh` — Linux), экспорт/импорт образов, проверка документации, `build-tz-docx.py` (Word-версия ЧТЗ), утилиты GitFlic (см. ниже) |
+| `scripts/` | стенд примеров (`samples.cmd`/`samples.ps1` — Windows, `samples.sh` — Linux), экспорт/импорт образов, проверка документации, `build-tz-docx.py` (Word-версия ЧТЗ), утилиты GitFlic (см. ниже) |
 | `gitflic-ci.yaml` | единственный рабочий конвейер CI/CD |
 
 ## Команды
@@ -51,10 +51,10 @@ dotnet build TslAuth.sln -c Release -warnaserror
 dotnet test tests/TslAuth.UnitTests
 dotnet test tests/TslAuth.IntegrationTests          # нужен запущенный Docker (Docker Desktop сам не стартует после перезагрузки)
 docker compose up -d --build                         # стенд на http://localhost:8080
-./samples/seed-demo.ps1                              # демо-приложения, матрицы, alice/bob (секреты confidential-клиентов перевыпускает)
-scripts\demo.cmd  |  ./scripts/demo.ps1  |  scripts/demo.sh   # демо-стенд целиком: образ GitFlic (или -Build/--build), seed, 4 приложения; stop / clean
-# demo.ps1: каждое демо-приложение — в своём окне «demo <имя>» с живым stdout (журналы только в stdout); в CI/тестах
-# (tests/e2e/start-demos.ps1 без -Console) stdout сохраняется в tests/artifacts/demo, окна скрыты
+./samples/seed-samples.ps1                           # приложения-примеры, матрицы, alice/bob (секреты confidential-клиентов перевыпускает)
+scripts\samples.cmd  |  ./scripts/samples.ps1  |  scripts/samples.sh   # стенд примеров целиком: образ GitFlic (или -Build/--build), seed, 4 приложения; stop / clean
+# samples.ps1: каждое приложение-пример — в своём окне «sample <имя>» с живым stdout (журналы только в stdout); в CI/тестах
+# (tests/e2e/start-samples.ps1 без -Console) stdout сохраняется в tests/artifacts/samples, окна скрыты
 $env:UI_HEADED=1; dotnet test tests/TslAuth.UiTests  # UI-тесты с видимым браузером (скриншоты — tests/artifacts/ui)
 ./tests/sdk-contract/run.ps1                         # стенд + контрактные тесты пяти SDK
 pwsh scripts/validate-docs.ps1 -SkipMermaid          # ссылки, якоря, таблицы в README и docs/*.md
@@ -69,7 +69,7 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 
 - **Имена — с префиксом `tsl-`** (Алексей, 05.10.2026, правило в `../CLAUDE.md`): образ `tsl-auth`, контейнер `tsl-auth`
   (на общем стенде `../Money` — тоже `tsl-auth`; оба стенда сразу не поднимать — имя занято).
-- Compose-проект `tsl-auth` (HA — `tsl-auth-ha`), OpenBao — контейнер `tsl-auth-openbao`; пример docflow-demo — проект `tsl-auth-docflow-demo`,
+- Compose-проект `tsl-auth` (HA — `tsl-auth-ha`), OpenBao — контейнер `tsl-auth-openbao`; пример docflow — проект `tsl-auth-docflow`,
   контейнеры и образы `tsl-auth-docflow-auth`, `tsl-auth-docflow-api`, `tsl-auth-docflow-bot`, `tsl-auth-docflow-openbao`.
 - **Коммиты сразу в `main`**, без веток и pull request'ов. В конце сообщения коммита — строка соавторства.
 - **Полная пирамида тестов** для любого изменения/проекта: unit → интеграционные (SQLite и PostgreSQL) → нагрузка →
@@ -77,14 +77,14 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
 - Документация и ЧТЗ меняются вместе с поведением; расхождение — дефект, блокирует релиз.
 - **Каждый модуль с REST API** публикует документацию как TSL Auth: `/docs` — руководство, `/docs/api` — справочник Scalar,
   `/openapi/v1.json`; у каждого метода — подпись и нужное разрешение матрицы ([`docs/integration.md` §12](docs/integration.md#12-документация-rest-api-модуля-docs-и-docsapi)).
-  .NET — `Scalar.AspNetCore` (образец `samples/docflow-demo/shared/ApiDocs.cs`); остальные — общие `guide.html`/`reference.html`
+  .NET — `Scalar.AspNetCore` (образец `samples/docflow/shared/ApiDocs.cs`); остальные — общие `guide.html`/`reference.html`
   из `samples/go-api/docs` (копии в node-spa и java-api должны совпадать — проверяет `validate-docs.ps1`), скрипт Scalar —
   с TSL Auth (`<issuer>docs/api/scalar.js`), не CDN.
-- Демо используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/demo.* -Build`).
-- Демо-приложения проверяются по `127.0.0.1`, а не `localhost`: Python-демо слушает только IPv4, а HttpClient PowerShell
+- Примеры используют опубликованный образ, а не сборку из исходников (кроме E2E-стенда в CI и `scripts/samples.* -Build`).
+- Приложения-примеры проверяются по `127.0.0.1`, а не `localhost`: Python-пример слушает только IPv4, а HttpClient PowerShell
   сначала пробует `::1` и ждёт таймаут.
 - Локально после работы в Docker не оставлять ничего своего (решение пользователя 01.10.2026): стенд —
-  `docker compose down -v` из корня репозитория, демо-приложения — остановить (порты 5101–5105, окна «demo …»), свои
+  `docker compose down -v` из корня репозитория, приложения-примеры — остановить (порты 5101–5105, окна «sample …»), свои
   лишние образы (k6, trivy, mermaid, postgres тестов, промежуточные tsl-auth) и тома удалить. Образ выпуска
   `tsl-auth:latest` можно оставить — по нему стенд поднимается снова. На машине
   идут и другие проекты (1c-import, tsl-dev, tslmesh, openbao-config) — их контейнеры, тома и сборщики buildx не трогать:
@@ -181,7 +181,7 @@ python scripts/build-tz-docx.py --src docs/task-active-directory.md --out docs/T
   `POST …/release/<id>/file`, multipart-поле `files` (текстовые файлы — 415, поэтому SHA-256 — в описании);
   удалить — `DELETE …/release/<id>`. Состав: `tsl-auth-image-X.Y.Z-linux-amd64.tar.gz` (`docker save | gzip`),
   `tsl-auth-sdk-X.Y.Z.tar.gz` (`scripts/build-sdk-packages.sh X.Y.Z`), `tsl-auth-deploy-X.Y.Z.tar.gz` (compose,
-  `.env.example`, `deploy/`, демо- и импорт-скрипты), `tsl-auth-docs-X.Y.Z.zip`; образ с тегами `X.Y.Z`, `X.Y`, `X`,
+  `.env.example`, `deploy/`, скрипты стенда примеров и импорта), `tsl-auth-docs-X.Y.Z.zip`; образ с тегами `X.Y.Z`, `X.Y`, `X`,
   `latest`; пакеты SDK — версией `X.Y.Z` (временные `X.Y.<время>` удалить; npm не публикует «меньшую» версию, пока
   есть большая — сначала удалить её).
 - **Очистка реестра (`scripts/gitflic-prune.sh`, задание `cleanup`) с 04.10.2026 различает виды версий**: плавающие

@@ -1,11 +1,11 @@
-// Демо Go API для TSL Auth (только стандартная библиотека — работает в закрытом контуре).
+// Пример Go API для TSL Auth (только стандартная библиотека — работает в закрытом контуре).
 //
 //   - проверяет JWT (RS256) по JWKS сервиса авторизации: подпись, iss, aud, exp;
 //   - авторизует по разрешениям из матрицы доступа (claim "permissions" = "client:permission");
 //   - вызывает Node API от имени пользователя через token exchange (RFC 8693).
 //
-// Переменные: AUTH_ISSUER, API_AUDIENCE (demo-go-api), CLIENT_SECRET (для token exchange),
-// NODE_API_URL, NODE_API_SCOPE (demo-node-api), PORT, CORS_ORIGIN.
+// Переменные: AUTH_ISSUER, API_AUDIENCE (sample-go-api), CLIENT_SECRET (для token exchange),
+// NODE_API_URL, NODE_API_SCOPE (sample-node-api), PORT, CORS_ORIGIN.
 //
 // Документация API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar, /openapi/v1.json — OpenAPI
 // (файлы в каталоге docs, встраиваются в бинарник).
@@ -34,10 +34,10 @@ import (
 
 var (
 	issuer     = env("AUTH_ISSUER", "http://localhost:8080/")
-	audience   = env("API_AUDIENCE", "demo-go-api")
+	audience   = env("API_AUDIENCE", "sample-go-api")
 	secret     = env("CLIENT_SECRET", "")
 	nodeAPI    = env("NODE_API_URL", "http://localhost:5102")
-	nodeScope  = env("NODE_API_SCOPE", "demo-node-api")
+	nodeScope  = env("NODE_API_SCOPE", "sample-node-api")
 	corsOrigin = env("CORS_ORIGIN", "http://localhost:5102")
 	keys       = &jwks{}
 	httpClient = &http.Client{Timeout: 10 * time.Second}
@@ -157,7 +157,7 @@ func (c claims) strings(name string) []string {
 
 // validate локально проверяет access-токен (без обращения к серверу на каждый запрос):
 // подпись RS256 по ключу из JWKS, затем iss, aud и exp. Отзыв токена так не виден —
-// для мгновенного отзыва нужен introspection (см. демо Python).
+// для мгновенного отзыва нужен introspection (см. пример Python).
 func validate(token string) (claims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -248,7 +248,7 @@ func main() {
 		})
 	}))
 
-	// Требует разрешения reports.view в матрице demo-go-api.
+	// Требует разрешения reports.view в матрице sample-go-api.
 	mux.HandleFunc("GET /api/reports", require("reports.view", func(w http.ResponseWriter, r *http.Request, c claims, _ string) {
 		writeJSON(w, 200, map[string]any{"service": "go-api", "reports": []string{"Выручка за квартал", "Остатки на складе"}, "user": c["preferred_username"]})
 	}))

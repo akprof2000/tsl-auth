@@ -30,7 +30,7 @@ var (
 	issuer      = env("TSL_AUTH_ISSUER", "http://localhost:8080/")
 	base        = strings.TrimSuffix(issuer, "/")
 	adminID     = env("ADMIN_CLIENT_ID", "admin-cli")
-	adminSecret = env("ADMIN_CLIENT_SECRET", "demo-admin-cli-secret-2026")
+	adminSecret = env("ADMIN_CLIENT_SECRET", "sample-admin-cli-secret-2026")
 	suffix      = fmt.Sprintf("%x", time.Now().Unix()%1000000)
 	owner       = "erp-import-api-" + suffix
 	web         = "erp-import-web-" + suffix

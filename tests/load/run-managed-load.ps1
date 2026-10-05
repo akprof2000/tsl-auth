@@ -9,7 +9,7 @@ param(
     [int]$CycleSeconds = 20,
     [string]$Duration = "60s",
     [string]$ClientId = "admin-cli",
-    [string]$ClientSecret = "demo-admin-cli-secret-2026"
+    [string]$ClientSecret = "sample-admin-cli-secret-2026"
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)

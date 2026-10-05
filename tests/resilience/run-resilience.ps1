@@ -13,9 +13,9 @@
 param(
     [ValidateSet("single", "ha", "all")] [string]$Mode = "all",
     [string]$ClientId = "admin-cli",
-    [string]$ClientSecret = "demo-admin-cli-secret-2026",
+    [string]$ClientSecret = "sample-admin-cli-secret-2026",
     [string]$User = "alice",
-    [string]$Password = "Demo-Passw0rd!",
+    [string]$Password = "Sample-Passw0rd!",
     [string]$PublicClient = "load-test-client"
 )
 $ErrorActionPreference = "Stop"
@@ -144,7 +144,7 @@ function Run-Single {
     docker compose @HaCompose down 2>&1 | Out-Null
     docker compose up -d 2>&1 | Out-Null
     Wait-Ready $Lb | Out-Null
-    & pwsh -NoProfile -File samples/seed-demo.ps1 -Issuer $Lb | Out-Null
+    & pwsh -NoProfile -File samples/seed-samples.ps1 -Issuer $Lb | Out-Null
     Ensure-PublicClient $Lb
 
     Scenario "single" "Штатный перезапуск контейнера" "простой только на время рестарта; сессии и ключи сохраняются" {
@@ -169,7 +169,7 @@ function Run-Ha {
     docker compose @HaCompose up -d 2>&1 | Write-Host
     if ($LASTEXITCODE -ne 0) { throw "docker compose (кластер) завершился с кодом $LASTEXITCODE" }
     Wait-Ready $Lb | Out-Null; foreach ($p in 8081, 8082, 8083) { Wait-Ready "http://127.0.0.1:$p" | Out-Null }
-    & pwsh -NoProfile -File samples/seed-demo.ps1 -Issuer $Lb | Out-Null
+    & pwsh -NoProfile -File samples/seed-samples.ps1 -Issuer $Lb | Out-Null
     Ensure-PublicClient $Lb
 
     # Синхронизация состояния между узлами: сессия создана на узле 1, используется на узле 2, отзывается через узел 3.

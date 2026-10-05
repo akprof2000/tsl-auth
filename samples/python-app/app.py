@@ -1,4 +1,4 @@
-"""Демо Python-приложение для TSL Auth (только стандартная библиотека — работает в закрытом контуре).
+"""Пример Python-приложения для TSL Auth (только стандартная библиотека — работает в закрытом контуре).
 
 Что показывает:
   * App API (самоуправление): приложение само заводит своих пользователей и назначает им СВОИ роли
@@ -7,7 +7,7 @@
   * проверку JWT RS256 по JWKS (RSA PKCS#1 v1.5 реализована через pow() — без pip-зависимостей);
   * introspection access-токена (для сервисов, которым нужен мгновенный отзыв).
 
-Переменные: AUTH_ISSUER, CLIENT_ID (demo-python), CLIENT_SECRET, PORT (5104).
+Переменные: AUTH_ISSUER, CLIENT_ID (sample-python), CLIENT_SECRET, PORT (5104).
 """
 import base64
 import hashlib
@@ -24,18 +24,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ISSUER = os.environ.get("AUTH_ISSUER", "http://localhost:8080/")
 BASE = ISSUER.rstrip("/")
-CLIENT_ID = os.environ.get("CLIENT_ID", "demo-python")
+CLIENT_ID = os.environ.get("CLIENT_ID", "sample-python")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
 PORT = int(os.environ.get("PORT", "5104"))
 
-SESSIONS: dict[str, dict] = {}  # демо: сессии в памяти процесса
+SESSIONS: dict[str, dict] = {}  # пример: сессии в памяти процесса
 _jwks: dict = {"keys": {}, "at": 0.0}
 _app_token: dict = {"token": None, "exp": 0.0}
 
 
 # ---------- HTTP-клиент ----------
 def http(method: str, url: str, form: dict | None = None, body: dict | None = None, token: str | None = None):
-    # Возвращает (статус, JSON); ошибки HTTP не бросаются, а возвращаются как ответ — демо показывает их пользователю.
+    # Возвращает (статус, JSON); ошибки HTTP не бросаются, а возвращаются как ответ — пример показывает их пользователю.
     data, headers = None, {}
     if form is not None:
         data = urllib.parse.urlencode(form).encode()
@@ -129,14 +129,14 @@ def as_list(v):
 
 
 # ---------- Веб-интерфейс (серверный рендеринг) ----------
-PAGE = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Демо Python</title>
+PAGE = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Пример Python</title>
 <style>body{{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#fff8e6;color:#3a2a00}}
 header{{background:#b7791f;color:#fff;padding:14px 20px}}main{{max-width:980px;margin:0 auto;padding:20px}}
 .card{{background:#fff;border:1px solid #efd9a8;border-radius:8px;padding:16px;margin-bottom:16px}}
 input,select{{padding:6px 8px;margin:2px 4px 2px 0}}button{{padding:6px 12px;border-radius:6px;border:1px solid #b7791f;background:#b7791f;color:#fff;cursor:pointer}}
 table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #eee;padding:6px;text-align:left;font-size:14px}}
 pre{{background:#fffdf5;border:1px solid #efd9a8;padding:10px;overflow:auto;font-size:12px;max-height:300px}}.msg{{color:#9a3412}}</style>
-</head><body><header><b>Демо Python</b> · client_id <code>{client}</code></header><main>{body}</main></body></html>"""
+</head><body><header><b>Пример Python</b> · client_id <code>{client}</code></header><main>{body}</main></body></html>"""
 
 
 def render_home(session: dict | None, message: str = "") -> str:
@@ -157,7 +157,7 @@ def render_home(session: dict | None, message: str = "") -> str:
         <button>Войти</button></form></div>""")
 
     # 2) Управление своими пользователями через App API — только для вошедших. Токен App API выдаётся самому
-    # приложению, а не пользователю: без проверки сессии любой аноним получил бы через демо список логинов/email
+    # приложению, а не пользователю: без проверки сессии любой аноним получил бы через пример список логинов/email
     # и мог бы создавать и удалять учётные записи. В настоящем приложении проверяйте ещё и разрешение из матрицы.
     if not session:
         parts.append('<div class="card"><b>Мои пользователи (App API)</b><p>Доступно после входа.</p></div>')
@@ -212,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
         msg = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("m", [""])[0]
         try:
             self.page(render_home(session, msg))
-        except Exception as e:  # демо: показываем ошибку как есть
+        except Exception as e:  # пример: показываем ошибку как есть
             self.page(f"<pre>{html.escape(repr(e))}</pre>", 500)
 
     def do_POST(self):

@@ -2,7 +2,7 @@
 .env
 *.env
 !.env.example
-samples/.env.demo
+samples/.env.samples
 *.db
 *.db-shm
 *.db-wal

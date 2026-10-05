@@ -23,7 +23,7 @@ from http.cookiejar import CookieJar
 ISSUER = os.environ.get("TSL_AUTH_ISSUER", "http://localhost:8080/")
 BASE = ISSUER.rstrip("/")
 ADMIN_ID = os.environ.get("ADMIN_CLIENT_ID", "admin-cli")
-ADMIN_SECRET = os.environ.get("ADMIN_CLIENT_SECRET", "demo-admin-cli-secret-2026")
+ADMIN_SECRET = os.environ.get("ADMIN_CLIENT_SECRET", "sample-admin-cli-secret-2026")
 OUT = os.environ.get("OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors.json"))
 
 API = "sdk-contract-api"

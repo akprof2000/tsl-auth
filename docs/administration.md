@@ -192,4 +192,4 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   https://auth.corp/api/admin/applications/orders-api/roles/orders-operator -d '{"displayName":"Оператор отдела заказов"}'
 ```
 
-Полный перечень — `/docs/api`. Готовый пример массовой настройки — `samples/seed-demo.ps1`.
+Полный перечень — `/docs/api`. Готовый пример массовой настройки — `samples/seed-samples.ps1`.

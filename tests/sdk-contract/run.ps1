@@ -28,7 +28,7 @@ if (-not $NoStand) {
 
 $env:TSL_AUTH_ISSUER = $Issuer
 $env:ADMIN_CLIENT_ID = if ($env:BOOTSTRAP_API_CLIENT_ID) { $env:BOOTSTRAP_API_CLIENT_ID } else { "admin-cli" }
-$env:ADMIN_CLIENT_SECRET = if ($env:BOOTSTRAP_API_CLIENT_SECRET) { $env:BOOTSTRAP_API_CLIENT_SECRET } else { "demo-admin-cli-secret-2026" }
+$env:ADMIN_CLIENT_SECRET = if ($env:BOOTSTRAP_API_CLIENT_SECRET) { $env:BOOTSTRAP_API_CLIENT_SECRET } else { "sample-admin-cli-secret-2026" }
 $vectors = Join-Path $PSScriptRoot "vectors.json"
 $env:OUT = $vectors
 python (Join-Path $PSScriptRoot "make-vectors.py")

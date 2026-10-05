@@ -1,5 +1,5 @@
 {
-  "name": "tsl-auth-demo-node-spa",
+  "name": "tsl-auth-sample-node-spa",
   "private": true,
   "type": "module",
   "scripts": { "start": "node server.mjs" },

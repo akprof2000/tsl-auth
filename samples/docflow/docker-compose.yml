@@ -1,0 +1,63 @@
+# Пример «Документооборот» на готовом образе TSL Auth с Docker Hub.
+# MVP: все настройки, включая секреты, — переменные контейнеров из .env (его заполняет seed.ps1).
+#   Проще всего: docflow-start.cmd в корне репозитория. Вручную:
+#   0) ./init-env.ps1                       — случайный секрет Admin API в .env
+#   1) docker compose up -d tsl-auth        — TSL Auth (http://localhost:8080)
+#   2) ./seed.ps1                           — приложения, роли, сотрудники; секреты клиентов → .env
+#   3) docker compose up -d --build         — API + PWA (http://localhost:5200) и бот
+# Пароль администратора TSL Auth — BOOTSTRAP_ADMIN_PASSWORD в .env, иначе одноразовый в журнале:
+#   docker logs tsl-auth-docflow-auth | findstr "временным"
+# Секреты в OpenBao (после MVP): добавьте -f docker-compose.openbao.yml ко всем командам compose.
+# Порты: DOCFLOW_AUTH_PORT (8080) и DOCFLOW_WEB_PORT (5200) — если заняты другим стендом.
+# Свой образ TSL Auth: TSL_AUTH_IMAGE=tsl-auth:local (docker build -t tsl-auth:local в корне репозитория).
+name: tsl-auth-docflow
+
+services:
+  tsl-auth:
+    image: ${TSL_AUTH_IMAGE:-akprof2000/tsl-auth:latest}
+    container_name: tsl-auth-docflow-auth
+    restart: unless-stopped
+    ports: ["${DOCFLOW_AUTH_PORT:-8080}:8080"]
+    environment:
+      Database__Provider: Sqlite
+      Database__ConnectionString: "Data Source=/app/data/tsl-auth.db"
+      Auth__Issuer: "http://localhost:${DOCFLOW_AUTH_PORT:-8080}/"
+      Auth__RequireHttps: "false"
+      Bootstrap__AdminUserName: admin
+      Bootstrap__AdminPassword: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
+      # Клиент Admin API для seed.ps1 — только для стенда примеров. Секрет случайный, его пишет в .env init-env.ps1
+      # (docflow-start.cmd запускает его сам); значения по умолчанию в репозитории нет.
+      Bootstrap__AdminApiClientId: admin-cli
+      Bootstrap__AdminApiClientSecret: "${BOOTSTRAP_API_CLIENT_SECRET:-}"
+    volumes:
+      - auth-data:/app/data
+
+  docflow-api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    image: tsl-auth-docflow-api:latest
+    container_name: tsl-auth-docflow-api
+    restart: unless-stopped
+    depends_on: [tsl-auth, docflow-bot]
+    ports: ["${DOCFLOW_WEB_PORT:-5200}:8080"]
+    environment:
+      Auth__Issuer: "http://localhost:${DOCFLOW_AUTH_PORT:-8080}/"   # как в токенах (адрес для браузера)
+      Auth__InternalUrl: "http://tsl-auth:8080/"                     # адрес внутри сети Docker
+      Auth__ClientSecret: "${DOCFLOW_API_SECRET:-}"                  # пишет seed.ps1 в .env
+      BotUrl: "http://docflow-bot:8080/"
+    volumes:
+      - docflow-data:/app/data
+
+  docflow-bot:
+    build: { context: ., dockerfile: bot/Dockerfile }
+    image: tsl-auth-docflow-bot:latest
+    container_name: tsl-auth-docflow-bot
+    restart: unless-stopped
+    depends_on: [tsl-auth]
+    environment:
+      Auth__Issuer: "http://localhost:${DOCFLOW_AUTH_PORT:-8080}/"
+      Auth__InternalUrl: "http://tsl-auth:8080/"
+      Auth__BotClientSecret: "${DOCFLOW_BOT_SECRET:-}"               # пишет seed.ps1 в .env
+
+volumes:
+  auth-data:
+  docflow-data:

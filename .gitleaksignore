@@ -1,4 +1,4 @@
-# Разобранные находки gitleaks в истории git: старые значения по умолчанию (import, admin, tsl_auth_dev, демо-секрет),
+# Разобранные находки gitleaks в истории git: старые значения по умолчанию (import, admin, tsl_auth_dev, секрет примера docflow),
 # из текущего дерева удалены. Новые находки сюда не добавлять — исправлять.
 1140531107e0454b740150053dcc9b5383252b68:samples/docflow-demo/docker-compose.yml:secret-default-value:29
 448d0f2acab2c6e6687525294e3b4fc6945c15d0:docker-compose.observability.yml:secret-default-value:96

@@ -1,4 +1,4 @@
-// Демо .NET: серверное веб-приложение (confidential client) со стандартным OIDC-middleware Microsoft.
+// Пример .NET: серверное веб-приложение (confidential client) со стандартным OIDC-middleware Microsoft.
 // authorization code + PKCE, cookie-сессия, refresh-токен, вызов Go API с access-токеном пользователя,
 // авторизация по разрешениям из матрицы доступа TSL Auth.
 using System.IdentityModel.Tokens.Jwt;
@@ -13,7 +13,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 var builder = WebApplication.CreateBuilder(args);
 var issuer = builder.Configuration["Auth:Issuer"] ?? "http://localhost:8080/";
-var clientId = builder.Configuration["Auth:ClientId"] ?? "demo-dotnet";
+var clientId = builder.Configuration["Auth:ClientId"] ?? "sample-dotnet";
 var goApi = builder.Configuration["GoApiUrl"] ?? "http://localhost:5103";
 
 builder.Services.AddHttpClient();
@@ -21,7 +21,7 @@ builder.Services.AddHttpClient();
 // с чужого сайта (картинкой, редиректом), и браузер отправит её с cookie сессии.
 builder.Services.AddAntiforgery();
 builder.Services.AddAuthorization(o =>
-    // Разрешение из матрицы приложения demo-dotnet (claim "permissions" = "client:permission").
+    // Разрешение из матрицы приложения sample-dotnet (claim "permissions" = "client:permission").
     o.AddPolicy("dashboard", p => p.RequireClaim("permissions", $"{clientId}:dashboard.view")));
 
 // Cookie — локальная сессия приложения; OIDC используется только для входа (challenge), когда cookie нет.
@@ -30,7 +30,7 @@ builder.Services.AddAuthentication(o =>
         o.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
         o.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
     })
-    .AddCookie(o => o.Cookie.Name = "demo_dotnet")
+    .AddCookie(o => o.Cookie.Name = "sample_dotnet")
     .AddOpenIdConnect(o =>
     {
         o.Authority = issuer;
@@ -46,7 +46,7 @@ builder.Services.AddAuthentication(o =>
         o.MapInboundClaims = false;
         o.TokenValidationParameters.NameClaimType = "name";
         o.TokenValidationParameters.RoleClaimType = "role";
-        foreach (var s in new[] { "openid", "profile", "email", "roles", "offline_access", "demo-go-api" }) o.Scope.Add(s);
+        foreach (var s in new[] { "openid", "profile", "email", "roles", "offline_access", "sample-go-api" }) o.Scope.Add(s);
 
         // Роли/разрешения берём из access-токена (в нём права по матрице доступа).
         // Подпись access-токена здесь не проверяем: он только что получен напрямую от token endpoint по TLS,
@@ -140,9 +140,9 @@ app.Run();
 static string E(string? s) => WebUtility.HtmlEncode(s ?? "");
 
 static IResult Html(string body) => Results.Content($"""
-    <!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Демо .NET MVC</title>
+    <!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Пример .NET MVC</title>
     <style>body{"{"}font-family:Segoe UI,Arial;margin:0;background:#f3f0ff;color:#1e1646{"}"}header{"{"}background:#5b3fd6;color:#fff;padding:14px 20px{"}"}
     main{"{"}max-width:960px;margin:0 auto;padding:20px{"}"}.btn{"{"}display:inline-block;padding:8px 14px;margin:4px 4px 4px 0;border-radius:6px;background:#5b3fd6;color:#fff;text-decoration:none{"}"}
     pre{"{"}background:#fff;border:1px solid #d9d0ff;padding:12px;overflow:auto;font-size:12px{"}"}</style></head>
-    <body><header><b>Демо .NET MVC</b> · серверный рендеринг, confidential client</header><main>{body}</main></body></html>
+    <body><header><b>Пример .NET MVC</b> · серверный рендеринг, confidential client</header><main>{body}</main></body></html>
     """, "text/html; charset=utf-8");

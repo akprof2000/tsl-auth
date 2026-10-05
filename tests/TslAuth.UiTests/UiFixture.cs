@@ -6,12 +6,12 @@ using Microsoft.Playwright;
 namespace TslAuth.UiTests;
 
 /// <summary>
-/// UI-автотесты работают против запущенного стенда: сервис в Docker (compose) + демо-приложения из samples/.
+/// UI-автотесты работают против запущенного стенда: сервис в Docker (compose) + приложения-примеры из samples/.
 /// Адреса и учётные данные можно переопределить переменными окружения.
 /// Скриншоты каждого шага сохраняются в tests/artifacts/ui.
 /// Фикстура один раз поднимает Playwright и Chromium (без окна; UI_HEADED=1 — с окном),
 /// получает токен Admin API и готовит отдельного администратора для тестов.
-/// Запуск: сначала поднять стенд (demo-start), затем <c>dotnet test tests/TslAuth.UiTests</c>;
+/// Запуск: сначала поднять стенд (docflow-start), затем <c>dotnet test tests/TslAuth.UiTests</c>;
 /// браузеры Playwright должны быть установлены заранее (playwright.ps1 install chromium).
 /// </summary>
 public sealed class UiFixture : IAsyncLifetime
@@ -23,7 +23,7 @@ public sealed class UiFixture : IAsyncLifetime
     public static string GoApi => Env("UI_GO_URL", "http://localhost:5103");
     public static string Go => Env("UI_GO_URL", "http://localhost:5103");
     public static string Python => Env("UI_PYTHON_URL", "http://localhost:5104");
-    public const string DemoPassword = "Demo-Passw0rd!";
+    public const string SamplePassword = "Sample-Passw0rd!";
     public const string UiAdmin = "ui-admin";
     public const string UiAdminPassword = "Ui-Adm1n-Secret!";
 
@@ -57,7 +57,7 @@ public sealed class UiFixture : IAsyncLifetime
         var token = await (await Admin.PostAsync("/connect/token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials", ["client_id"] = Env("UI_ADMIN_CLIENT_ID", "admin-cli"),
-            ["client_secret"] = Env("UI_ADMIN_CLIENT_SECRET", "demo-admin-cli-secret-2026"), ["scope"] = "tsl-auth-admin"
+            ["client_secret"] = Env("UI_ADMIN_CLIENT_SECRET", "sample-admin-cli-secret-2026"), ["scope"] = "tsl-auth-admin"
         }))).Content.ReadFromJsonAsync<JsonElement>();
         Admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.GetProperty("access_token").GetString());
 

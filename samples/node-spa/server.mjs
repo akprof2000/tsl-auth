@@ -1,7 +1,7 @@
-// Демо Node.js: раздаёт SPA (public client, PKCE в браузере) и сам является API ресурса demo-node-api.
+// Пример Node.js: раздаёт SPA (public client, PKCE в браузере) и сам является API ресурса sample-node-api.
 // Без npm-зависимостей: JWT (RS256) проверяется встроенным crypto по JWKS сервиса авторизации.
 //
-// Переменные: AUTH_ISSUER, API_AUDIENCE (demo-node-api), SPA_CLIENT_ID (demo-node-spa), GO_API_URL, PORT.
+// Переменные: AUTH_ISSUER, API_AUDIENCE (sample-node-api), SPA_CLIENT_ID (sample-node-spa), GO_API_URL, PORT.
 // Документация API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar, /openapi/v1.json — OpenAPI
 // (файлы в каталоге docs).
 import { createServer } from "node:http";
@@ -10,12 +10,12 @@ import { createPublicKey, verify } from "node:crypto";
 import { extname, join } from "node:path";
 
 const issuer = process.env.AUTH_ISSUER ?? "http://localhost:8080/";
-const audience = process.env.API_AUDIENCE ?? "demo-node-api";
+const audience = process.env.API_AUDIENCE ?? "sample-node-api";
 const port = Number(process.env.PORT ?? 5102);
 const spaConfig = {
   issuer,
-  clientId: process.env.SPA_CLIENT_ID ?? "demo-node-spa",
-  scope: "openid profile email roles offline_access demo-node-api demo-go-api",
+  clientId: process.env.SPA_CLIENT_ID ?? "sample-node-spa",
+  scope: "openid profile email roles offline_access sample-node-api sample-go-api",
   goApi: process.env.GO_API_URL ?? "http://localhost:5103",
 };
 

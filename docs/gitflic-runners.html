@@ -243,13 +243,13 @@ GITFLIC_RUNNER_TOKEN='&lt;токен&gt;' docker compose -p gitflic-runner-2 -f 
 <table>
   <tr><th>Задание</th><th>Стадия</th><th>Образ</th><th>Что делает</th></tr>
   <tr><td><code>build-and-unit</code></td><td>build</td><td><code>dotnet/sdk:10.0</code></td><td>restore, сборка с <code>-warnaserror</code>, unit-тесты, проверка <code>.trx</code> (≥ 100 тестов)</td></tr>
-  <tr><td><code>validate-docs</code></td><td>build</td><td><code>dotnet/sdk:10.0</code></td><td>ссылки, якоря, таблицы, актуальность картинок схем, копии страниц <code>/docs</code> демо</td></tr>
+  <tr><td><code>validate-docs</code></td><td>build</td><td><code>dotnet/sdk:10.0</code></td><td>ссылки, якоря, таблицы, актуальность картинок схем, копии страниц <code>/docs</code> примеров</td></tr>
   <tr><td><code>build-image</code></td><td>build</td><td><code>docker:28</code> + dind</td><td><code>docker build --pull</code>, <code>docker save</code> → артефакт <code>image.tar</code> (2 часа)</td></tr>
   <tr><td><code>net-check-hel</code></td><td>build</td><td><code>alpine</code></td><td>скачивает слой ~85 МБ из реестра — проверяет путь с сервера; <span class="tag">allow_failure</span></td></tr>
   <tr><td><code>mirror-github</code></td><td>build</td><td><code>alpine</code></td><td>main, теги и объекты LFS → GitHub; <span class="tag">allow_failure</span></td></tr>
   <tr><td><code>integration-tests</code></td><td>test</td><td>SDK + dind</td><td>интеграционные тесты SQLite и PostgreSQL/OpenBao (Testcontainers в dind)</td></tr>
   <tr><td><code>sdk-contract</code></td><td>test</td><td>SDK + dind</td><td>стенд из исходников в dind, Node/Go/Java/Python ставятся в задании, контрактные тесты пяти SDK</td></tr>
-  <tr><td><code>e2e-stand</code></td><td>test</td><td>SDK + dind</td><td>стенд, демо-данные, четыре демо-приложения, UI-тесты Playwright, k6, отказы одиночного режима</td></tr>
+  <tr><td><code>e2e-stand</code></td><td>test</td><td>SDK + dind</td><td>стенд, тестовые данные, четыре приложения-примеры, UI-тесты Playwright, k6, отказы одиночного режима</td></tr>
   <tr><td><code>scan-image</code></td><td>test</td><td><code>aquasec/trivy:0.74.0</code></td><td>HIGH/CRITICAL с исправлением в <code>image.tar</code> — конвейер красный</td></tr>
   <tr><td><code>publish-image</code></td><td>publish</td><td><code>alpine</code> + crane</td><td>после <strong>всех</strong> проверок: <code>crane push</code> и теги версии (<a href="#publish">раздел 8</a>)</td></tr>
   <tr><td><code>publish-sdk-*</code></td><td>release</td><td>dotnet / node / python / maven</td><td>пакеты NuGet, npm, PyPI, Maven той же версии</td></tr>
@@ -360,8 +360,8 @@ cache:
     — архив прямо из реестра в формате <code>docker save</code>; сам <code>docker save</code> в Docker Desktop с хранилищем
     containerd для образов, выгруженных <code>crane</code>, отдаёт пустой архив в 8 КБ),
     <code>tsl-auth-sdk-X.Y.Z.tar.gz</code> (<code>scripts/build-sdk-packages.sh X.Y.Z</code>),
-    <code>tsl-auth-deploy-X.Y.Z.tar.gz</code> (compose, <code>.env.example</code>, <code>deploy/</code>, демо- и
-    импорт-скрипты), <code>tsl-auth-docs-X.Y.Z.zip</code>.</li>
+    <code>tsl-auth-deploy-X.Y.Z.tar.gz</code> (compose, <code>.env.example</code>, <code>deploy/</code>, скрипты стенда
+    примеров и импорта), <code>tsl-auth-docs-X.Y.Z.zip</code>.</li>
   <li>Создать релиз: <code>POST /project/uklad/tsl-auth/release</code> с JSON
     <code>{title, tagName, description, isDraft, isPreRelease}</code> (другие имена полей — 500). SHA-256 файлов —
     в описании.</li>

@@ -97,41 +97,41 @@ docker compose -f docker-compose.ha.yml up -d --build
 Точка входа кластера — только nginx; секреты можно передать файлами через docker secrets
 (`docker-compose.ha-secrets.yml`, см. [развёртывание](docs/deployment.md#секреты-файлами-docker-secrets)).
 
-## Демо-стенд: четыре приложения на разных стеках
+## Стенд примеров: четыре приложения на разных стеках
 
-TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go API (:5103), Python (:5104) с матрицами доступа и
+TSL Auth и приложения-примеры .NET MVC (:5101), Node SPA (:5102), Go API (:5103), Python (:5104) с матрицами доступа и
 пользователями `alice` / `bob` — одной командой. Нужны Docker, .NET 10 SDK, Node.js ≥ 20, Go ≥ 1.22, Python ≥ 3.10
-(на Linux ещё PowerShell 7 — им заполняются демо-данные).
+(на Linux ещё PowerShell 7 — им заполняются тестовые данные).
 
 | Действие | Windows | Linux |
 |---|---|---|
-| Запустить (образ из реестра GitFlic) | `scripts\demo.cmd` (двойной щелчок) или `./scripts/demo.ps1` | `scripts/demo.sh` |
-| Собрать образ из исходников и запустить | `scripts\demo.cmd -Build` | `scripts/demo.sh --build` |
-| Другой образ, например выпуск | `scripts\demo.cmd -Image registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:1.5.1` | `scripts/demo.sh --image …` |
-| Остановить (данные сохраняются) | `scripts\demo.cmd stop` | `scripts/demo.sh stop` |
-| Остановить и удалить данные | `scripts\demo.cmd clean` | `scripts/demo.sh clean` |
+| Запустить (образ из реестра GitFlic) | `scripts\samples.cmd` (двойной щелчок) или `./scripts/samples.ps1` | `scripts/samples.sh` |
+| Собрать образ из исходников и запустить | `scripts\samples.cmd -Build` | `scripts/samples.sh --build` |
+| Другой образ, например выпуск | `scripts\samples.cmd -Image registry.gitflic.ru/project/uklad/tsl-auth/tsl-auth:1.5.1` | `scripts/samples.sh --image …` |
+| Остановить (данные сохраняются) | `scripts\samples.cmd stop` | `scripts/samples.sh stop` |
+| Остановить и удалить данные | `scripts\samples.cmd clean` | `scripts/samples.sh clean` |
 
 Секреты стенда генерируются в `.env` при первом запуске (пароль `admin` — `BOOTSTRAP_ADMIN_PASSWORD`), секреты
-демо-клиентов — в `samples/.env.demo`; журналы приложений — `tests/artifacts/demo`.
+клиентов-примеров — в `samples/.env.samples`; журналы приложений — `tests/artifacts/samples`.
 
-## Демо: документооборот
+## Пример: документооборот
 
 Готовое приложение поверх TSL Auth: PWA на React, API на C# и бот безопасности.
-Роли настраиваются только в TSL Auth, сотрудников и назначение ролей демо ведёт через App API,
+Роли настраиваются только в TSL Auth, сотрудников и назначение ролей пример ведёт через App API,
 бот сбрасывает пароль, блокирует учётные записи и требует смену пароля через Bot API.
 Нужен только Docker Desktop; TSL Auth берётся из образа `akprof2000/tsl-auth` с Docker Hub.
 
 | Действие | Команда (из корня репозитория) |
 |---|---|
-| Запустить и открыть браузер | `demo-start` (или двойной щелчок по `demo-start.cmd`) |
-| Остановить, данные сохраняются | `demo-stop` |
-| Остановить и удалить данные | `demo-stop clean` |
-| Пересобрать образы демо | `demo-start rebuild` |
+| Запустить и открыть браузер | `docflow-start` (или двойной щелчок по `docflow-start.cmd`) |
+| Остановить, данные сохраняются | `docflow-stop` |
+| Остановить и удалить данные | `docflow-stop clean` |
+| Пересобрать образы примера | `docflow-start rebuild` |
 
-В PowerShell добавьте `.\` перед именем: `.\demo-start`.
+В PowerShell добавьте `.\` перед именем: `.\docflow-start`.
 После запуска: приложение — http://localhost:5200, TSL Auth — http://localhost:8080.
 
-| Учётная запись | Роль в демо |
+| Учётная запись | Роль в примере |
 |---|---|
 | `ivanova` | сотрудник: создаёт документы |
 | `petrov` | согласующий |
@@ -139,7 +139,7 @@ TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go
 | `kozlov` | делопроизводитель: архив |
 | `admin-doc` | администратор документооборота и офицер безопасности |
 
-Пароль всех учёток — `Demo-Passw0rd!` (только для демо-стенда).
+Пароль всех учёток — `Sample-Passw0rd!` (только для стенда примеров).
 
 Что попробовать:
 
@@ -149,7 +149,7 @@ TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go
 4. Бот безопасности: в личном кабинете TSL Auth («Мессенджер») получить код, в чате отправить `/link КОД`,
    затем `/lock petrov` или `/forcepwd sidorova` (от имени `admin-doc`).
 
-Подробности — в [samples/docflow-demo](samples/docflow-demo/README.md).
+Подробности — в [samples/docflow](samples/docflow/README.md).
 
 ## Документация
 
@@ -180,8 +180,8 @@ TSL Auth и демо-приложения .NET MVC (:5101), Node SPA (:5102), Go
 ```
 src/TslAuth/            сервис (ASP.NET Core, OpenIddict, EF Core)
 tests/                  unit, интеграционные, UI (Playwright), нагрузка (k6), отказоустойчивость
-samples/                демо-приложения: .NET MVC, Node.js SPA+API, Go API, Python
-                        docflow-demo — документооборот: PWA (React) + C# API + бот безопасности
+samples/                приложения-примеры: .NET MVC, Node.js SPA+API, Go API, Python
+                        docflow — документооборот: PWA (React) + C# API + бот безопасности
 deploy/                 конфигурации nginx (HTTP и TLS), стенд мониторинга (VictoriaMetrics, VictoriaLogs, VictoriaTraces, Vector, коллектор, Grafana), пример appsettings
 docker-compose*.yml     одиночный режим, кластер и оверлеи: HTTPS (PEM/PFX), docker secrets, доступ к узлам для диагностики, мониторинг
 scripts/                сертификаты для теста HTTPS, перенос образов в закрытый контур, проверка документации, картинки схем
@@ -192,5 +192,5 @@ docs/                   документация; docs/diagrams — картин
 
 [MIT](LICENSE) © 2026 Alexey Kozlov
 
-> ⚠️ Значения в `samples/seed-demo.ps1` и тестах (например секрет `admin-cli` эфемерных тестовых стендов) —
+> ⚠️ Значения в `samples/seed-samples.ps1` и тестах (например секрет `admin-cli` эфемерных тестовых стендов) —
 > только для демонстрационного стенда. В продуктиве задавайте свои секреты через `.env`.

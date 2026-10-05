@@ -6,7 +6,7 @@ using static Microsoft.Playwright.Assertions;
 namespace TslAuth.UiTests;
 
 /// <summary>
-/// UI-сценарии (Playwright): страница входа, админка, демо-приложения, регистрация, персональные токены.
+/// UI-сценарии (Playwright): страница входа, админка, приложения-примеры, регистрация, персональные токены.
 /// Работают против поднятого стенда через <see cref="UiFixture"/>; запуск: <c>dotnet test tests/TslAuth.UiTests</c>.
 /// Ожидания Expect(...) сами повторяют проверку до таймаута Playwright, поэтому явных задержек в тестах нет.
 /// </summary>
@@ -61,7 +61,7 @@ public sealed class UiScenarios(UiFixture fx)
         foreach (var (path, title, shot) in new[]
                  {
                      ("/Admin/Apps", "Приложения", "11-admin-apps"),
-                     ("/Admin/Apps/Matrix?clientId=demo-node-api", "Матрица доступа", "12-admin-matrix"),
+                     ("/Admin/Apps/Matrix?clientId=sample-node-api", "Матрица доступа", "12-admin-matrix"),
                      ("/Admin/Users", "Пользователи", "13-admin-users"),
                      ("/Admin/Requests", "Заявки на доступ", "14-admin-requests"),
                      ("/Admin/Sessions", "Активные сессии", "15-admin-sessions"),
@@ -262,7 +262,7 @@ public sealed class UiScenarios(UiFixture fx)
         await fx.Admin.PutAsync($"/api/admin/applications/{app}/roles/reader/two-factor?value=false", null);
     }
 
-    // ---------- Демо-приложения на разных стеках ----------
+    // ---------- Приложения-примеры на разных стеках ----------
 
     /// <summary>
     /// SPA входит по Authorization Code + PKCE через брендированную страницу, вызывает API на Node и Go,
@@ -278,7 +278,7 @@ public sealed class UiScenarios(UiFixture fx)
         // Страница входа в стиле приложения (оформление из админки).
         await Expect(page.Locator(".login-brand h1")).ToHaveTextAsync("Портал заказов");
         await UiFixture.ShotAsync(page, "40-spa-branded-login");
-        await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
+        await UiFixture.LoginAsync(page, "alice", UiFixture.SamplePassword);
 
         await Expect(page.Locator("#who")).ToContainTextAsync("alice");
         await UiFixture.ShotAsync(page, "41-spa-logged-in");
@@ -288,27 +288,27 @@ public sealed class UiScenarios(UiFixture fx)
         await page.ClickAsync("#go");
         await Expect(page.Locator("#out")).ToContainTextAsync("Выручка");
         await page.ClickAsync("#chain");
-        await Expect(page.Locator("#out")).ToContainTextAsync("\"calledVia\": \"demo-go-api\""); // Node видит, что вызов пришёл через Go
+        await Expect(page.Locator("#out")).ToContainTextAsync("\"calledVia\": \"sample-go-api\""); // Node видит, что вызов пришёл через Go
         await UiFixture.ShotAsync(page, "42-spa-token-exchange");
 
         await page.ClickAsync("#refresh");
         await Expect(page.Locator("#out")).ToContainTextAsync("токен обновлён");
     }
 
-    /// <summary>Пользователь без роли в demo-go-api получает 403 от Go API, хотя Node API ему доступен.</summary>
+    /// <summary>Пользователь без роли в sample-go-api получает 403 от Go API, хотя Node API ему доступен.</summary>
     [Fact]
     public async Task NodeSpa_UserWithoutRole_GetsForbidden()
     {
         var page = await fx.NewPageAsync();
         await page.GotoAsync(UiFixture.Spa);
         await page.ClickAsync("#login");
-        await UiFixture.LoginAsync(page, "bob", UiFixture.DemoPassword);
+        await UiFixture.LoginAsync(page, "bob", UiFixture.SamplePassword);
         await Expect(page.Locator("#who")).ToContainTextAsync("bob");
 
         await page.ClickAsync("#node");
-        await Expect(page.Locator("#out")).ToContainTextAsync("\"status\": 200");  // viewer в demo-node-api
+        await Expect(page.Locator("#out")).ToContainTextAsync("\"status\": 200");  // viewer в sample-node-api
         await page.ClickAsync("#go");
-        await Expect(page.Locator("#out")).ToContainTextAsync("\"status\": 403"); // нет роли в demo-go-api
+        await Expect(page.Locator("#out")).ToContainTextAsync("\"status\": 403"); // нет роли в sample-go-api
         await UiFixture.ShotAsync(page, "43-spa-bob-forbidden");
     }
 
@@ -318,8 +318,8 @@ public sealed class UiScenarios(UiFixture fx)
     {
         var page = await fx.NewPageAsync();
         await page.GotoAsync($"{UiFixture.Dotnet}/login");
-        await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
-        await Expect(page.Locator("main")).ToContainTextAsync("demo-dotnet:dashboard.view");
+        await UiFixture.LoginAsync(page, "alice", UiFixture.SamplePassword);
+        await Expect(page.Locator("main")).ToContainTextAsync("sample-dotnet:dashboard.view");
         await UiFixture.ShotAsync(page, "50-dotnet-logged-in");
 
         await page.GotoAsync($"{UiFixture.Dotnet}/dashboard");
@@ -343,10 +343,10 @@ public sealed class UiScenarios(UiFixture fx)
         var page = await fx.NewPageAsync();
         await page.GotoAsync(UiFixture.Python);
         await page.FillAsync("input[name=username]", "alice");
-        await page.FillAsync("input[name=password]", UiFixture.DemoPassword);
+        await page.FillAsync("input[name=password]", UiFixture.SamplePassword);
         await page.ClickAsync("form[action='/login'] button");
         await Expect(page.Locator("main")).ToContainTextAsync("подпись JWT проверена");
-        await Expect(page.Locator("main")).ToContainTextAsync("demo-python:tickets.read");
+        await Expect(page.Locator("main")).ToContainTextAsync("sample-python:tickets.read");
 
         var newUser = Unique("py");
         await page.FillAsync("form[action='/users/create'] input[name=userName]", newUser);
@@ -377,7 +377,7 @@ public sealed class UiScenarios(UiFixture fx)
         await page.FillAsync("#UserName", name);
         await page.FillAsync("#Password", "Reg-Passw0rd-1");
         await page.FillAsync("#Confirm", "Reg-Passw0rd-1");
-        await page.CheckAsync("input[name=Roles][value='demo-node-api|viewer']");
+        await page.CheckAsync("input[name=Roles][value='sample-node-api|viewer']");
         await page.FillAsync("#Comment", "UI-тест: нужен просмотр заказов");
         await UiFixture.ShotAsync(page, "70-register-form");
         await page.ClickAsync("button.primary");
@@ -407,10 +407,10 @@ public sealed class UiScenarios(UiFixture fx)
     {
         var page = await fx.NewPageAsync();
         await page.GotoAsync($"{UiFixture.Auth}/Account/Tokens");
-        await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
+        await UiFixture.LoginAsync(page, "alice", UiFixture.SamplePassword);
         var name = Unique("ui-pat");
         await page.FillAsync("#Name", name);
-        await page.CheckAsync("input[name=Audiences][value=demo-node-api]");
+        await page.CheckAsync("input[name=Audiences][value=sample-node-api]");
         await page.ClickAsync("form[action*=Create] button");
         var secret = (await page.Locator("#pat-secret").TextContentAsync())!.Trim();
         Assert.StartsWith("tslpat_", secret);
@@ -450,7 +450,7 @@ public sealed class UiScenarios(UiFixture fx)
         {
             var page = await fx.NewPageAsync();
             await page.GotoAsync($"{UiFixture.Auth}/Account/Tokens");
-            await UiFixture.LoginAsync(page, "alice", UiFixture.DemoPassword);
+            await UiFixture.LoginAsync(page, "alice", UiFixture.SamplePassword);
             await page.FillAsync("#Name", "робот отчётов");
             await page.CheckAsync($"input[name=ClientId][value={robot}]");
             await page.CheckAsync("input[name=AllApplications]");
@@ -483,7 +483,7 @@ public sealed class UiScenarios(UiFixture fx)
 
     /// <summary>
     /// У каждого модуля с REST API — как у TSL Auth: /docs — руководство, /docs/api — справочник Scalar по /openapi/v1.json.
-    /// Демо-API берут скрипт Scalar с TSL Auth (не CDN), поэтому справочник проверяется в браузере, а не только по статусу.
+    /// API примеров берут скрипт Scalar с TSL Auth (не CDN), поэтому справочник проверяется в браузере, а не только по статусу.
     /// </summary>
     [Fact]
     public async Task ApiDocs_GuideAndScalarReference_InEveryModule()

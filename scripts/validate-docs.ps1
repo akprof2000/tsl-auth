@@ -101,7 +101,7 @@ if (-not $SkipMermaid -and $mermaid.Count -gt 0) {
     Remove-Item $tmp -Recurse -Force
 }
 
-# Документация REST API демо (/docs, /docs/api): общие шаблоны лежат в трёх модулях — копии должны совпадать,
+# Документация REST API примеров (/docs, /docs/api): общие шаблоны лежат в трёх модулях — копии должны совпадать,
 # OpenAPI — разбираться как JSON, у каждого метода — подпись (summary) и требования к доступу (description).
 $docDirs = "samples/go-api/docs", "samples/node-spa/docs", "samples/java-api/src/main/resources/docs"
 foreach ($name in "guide.html", "reference.html") {

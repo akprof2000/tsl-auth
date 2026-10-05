@@ -1,5 +1,5 @@
 # Автоматические обновления зависимостей: пакеты NuGet, базовые образы Docker (закреплены по digest),
-# образы в compose, GitHub Actions (закреплены по SHA) и зависимости демо-приложений.
+# образы в compose, GitHub Actions (закреплены по SHA) и зависимости приложений-примеров.
 # Каждое обновление проходит CI (тесты + Trivy + Dockle).
 version: 2
 updates:
@@ -10,7 +10,7 @@ updates:
       dotnet: { patterns: ["Microsoft.*", "System.*"] }
       openiddict: { patterns: ["OpenIddict.*"] }
 
-  # Демо .NET не входит в TslAuth.sln — отдельная запись, иначе Dependabot его не видит.
+  # Пример .NET не входит в TslAuth.sln — отдельная запись, иначе Dependabot его не видит.
   - package-ecosystem: nuget
     directory: /samples/dotnet-mvc
     schedule: { interval: monthly }

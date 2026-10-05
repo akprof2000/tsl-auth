@@ -4,10 +4,10 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>ru.tsl.auth.samples</groupId>
-  <artifactId>demo-java-api</artifactId>
+  <artifactId>sample-java-api</artifactId>
   <version>1.0.0</version>
   <packaging>jar</packaging>
-  <name>Демо Java API на TSL Auth SDK</name>
+  <name>Пример Java API на TSL Auth SDK</name>
 
   <properties>
     <!-- Версия SDK: локально 0.0.0-dev (после ./mvnw install в sdk/java), в закрытом контуре — версия из вашего репозитория -->
@@ -25,14 +25,14 @@
   </dependencies>
 
   <build>
-    <finalName>demo-java-api</finalName>
+    <finalName>sample-java-api</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
       </plugin>
-      <!-- Зависимости рядом с jar (target/lib) + Class-Path в манифесте: java -jar target/demo-java-api.jar -->
+      <!-- Зависимости рядом с jar (target/lib) + Class-Path в манифесте: java -jar target/sample-java-api.jar -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
@@ -56,7 +56,7 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>demo.App</mainClass>
+              <mainClass>sample.App</mainClass>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
             </manifest>

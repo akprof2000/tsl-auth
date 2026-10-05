@@ -157,22 +157,22 @@ curl -X POST https://auth.corp/connect/token \
 
 ### От имени пользователя (token exchange, RFC 8693)
 
-![От имени пользователя (token exchange, RFC 8693)](diagrams/2bdb7246258d.png)
+![От имени пользователя (token exchange, RFC 8693)](diagrams/47ea2c8ad2c8.png)
 
 <details><summary>Исходник схемы (Mermaid)</summary>
 
 ```mermaid
 sequenceDiagram
     participant SPA
-    participant Go as Go API (demo-go-api)
+    participant Go as Go API (sample-go-api)
     participant Auth as TSL Auth
-    participant Node as Node API (demo-node-api)
-    SPA->>Go: Bearer T1 (aud: demo-go-api, пользователь alice)
-    Go->>Auth: token-exchange: subject_token=T1, scope=demo-node-api<br/>client_id=demo-go-api + secret
-    Auth->>Auth: T1 валиден и адресован demo-go-api?<br/>alice активна? права alice в demo-node-api
-    Auth-->>Go: T2 (aud: demo-node-api, sub: alice, act: {sub: demo-go-api})
+    participant Node as Node API (sample-node-api)
+    SPA->>Go: Bearer T1 (aud: sample-go-api, пользователь alice)
+    Go->>Auth: token-exchange: subject_token=T1, scope=sample-node-api<br/>client_id=sample-go-api + secret
+    Auth->>Auth: T1 валиден и адресован sample-go-api?<br/>alice активна? права alice в sample-node-api
+    Auth-->>Go: T2 (aud: sample-node-api, sub: alice, act: {sub: sample-go-api})
     Go->>Node: Bearer T2
-    Node-->>Go: данные (видит, что вызов пришёл через demo-go-api)
+    Node-->>Go: данные (видит, что вызов пришёл через sample-go-api)
 ```
 
 </details>
@@ -363,7 +363,7 @@ sequenceDiagram
 включает её и снимает блокировку за неверные пароли. Принудительная смена отзывает сессии и ставит флаг
 `mustChangePassword`: старый пароль годится только для установки нового. Ответ:
 `{action, actor, userName, self, changed}`. Каждая команда пишется в журнал безопасности (уровень warning)
-и попадает в ленту событий как `security.alert`. Демо бота со встроенным чатом — `samples/docflow-demo` (готовится).
+и попадает в ленту событий как `security.alert`. Пример бота со встроенным чатом — `samples/docflow` (готовится).
 
 ## 10. Самостоятельная регистрация и заявки на доступ
 
@@ -498,7 +498,7 @@ SDK .NET и Go входят по ключу сами: задайте `TSL_AUTH_C
 
 ### Как вызвать метод по документации
 
-1. Узнать на `/docs`, какое разрешение нужно методу: например, `demo-go-api:reports.view`. Разрешение входит в роль
+1. Узнать на `/docs`, какое разрешение нужно методу: например, `sample-go-api:reports.view`. Разрешение входит в роль
    матрицы приложения; роль назначает администратор доступа или само приложение через [App API](#7-app-api--приложение-управляет-своими-пользователями).
 2. Получить access-токен с нужным `aud`: пользователь — входом в приложение ([§2](#2-вход-пользователя-authorization-code--pkce)),
    сервис — `client_credentials` ([§5](#5-сервис--сервис)), скрипт — [персональным токеном](#6-персональные-токены-pat-для-скриптов).
@@ -510,7 +510,7 @@ SDK .NET и Go входят по ключу сами: задайте `TSL_AUTH_C
 
 - **.NET** — пакеты `Microsoft.AspNetCore.OpenApi` и `Scalar.AspNetCore`, `MapOpenApi()` и
   `MapScalarApiReference("/docs/api", …)` с отключёнными шрифтами, телеметрией и облачными функциями Scalar. Готовый
-  общий модуль — [`samples/docflow-demo/shared/ApiDocs.cs`](../samples/docflow-demo/shared/ApiDocs.cs): подписи методов
+  общий модуль — [`samples/docflow/shared/ApiDocs.cs`](../samples/docflow/shared/ApiDocs.cs): подписи методов
   задаются словарём, нужное разрешение берётся из политики авторизации эндпоинта.
 - **Go, Node.js, Java, Python и другие** — положить рядом с кодом `openapi.json` (описание методов: `summary` и
   требования к доступу в `description`) и две общие страницы из [`samples/go-api/docs`](../samples/go-api/docs):
@@ -520,4 +520,4 @@ SDK .NET и Go входят по ключу сами: задайте `TSL_AUTH_C
   [`samples/node-spa/server.mjs`](../samples/node-spa/server.mjs), Java — [`samples/java-api`](../samples/java-api).
 
 Проверка: UI-тест `ApiDocs_GuideAndScalarReference_InEveryModule` открывает обе страницы TSL Auth, Node API и Go API;
-`scripts/validate-docs.ps1` сверяет копии общих страниц и `openapi.json` демо.
+`scripts/validate-docs.ps1` сверяет копии общих страниц и `openapi.json` примеров.

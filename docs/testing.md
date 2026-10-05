@@ -28,13 +28,13 @@ flowchart TB
 
 Unit, интеграционные, контрактные тесты SDK и E2E-стенд (UI, нагрузка, отказы одиночного режима, секреты) выполняются
 конвейером GitFlic на каждый push в `main` и тег; без них образ не публикуется. Кластер, стенд мониторинга и OpenBao
-проверяются вручную скриптами `tests/resilience/run-*.ps1` перед релизом (см. `docs/gitflic-ci.md`). Журналы демо-приложений и контейнеров стенда сохраняются в артефакт
-`e2e-artifacts` (`tests/artifacts/demo`, `container-*.log`).
+проверяются вручную скриптами `tests/resilience/run-*.ps1` перед релизом (см. `docs/gitflic-ci.md`). Журналы приложений-примеров и контейнеров стенда сохраняются в артефакт
+`e2e-artifacts` (`tests/artifacts/samples`, `container-*.log`).
 
 ## Запуск стенда для UI-тестов
 
-Проще всего — скриптом демо-стенда: `scripts\demo.cmd -Build` (Windows) или `scripts/demo.sh --build` (Linux) собирает
-образ из исходников, поднимает стенд, заполняет демо-данные и запускает четыре приложения. Затем:
+Проще всего — скриптом стенда примеров: `scripts\samples.cmd -Build` (Windows) или `scripts/samples.sh --build` (Linux) собирает
+образ из исходников, поднимает стенд, заполняет тестовые данные и запускает четыре приложения. Затем:
 
 ```powershell
 dotnet test tests/TslAuth.UiTests                                  # в фоне (headless)
@@ -44,11 +44,11 @@ $env:UI_HEADED = "1"; dotnet test tests/TslAuth.UiTests            # с види
 Вручную — по шагам:
 
 ```powershell
-$env:BOOTSTRAP_API_CLIENT_ID='admin-cli'; $env:BOOTSTRAP_API_CLIENT_SECRET='demo-admin-cli-secret-2026'
+$env:BOOTSTRAP_API_CLIENT_ID='admin-cli'; $env:BOOTSTRAP_API_CLIENT_SECRET='sample-admin-cli-secret-2026'
 docker compose up -d --build
-./samples/seed-demo.ps1                                  # приложения, матрицы, alice/bob, секреты → samples/.env.demo
-# демо-приложения: go run . (samples/go-api), node server.mjs (samples/node-spa),
-# python app.py (samples/python-app), dotnet run (samples/dotnet-mvc) — секреты из samples/.env.demo
+./samples/seed-samples.ps1                               # приложения, матрицы, alice/bob, секреты → samples/.env.samples
+# приложения-примеры: go run . (samples/go-api), node server.mjs (samples/node-spa),
+# python app.py (samples/python-app), dotnet run (samples/dotnet-mvc) — секреты из samples/.env.samples
 dotnet build tests/TslAuth.UiTests
 ./tests/TslAuth.UiTests/bin/Debug/net10.0/playwright.ps1 install chromium
 dotnet test tests/TslAuth.UiTests                        # скриншоты шагов: tests/artifacts/ui

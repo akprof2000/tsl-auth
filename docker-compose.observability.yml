@@ -71,7 +71,7 @@ services:
 
   victoriatraces:
     <<: *hardening
-    image: victoriametrics/victoria-traces:v0.11.1
+    image: victoriametrics/victoria-traces:v0.12.0
     container_name: tsl-auth-victoriatraces
     command:
       - -storageDataPath=/storage

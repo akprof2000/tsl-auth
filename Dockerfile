@@ -15,7 +15,7 @@
 # ---------- Сборка ----------
 # publish выполняет restore повторно (без --no-restore): пакеты NuGet лежат в cache mount, который не входит в кэш
 # слоёв CI. Если слой restore взят из кэша, а cache mount на новом раннере пуст, publish --no-restore не нашёл бы пакеты.
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:35d40304542c8689331f8cab17c65926cdf48fe711e289321d71924b230a7d29 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 WORKDIR /src
 COPY src/TslAuth/TslAuth.csproj src/TslAuth/
 # Кэш пакетов NuGet — в cache mount BuildKit: при изменении csproj пакеты не скачиваются заново,

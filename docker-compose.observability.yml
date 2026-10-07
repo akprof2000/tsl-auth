@@ -95,7 +95,7 @@ services:
 
   otel-collector:
     <<: *hardening
-    image: otel/opentelemetry-collector-contrib:0.161.0
+    image: otel/opentelemetry-collector-contrib:0.161.0-386
     container_name: tsl-auth-otel-collector
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:

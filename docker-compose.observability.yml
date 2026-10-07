@@ -58,7 +58,7 @@ services:
 
   victorialogs:
     <<: *hardening
-    image: victoriametrics/victoria-logs:v1.52.0
+    image: victoriametrics/victoria-logs:v1.53.0
     container_name: tsl-auth-victorialogs
     command:
       - -storageDataPath=/storage

@@ -65,7 +65,7 @@ jobs:
           if grep -q -E "(Critical|High)" vulnerable.txt; then echo "::error::Найдены уязвимые пакеты"; exit 1; fi
 
       # Отчёты trx сохраняются и при падении тестов (always), хранятся 1 день.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: test-results

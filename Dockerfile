@@ -29,7 +29,7 @@ RUN --mount=type=cache,id=nuget,target=/root/.nuget/packages \
     && mkdir -p /data
 
 # ---------- Выполнение (distroless) ----------
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-azurelinux3.0-distroless@sha256:42e74b1e732f4b17c6a292c189f2110d3501b6caa96bb59edda698eb059ecc9b AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-azurelinux3.0-distroless@sha256:bd252bde098c75a41df4c749f73bb14858a08e7f2429d85812a93e177c503731 AS runtime
 
 LABEL org.opencontainers.image.title="TSL Auth" \
       org.opencontainers.image.description="Сервис аутентификации и авторизации: OAuth 2.0 / OIDC, JWT, RBAC" \
